@@ -16,6 +16,10 @@ function Resolve-ProjectPath($path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Read-RequiredFile([string] $path, [string] $label) {
     $resolvedPath = Resolve-ProjectPath $path
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
@@ -23,7 +27,7 @@ function Read-RequiredFile([string] $path, [string] $label) {
     }
     return [pscustomobject]@{
         Path = $resolvedPath
-        Content = Get-Content -Raw -LiteralPath $resolvedPath
+        Content = Read-Utf8Text $resolvedPath
     }
 }
 

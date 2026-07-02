@@ -20,6 +20,10 @@ function Resolve-ProjectPath($path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-FileExists([string] $path, [string] $label) {
     if (-not (Test-Path -LiteralPath $path)) {
@@ -49,7 +53,7 @@ function Read-DurableGateReport([string] $path) {
     }
 
     try {
-        $gateReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $gateReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $gateReport.result -eq "ready" -and $gateReport.currentDemoStatus -eq "docker-durable-demo-verified"
         return [pscustomobject]@{
             path = $resolvedPath
@@ -85,7 +89,7 @@ function Read-StorageExpansionFinalizeReport([string] $path) {
     }
 
     try {
-        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $finalizeReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $finalizeReport.result -eq "passed"
         $backend = $finalizeReport.backend
         return [pscustomobject]@{
@@ -120,7 +124,7 @@ function Read-KubernetesDrFinalizeReport([string] $path) {
     }
 
     try {
-        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $finalizeReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $finalizeReport.result -eq "ready"
         return [pscustomobject]@{
             path = $resolvedPath
@@ -154,7 +158,7 @@ function Read-SecurityEvidenceFinalizeReport([string] $path) {
     }
 
     try {
-        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $finalizeReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $finalizeReport.result -eq "passed"
         return [pscustomobject]@{
             path = $resolvedPath
@@ -187,8 +191,8 @@ Assert-FileExists $resolvedReleaseReportPath "Release report"
 Assert-FileExists $resolvedAuditPath "MVP audit"
 Assert-FileExists $resolvedDecisionPath "MVP release decision"
 
-$report = Get-Content -Raw -LiteralPath $resolvedReleaseReportPath | ConvertFrom-Json
-$decision = Get-Content -Raw -LiteralPath $resolvedDecisionPath
+$report = Read-Utf8Text $resolvedReleaseReportPath | ConvertFrom-Json
+$decision = Read-Utf8Text $resolvedDecisionPath
 $scope = $report.scope
 $optionalGates = $report.optionalGates
 

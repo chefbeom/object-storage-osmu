@@ -27,7 +27,13 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.flywaydb:flyway-core'
-    implementation 'io.minio:minio:8.5.17'
+    implementation 'io.minio:minio:8.6.0'
+
+    constraints {
+        implementation('org.bouncycastle:bcprov-jdk18on:1.84') {
+            because 'container security gate requires the fixed Bouncy Castle provider version'
+        }
+    }
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     runtimeOnly 'org.mariadb.jdbc:mariadb-java-client'
     runtimeOnly 'org.flywaydb:flyway-mysql'

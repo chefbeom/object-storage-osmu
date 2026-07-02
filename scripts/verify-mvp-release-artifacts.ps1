@@ -18,6 +18,10 @@ function Resolve-ProjectPath($path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-FileExists([string] $path) {
     if (-not (Test-Path -LiteralPath $path)) {
@@ -53,7 +57,7 @@ function Read-DurableGateReport([string] $path) {
     }
 
     try {
-        $gateReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $gateReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $gateReport.result -eq "ready" -and $gateReport.currentDemoStatus -eq "docker-durable-demo-verified"
         return [pscustomobject]@{
             path = $resolvedPath
@@ -93,7 +97,7 @@ function Read-StorageExpansionFinalizeReport([string] $path) {
     }
 
     try {
-        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $finalizeReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $finalizeReport.result -eq "passed"
         $backend = $finalizeReport.backend
         return [pscustomobject]@{
@@ -128,7 +132,7 @@ function Read-KubernetesDrFinalizeReport([string] $path) {
     }
 
     try {
-        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $finalizeReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $finalizeReport.result -eq "ready"
         return [pscustomobject]@{
             path = $resolvedPath
@@ -162,7 +166,7 @@ function Read-SecurityEvidenceFinalizeReport([string] $path) {
     }
 
     try {
-        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $finalizeReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $finalizeReport.result -eq "passed"
         return [pscustomobject]@{
             path = $resolvedPath
@@ -197,10 +201,10 @@ Assert-FileExists $resolvedAuditPath
 Assert-FileExists $resolvedDecisionPath
 Assert-FileExists $resolvedReleaseNotesPath
 
-$report = Get-Content -Raw -LiteralPath $resolvedReleaseReportPath | ConvertFrom-Json
-$audit = Get-Content -Raw -LiteralPath $resolvedAuditPath
-$decision = Get-Content -Raw -LiteralPath $resolvedDecisionPath
-$releaseNotes = Get-Content -Raw -LiteralPath $resolvedReleaseNotesPath
+$report = Read-Utf8Text $resolvedReleaseReportPath | ConvertFrom-Json
+$audit = Read-Utf8Text $resolvedAuditPath
+$decision = Read-Utf8Text $resolvedDecisionPath
+$releaseNotes = Read-Utf8Text $resolvedReleaseNotesPath
 
 if ($durableGate.passed) {
     if ($durableGate.selectedS3Client -and [string]$report.selectedS3Client -ne $durableGate.selectedS3Client) {

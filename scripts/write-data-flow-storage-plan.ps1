@@ -33,6 +33,10 @@ function Resolve-ProjectPath([string] $path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-NoCredentialText([string] $value, [string] $label) {
     if ($value -match '(?i)(password|secret|token|credential)\s*[:=]') {
@@ -150,7 +154,7 @@ function Read-QueryPlanEvidenceSummary([string] $path) {
         return $summary
     }
 
-    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    $raw = Read-Utf8Text $resolvedPath
     Assert-NoCredentialJson $raw "QueryPlanEvidenceJson"
     try {
         $payload = $raw | ConvertFrom-Json
@@ -207,10 +211,44 @@ $queryPlanEvidencePassed = [bool] $queryPlanEvidence["provided"] -and
     "passed".Equals([string] $queryPlanEvidence["result"], [System.StringComparison]::OrdinalIgnoreCase) -and
     [int] $queryPlanEvidence["failedCount"] -eq 0
 $candidateNeedsMariaDbQueryEvidence = @("MARIADB_PARTITION", "DUAL_WRITE") -contains $CandidateStore
+$targetStoreEvidenceRequired = @("EXTERNAL_TIME_SERIES", "DUAL_WRITE") -contains $CandidateStore
 $queryPlanEvidenceRequired = [bool] $RequireQueryPlanEvidence -or $candidateNeedsMariaDbQueryEvidence
+$targetStoreEvidenceConfirmed = [bool] $ConfirmExplainEvidence
 $explainEvidencePassed = [bool] $ConfirmExplainEvidence
 if ($queryPlanEvidenceRequired -or [bool] $queryPlanEvidence["provided"]) {
     $explainEvidencePassed = $explainEvidencePassed -and $queryPlanEvidencePassed
+}
+
+$candidateDecisionLabel = switch ($CandidateStore) {
+    "MARIADB_PARTITION" { "Use MariaDB partitioned tables for long-window data-flow analytics." }
+    "DUAL_WRITE" { "Run MariaDB and target analytics stores in parallel during transition cutover." }
+    "EXTERNAL_TIME_SERIES" { "Move long-window analytics reads to an external time-series repository." }
+    default { "Candidate store decision is not classified." }
+}
+$candidateEvidenceModel = switch ($CandidateStore) {
+    "MARIADB_PARTITION" { "passed-mariadb-query-plan-evidence" }
+    "DUAL_WRITE" { "passed-mariadb-query-plan-evidence-and-target-store-readiness" }
+    "EXTERNAL_TIME_SERIES" { "target-store-readiness-evidence" }
+    default { "operator-reviewed-target-evidence" }
+}
+$candidateDecisionNextAction = if ($candidateNeedsMariaDbQueryEvidence -and -not $queryPlanEvidencePassed) {
+    "Attach passed MariaDB query-plan evidence before promoting the storage transition plan."
+} elseif ($targetStoreEvidenceRequired -and -not $targetStoreEvidenceConfirmed) {
+    "Confirm target-store sizing/readiness evidence before promoting the storage transition plan."
+} else {
+    "Candidate evidence is ready for transition runbook rehearsal."
+}
+$candidateDecision = [ordered]@{
+    candidateStore = $CandidateStore
+    decision = $candidateDecisionLabel
+    evidenceModel = $candidateEvidenceModel
+    requiresMariaDbQueryEvidence = [bool] $candidateNeedsMariaDbQueryEvidence
+    requiresTargetStoreEvidence = [bool] $targetStoreEvidenceRequired
+    queryPlanEvidenceRequired = [bool] $queryPlanEvidenceRequired
+    queryPlanEvidencePassed = [bool] $queryPlanEvidencePassed
+    targetStoreEvidenceConfirmed = [bool] $targetStoreEvidenceConfirmed
+    safeDataPolicy = "Candidate decisions must use sanitized evidence summaries only; do not store raw SQL, raw EXPLAIN JSON, object keys, raw event messages, or secrets."
+    nextAction = $candidateDecisionNextAction
 }
 
 $checks = New-Object System.Collections.Generic.List[object]
@@ -303,6 +341,7 @@ $report = [ordered]@{
     eventRetentionDays = $EventRetentionDays
     dailyRollupRetentionDays = $DailyRollupRetentionDays
     monthlyRollupRetentionMonths = $MonthlyRollupRetentionMonths
+    candidateDecision = $candidateDecision
     queryPlanEvidence = $queryPlanEvidence
     scopePolicy = $scopePolicy
     checkCount = $checks.Count
@@ -328,6 +367,17 @@ $markdown = @(
     "- Candidate store: $CandidateStore"
     "- Evidence ref: $EvidenceRef"
     "- Scope policy: $scopePolicy"
+    ""
+    "## Candidate Decision"
+    ""
+    "- Decision: $($candidateDecision["decision"])"
+    "- Evidence model: $($candidateDecision["evidenceModel"])"
+    "- MariaDB query evidence required: $($candidateDecision["requiresMariaDbQueryEvidence"])"
+    "- Target store evidence required: $($candidateDecision["requiresTargetStoreEvidence"])"
+    "- Query plan evidence passed: $($candidateDecision["queryPlanEvidencePassed"])"
+    "- Target store evidence confirmed: $($candidateDecision["targetStoreEvidenceConfirmed"])"
+    "- Next action: $($candidateDecision["nextAction"])"
+    "- Safe data policy: $($candidateDecision["safeDataPolicy"])"
     ""
     "## Sizing"
     ""

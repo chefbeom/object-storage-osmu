@@ -5,6 +5,7 @@ param(
     [string] $ReportPath = ".\.osmu-run\latest-operations-readiness-convergence.json",
     [string] $SyncEvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync.json",
     [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
+    [string] $DataFlowQueryRetentionBudgetPath = ".\.osmu-run\latest-data-flow-query-retention-budget-evidence.json",
     [string] $DataFlowStorageTransitionRunbookPath = ".\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json",
     [string] $EvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync-live.json",
     [string] $ApiBase = "",
@@ -20,6 +21,7 @@ param(
     [switch] $SkipSync,
     [switch] $SkipDashboardCheck,
     [switch] $SkipDataFlowStoragePlanDashboardCheck,
+    [switch] $SkipDataFlowQueryRetentionBudgetDashboardCheck,
     [switch] $SkipDataFlowStorageTransitionRunbookDashboardCheck,
     [switch] $PlanOnly
 )
@@ -34,6 +36,11 @@ function Resolve-ProjectPath([string] $PathValue) {
         return [System.IO.Path]::GetFullPath($PathValue)
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
+}
+
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
 }
 
 function Limit-Text([string] $Text) {
@@ -72,7 +79,7 @@ function Read-JsonFile([string] $PathValue, [string] $Label) {
     if (-not (Test-Path -LiteralPath $resolved)) {
         throw "$Label not found: $resolved"
     }
-    return Get-Content -Raw -Encoding UTF8 -LiteralPath $resolved | ConvertFrom-Json
+    return Read-Utf8Text $resolved | ConvertFrom-Json
 }
 
 function Invoke-Json($Method, $Url, $Body = $null, $Token = $null) {
@@ -140,6 +147,7 @@ function New-SyncCommand([string] $Mode) {
         "-ConfigMapName", $ConfigMapName,
         "-ReportPath", $ReportPath,
         "-DataFlowStoragePlanPath", $DataFlowStoragePlanPath,
+        "-DataFlowQueryRetentionBudgetPath", $DataFlowQueryRetentionBudgetPath,
         "-DataFlowStorageTransitionRunbookPath", $DataFlowStorageTransitionRunbookPath,
         "-EvidencePath", $SyncEvidencePath
     )
@@ -165,6 +173,15 @@ function Test-DashboardDataMatchesExpected(
     [bool] $ExpectedDataFlowQueryPlanEvidenceProvided,
     [string] $ExpectedDataFlowQueryPlanEvidenceResult,
     [int] $ExpectedDataFlowQueryPlanEvidenceFailedCount,
+    [bool] $ShouldCheckDataFlowQueryRetentionBudget,
+    [string] $ExpectedDataFlowQueryRetentionBudgetResult,
+    [string] $ExpectedDataFlowQueryRetentionBudgetStoragePlanResult,
+    [string] $ExpectedDataFlowQueryRetentionBudgetCandidateStore,
+    [int] $ExpectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs,
+    [int] $ExpectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs,
+    [int] $ExpectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds,
+    [int] $ExpectedDataFlowQueryRetentionBudgetFailureCount,
+    [int] $ExpectedDataFlowQueryRetentionBudgetCheckCount,
     [bool] $ShouldCheckDataFlowStorageTransitionRunbook,
     [string] $ExpectedDataFlowStorageTransitionRunbookResult,
     [string] $ExpectedDataFlowStorageTransitionRunbookStoragePlanResult,
@@ -184,6 +201,7 @@ function Test-DashboardDataMatchesExpected(
     $convergence = $Data.operationsReadinessConvergence
     $reportSync = $Data.kubernetesOperationsReportSync
     $dataFlowStoragePlan = $Data.dataFlowStoragePlan
+    $dataFlowQueryRetentionBudget = $Data.dataFlowQueryRetentionBudget
     $dataFlowStorageTransitionRunbook = $Data.dataFlowStorageTransitionRunbook
     if ($null -eq $convergence) {
         $details += "operationsReadinessConvergence missing"
@@ -271,6 +289,52 @@ function Test-DashboardDataMatchesExpected(
         }
     }
 
+    if ($ShouldCheckDataFlowQueryRetentionBudget) {
+        if ($null -eq $dataFlowQueryRetentionBudget) {
+            $details += "dataFlowQueryRetentionBudget missing"
+        }
+        else {
+            $budgetResult = Get-ObjectText $dataFlowQueryRetentionBudget.result
+            if ($budgetResult -ne $ExpectedDataFlowQueryRetentionBudgetResult) {
+                $details += "data-flow query/retention budget result=$budgetResult expected=$ExpectedDataFlowQueryRetentionBudgetResult"
+            }
+            $budgetStoragePlanResult = Get-ObjectText $dataFlowQueryRetentionBudget.storagePlanResult
+            if ($budgetStoragePlanResult -ne $ExpectedDataFlowQueryRetentionBudgetStoragePlanResult) {
+                $details += "data-flow query/retention budget storagePlanResult=$budgetStoragePlanResult expected=$ExpectedDataFlowQueryRetentionBudgetStoragePlanResult"
+            }
+            $budgetCandidateStore = Get-ObjectText $dataFlowQueryRetentionBudget.candidateStore
+            if ($ExpectedDataFlowQueryRetentionBudgetCandidateStore -and $budgetCandidateStore -ne $ExpectedDataFlowQueryRetentionBudgetCandidateStore) {
+                $details += "data-flow query/retention budget candidateStore=$budgetCandidateStore expected=$ExpectedDataFlowQueryRetentionBudgetCandidateStore"
+            }
+            $budgetTargetP95 = Get-ObjectInt $dataFlowQueryRetentionBudget.targetP95QueryLatencyMs
+            if ($budgetTargetP95 -ne $ExpectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs) {
+                $details += "data-flow query/retention budget targetP95=$budgetTargetP95 expected=$ExpectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs"
+            }
+            $budgetObservedP95 = Get-ObjectInt $dataFlowQueryRetentionBudget.observedP95QueryLatencyMs
+            if ($budgetObservedP95 -ne $ExpectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs) {
+                $details += "data-flow query/retention budget observedP95=$budgetObservedP95 expected=$ExpectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs"
+            }
+            $budgetRetentionSeconds = Get-ObjectInt $dataFlowQueryRetentionBudget.retentionBudgetSeconds
+            if ($budgetRetentionSeconds -ne $ExpectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds) {
+                $details += "data-flow query/retention budget retentionBudgetSeconds=$budgetRetentionSeconds expected=$ExpectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds"
+            }
+            $budgetFailureCount = Get-ObjectInt $dataFlowQueryRetentionBudget.failureCount
+            if ($budgetFailureCount -ne $ExpectedDataFlowQueryRetentionBudgetFailureCount) {
+                $details += "data-flow query/retention budget failureCount=$budgetFailureCount expected=$ExpectedDataFlowQueryRetentionBudgetFailureCount"
+            }
+            $budgetCheckCount = Get-ObjectInt $dataFlowQueryRetentionBudget.checkCount
+            if ($budgetCheckCount -ne $ExpectedDataFlowQueryRetentionBudgetCheckCount) {
+                $details += "data-flow query/retention budget checkCount=$budgetCheckCount expected=$ExpectedDataFlowQueryRetentionBudgetCheckCount"
+            }
+        }
+
+        if ($ExpectedDataFlowQueryRetentionBudgetResult -and $ExpectedDataFlowQueryRetentionBudgetResult -ne "passed") {
+            $hasBudgetItem = @($Data.items | Where-Object { (Get-ObjectText $_.code) -eq "DATA_FLOW_QUERY_RETENTION_BUDGET" }).Count -gt 0
+            if (-not $hasBudgetItem) {
+                $details += "DATA_FLOW_QUERY_RETENTION_BUDGET readiness item missing"
+            }
+        }
+    }
     if ($ShouldCheckDataFlowStorageTransitionRunbook) {
         if ($null -eq $dataFlowStorageTransitionRunbook) {
             $details += "dataFlowStorageTransitionRunbook missing"
@@ -309,13 +373,13 @@ function Test-DashboardDataMatchesExpected(
     if (@($details).Count -eq 0) {
         return [pscustomobject]@{
             matched = $true
-            summary = "Dashboard readiness reflects expected Kubernetes report sync, data-flow storage plan, and transition runbook state."
+            summary = "Dashboard readiness reflects expected Kubernetes report sync, data-flow storage plan, query/retention budget, and transition runbook state."
             details = @()
         }
     }
     return [pscustomobject]@{
         matched = $false
-        summary = "Dashboard readiness does not yet reflect expected Kubernetes report sync, data-flow storage plan, and transition runbook state."
+        summary = "Dashboard readiness does not yet reflect expected Kubernetes report sync, data-flow storage plan, query/retention budget, and transition runbook state."
         details = $details
     }
 }
@@ -336,11 +400,13 @@ if ($PlanOnly -and ($RunSyncServerDryRun -or $RunSyncApply)) {
 $resolvedReportPath = Resolve-ProjectPath $ReportPath
 $resolvedSyncEvidencePath = Resolve-ProjectPath $SyncEvidencePath
 $resolvedDataFlowStoragePlanPath = Resolve-ProjectPath $DataFlowStoragePlanPath
+$resolvedDataFlowQueryRetentionBudgetPath = Resolve-ProjectPath $DataFlowQueryRetentionBudgetPath
 $resolvedDataFlowStorageTransitionRunbookPath = Resolve-ProjectPath $DataFlowStorageTransitionRunbookPath
 $resolvedEvidencePath = Resolve-ProjectPath $EvidencePath
 $resolvedDashboardFixturePath = if ($DashboardReadinessFixturePath) { Resolve-ProjectPath $DashboardReadinessFixturePath } else { "" }
 $dashboardCheckRequested = [bool]((-not $SkipDashboardCheck) -and ($ApiBase -or $DashboardReadinessFixturePath))
 $shouldCheckDataFlowStoragePlanDashboard = [bool]((-not $SkipDataFlowStoragePlanDashboardCheck) -and (Test-Path -LiteralPath $resolvedDataFlowStoragePlanPath))
+$shouldCheckDataFlowQueryRetentionBudgetDashboard = [bool]((-not $SkipDataFlowQueryRetentionBudgetDashboardCheck) -and (Test-Path -LiteralPath $resolvedDataFlowQueryRetentionBudgetPath))
 $shouldCheckDataFlowStorageTransitionRunbookDashboard = [bool]((-not $SkipDataFlowStorageTransitionRunbookDashboardCheck) -and (Test-Path -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath))
 
 if ($PlanOnly) {
@@ -369,7 +435,7 @@ if (-not $PlanOnly) {
     }
     else {
         try {
-            $syncEvidence = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedSyncEvidencePath | ConvertFrom-Json
+            $syncEvidence = Read-Utf8Text $resolvedSyncEvidencePath | ConvertFrom-Json
             Add-Check "sync-evidence-valid-json" $true "Sync evidence file is valid JSON."
         }
         catch {
@@ -391,7 +457,7 @@ if ($SkipDataFlowStoragePlanDashboardCheck) {
 }
 elseif ($shouldCheckDataFlowStoragePlanDashboard) {
     try {
-        $dataFlowStoragePlanEvidence = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedDataFlowStoragePlanPath | ConvertFrom-Json
+        $dataFlowStoragePlanEvidence = Read-Utf8Text $resolvedDataFlowStoragePlanPath | ConvertFrom-Json
         $expectedDataFlowStoragePlanResult = Get-ObjectText $dataFlowStoragePlanEvidence.result
         $expectedDataFlowStoragePlanCandidateStore = Get-ObjectText $dataFlowStoragePlanEvidence.candidateStore
         $expectedDataFlowStoragePlanPendingCount = Get-ObjectInt $dataFlowStoragePlanEvidence.pendingCount
@@ -420,6 +486,43 @@ else {
 }
 $dataFlowStoragePlanDashboardExpected = [bool]($shouldCheckDataFlowStoragePlanDashboard -and $null -ne $dataFlowStoragePlanEvidence)
 
+$dataFlowQueryRetentionBudgetEvidence = $null
+$expectedDataFlowQueryRetentionBudgetResult = ""
+$expectedDataFlowQueryRetentionBudgetStoragePlanResult = ""
+$expectedDataFlowQueryRetentionBudgetCandidateStore = ""
+$expectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs = 0
+$expectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs = 0
+$expectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds = 0
+$expectedDataFlowQueryRetentionBudgetFailureCount = 0
+$expectedDataFlowQueryRetentionBudgetCheckCount = 0
+if ($SkipDataFlowQueryRetentionBudgetDashboardCheck) {
+    Add-Check "data-flow-query-retention-budget-dashboard-skipped" $true "Dashboard data-flow query/retention budget check skipped by parameter."
+}
+elseif ($shouldCheckDataFlowQueryRetentionBudgetDashboard) {
+    try {
+        $dataFlowQueryRetentionBudgetEvidence = Read-Utf8Text $resolvedDataFlowQueryRetentionBudgetPath | ConvertFrom-Json
+        $expectedDataFlowQueryRetentionBudgetResult = Get-ObjectText $dataFlowQueryRetentionBudgetEvidence.result
+        $expectedDataFlowQueryRetentionBudgetStoragePlanResult = Get-ObjectText $dataFlowQueryRetentionBudgetEvidence.dataFlowStoragePlanSnapshot.result
+        $expectedDataFlowQueryRetentionBudgetCandidateStore = Get-ObjectText $dataFlowQueryRetentionBudgetEvidence.dataFlowStoragePlanSnapshot.candidateStore
+        $expectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs = Get-ObjectInt $dataFlowQueryRetentionBudgetEvidence.queryLatencyBudget.targetP95QueryLatencyMs
+        $expectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs = Get-ObjectInt $dataFlowQueryRetentionBudgetEvidence.queryLatencyBudget.observedP95QueryLatencyMs
+        $expectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds = Get-ObjectInt $dataFlowQueryRetentionBudgetEvidence.retentionBudget.budgetSeconds
+        $expectedDataFlowQueryRetentionBudgetFailureCount = Get-ObjectInt $dataFlowQueryRetentionBudgetEvidence.summary.failureCount
+        $expectedDataFlowQueryRetentionBudgetCheckCount = Get-ObjectInt $dataFlowQueryRetentionBudgetEvidence.summary.checkCount
+        Add-Check "data-flow-query-retention-budget-valid-json" $true "Local data-flow query/retention budget evidence is valid JSON."
+        Add-Check "data-flow-query-retention-budget-format-version" ((Get-ObjectText $dataFlowQueryRetentionBudgetEvidence.formatVersion) -eq "osmu.data-flow-query-retention-budget-evidence.v1") "Data-flow query/retention budget formatVersion=$(Get-ObjectText $dataFlowQueryRetentionBudgetEvidence.formatVersion)."
+        if ($PlanOnly) {
+            Add-Check "data-flow-query-retention-budget-dashboard-plan" $true "Dashboard data-flow query/retention budget check planned from local evidence."
+        }
+    }
+    catch {
+        Add-Check "data-flow-query-retention-budget-valid-json" $false "Data-flow query/retention budget JSON is invalid: $($_.Exception.Message)"
+    }
+}
+else {
+    Add-Check "data-flow-query-retention-budget-dashboard-optional" $true "Local data-flow query/retention budget evidence is absent; dashboard data-flow query/retention budget check is optional."
+}
+$dataFlowQueryRetentionBudgetDashboardExpected = [bool]($shouldCheckDataFlowQueryRetentionBudgetDashboard -and $null -ne $dataFlowQueryRetentionBudgetEvidence)
 $dataFlowStorageTransitionRunbookEvidence = $null
 $expectedDataFlowStorageTransitionRunbookResult = ""
 $expectedDataFlowStorageTransitionRunbookStoragePlanResult = ""
@@ -431,7 +534,7 @@ if ($SkipDataFlowStorageTransitionRunbookDashboardCheck) {
 }
 elseif ($shouldCheckDataFlowStorageTransitionRunbookDashboard) {
     try {
-        $dataFlowStorageTransitionRunbookEvidence = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath | ConvertFrom-Json
+        $dataFlowStorageTransitionRunbookEvidence = Read-Utf8Text $resolvedDataFlowStorageTransitionRunbookPath | ConvertFrom-Json
         $expectedDataFlowStorageTransitionRunbookResult = Get-ObjectText $dataFlowStorageTransitionRunbookEvidence.result
         $expectedDataFlowStorageTransitionRunbookStoragePlanResult = Get-ObjectText $dataFlowStorageTransitionRunbookEvidence.dataFlowStoragePlanSnapshot.result
         $expectedDataFlowStorageTransitionRunbookCandidateStore = Get-ObjectText $dataFlowStorageTransitionRunbookEvidence.dataFlowStoragePlanSnapshot.candidateStore
@@ -484,7 +587,7 @@ elseif ($dashboardCheckRequested) {
             $dashboardData = Get-ResponseData (Read-JsonFile $resolvedDashboardFixturePath "Dashboard readiness fixture")
             $dashboardSource = $resolvedDashboardFixturePath
             $dashboardAttemptCount = 1
-            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount $dataFlowStorageTransitionRunbookDashboardExpected $expectedDataFlowStorageTransitionRunbookResult $expectedDataFlowStorageTransitionRunbookStoragePlanResult $expectedDataFlowStorageTransitionRunbookCandidateStore $expectedDataFlowStorageTransitionRunbookFailureCount $expectedDataFlowStorageTransitionRunbookCheckCount
+            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount $dataFlowQueryRetentionBudgetDashboardExpected $expectedDataFlowQueryRetentionBudgetResult $expectedDataFlowQueryRetentionBudgetStoragePlanResult $expectedDataFlowQueryRetentionBudgetCandidateStore $expectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs $expectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs $expectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds $expectedDataFlowQueryRetentionBudgetFailureCount $expectedDataFlowQueryRetentionBudgetCheckCount $dataFlowStorageTransitionRunbookDashboardExpected $expectedDataFlowStorageTransitionRunbookResult $expectedDataFlowStorageTransitionRunbookStoragePlanResult $expectedDataFlowStorageTransitionRunbookCandidateStore $expectedDataFlowStorageTransitionRunbookFailureCount $expectedDataFlowStorageTransitionRunbookCheckCount
             $dashboardMatchedExpected = [bool] $dashboardMatch.matched
             Add-Check "dashboard-fixture" $true "Loaded dashboard readiness fixture."
         }
@@ -516,7 +619,7 @@ elseif ($dashboardCheckRequested) {
                         try {
                             $dashboard = Invoke-Json "GET" "$ApiBase/admin/dashboard/readiness" $null $token
                             $dashboardData = Get-ResponseData $dashboard
-                            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount $dataFlowStorageTransitionRunbookDashboardExpected $expectedDataFlowStorageTransitionRunbookResult $expectedDataFlowStorageTransitionRunbookStoragePlanResult $expectedDataFlowStorageTransitionRunbookCandidateStore $expectedDataFlowStorageTransitionRunbookFailureCount $expectedDataFlowStorageTransitionRunbookCheckCount
+                            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount $dataFlowQueryRetentionBudgetDashboardExpected $expectedDataFlowQueryRetentionBudgetResult $expectedDataFlowQueryRetentionBudgetStoragePlanResult $expectedDataFlowQueryRetentionBudgetCandidateStore $expectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs $expectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs $expectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds $expectedDataFlowQueryRetentionBudgetFailureCount $expectedDataFlowQueryRetentionBudgetCheckCount $dataFlowStorageTransitionRunbookDashboardExpected $expectedDataFlowStorageTransitionRunbookResult $expectedDataFlowStorageTransitionRunbookStoragePlanResult $expectedDataFlowStorageTransitionRunbookCandidateStore $expectedDataFlowStorageTransitionRunbookFailureCount $expectedDataFlowStorageTransitionRunbookCheckCount
                             $dashboardMatchedExpected = [bool] $dashboardMatch.matched
                             $attemptSummaries += "attempt $attempt/$DashboardRetryCount`: $($dashboardMatch.summary) $(@($dashboardMatch.details) -join '; ')".Trim()
                             if ($dashboardMatchedExpected) {
@@ -558,6 +661,15 @@ $dashboardDataFlowStoragePlanItemPresent = $false
 $dashboardDataFlowQueryPlanEvidenceProvided = $false
 $dashboardDataFlowQueryPlanEvidenceResult = ""
 $dashboardDataFlowQueryPlanEvidenceFailedCount = 0
+$dashboardDataFlowQueryRetentionBudgetResult = ""
+$dashboardDataFlowQueryRetentionBudgetStoragePlanResult = ""
+$dashboardDataFlowQueryRetentionBudgetCandidateStore = ""
+$dashboardDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs = 0
+$dashboardDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs = 0
+$dashboardDataFlowQueryRetentionBudgetRetentionBudgetSeconds = 0
+$dashboardDataFlowQueryRetentionBudgetFailureCount = 0
+$dashboardDataFlowQueryRetentionBudgetCheckCount = 0
+$dashboardDataFlowQueryRetentionBudgetItemPresent = $false
 $dashboardDataFlowStorageTransitionRunbookResult = ""
 $dashboardDataFlowStorageTransitionRunbookStoragePlanResult = ""
 $dashboardDataFlowStorageTransitionRunbookCandidateStore = ""
@@ -633,6 +745,37 @@ if ($null -ne $dashboardData) {
         }
     }
 
+    if ($dataFlowQueryRetentionBudgetDashboardExpected) {
+        $dashboardDataFlowQueryRetentionBudget = $dashboardData.dataFlowQueryRetentionBudget
+        $dashboardDataFlowQueryRetentionBudgetItemPresent = @($dashboardData.items | Where-Object { (Get-ObjectText $_.code) -eq "DATA_FLOW_QUERY_RETENTION_BUDGET" }).Count -gt 0
+        if ($null -eq $dashboardDataFlowQueryRetentionBudget) {
+            Add-Check "dashboard-data-flow-query-retention-budget-present" $false "dataFlowQueryRetentionBudget is missing from dashboard readiness response."
+        }
+        else {
+            $dashboardDataFlowQueryRetentionBudgetResult = Get-ObjectText $dashboardDataFlowQueryRetentionBudget.result
+            $dashboardDataFlowQueryRetentionBudgetStoragePlanResult = Get-ObjectText $dashboardDataFlowQueryRetentionBudget.storagePlanResult
+            $dashboardDataFlowQueryRetentionBudgetCandidateStore = Get-ObjectText $dashboardDataFlowQueryRetentionBudget.candidateStore
+            $dashboardDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs = Get-ObjectInt $dashboardDataFlowQueryRetentionBudget.targetP95QueryLatencyMs
+            $dashboardDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs = Get-ObjectInt $dashboardDataFlowQueryRetentionBudget.observedP95QueryLatencyMs
+            $dashboardDataFlowQueryRetentionBudgetRetentionBudgetSeconds = Get-ObjectInt $dashboardDataFlowQueryRetentionBudget.retentionBudgetSeconds
+            $dashboardDataFlowQueryRetentionBudgetFailureCount = Get-ObjectInt $dashboardDataFlowQueryRetentionBudget.failureCount
+            $dashboardDataFlowQueryRetentionBudgetCheckCount = Get-ObjectInt $dashboardDataFlowQueryRetentionBudget.checkCount
+            Add-Check "dashboard-data-flow-query-retention-budget-present" $true "dataFlowQueryRetentionBudget is present."
+            Add-Check "dashboard-data-flow-query-retention-budget-result" ($dashboardDataFlowQueryRetentionBudgetResult -eq $expectedDataFlowQueryRetentionBudgetResult) "Dashboard query/retention budget result=$dashboardDataFlowQueryRetentionBudgetResult, expected=$expectedDataFlowQueryRetentionBudgetResult."
+            Add-Check "dashboard-data-flow-query-retention-budget-storage-plan-result" ($dashboardDataFlowQueryRetentionBudgetStoragePlanResult -eq $expectedDataFlowQueryRetentionBudgetStoragePlanResult) "Dashboard query/retention budget storagePlanResult=$dashboardDataFlowQueryRetentionBudgetStoragePlanResult, expected=$expectedDataFlowQueryRetentionBudgetStoragePlanResult."
+            if ($expectedDataFlowQueryRetentionBudgetCandidateStore) {
+                Add-Check "dashboard-data-flow-query-retention-budget-candidate-store" ($dashboardDataFlowQueryRetentionBudgetCandidateStore -eq $expectedDataFlowQueryRetentionBudgetCandidateStore) "Dashboard query/retention budget candidateStore=$dashboardDataFlowQueryRetentionBudgetCandidateStore, expected=$expectedDataFlowQueryRetentionBudgetCandidateStore."
+            }
+            Add-Check "dashboard-data-flow-query-retention-budget-target-p95" ($dashboardDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs -eq $expectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs) "Dashboard query/retention budget targetP95=$dashboardDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs, expected=$expectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs."
+            Add-Check "dashboard-data-flow-query-retention-budget-observed-p95" ($dashboardDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs -eq $expectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs) "Dashboard query/retention budget observedP95=$dashboardDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs, expected=$expectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs."
+            Add-Check "dashboard-data-flow-query-retention-budget-retention-seconds" ($dashboardDataFlowQueryRetentionBudgetRetentionBudgetSeconds -eq $expectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds) "Dashboard query/retention budget retentionBudgetSeconds=$dashboardDataFlowQueryRetentionBudgetRetentionBudgetSeconds, expected=$expectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds."
+            Add-Check "dashboard-data-flow-query-retention-budget-failure-count" ($dashboardDataFlowQueryRetentionBudgetFailureCount -eq $expectedDataFlowQueryRetentionBudgetFailureCount) "Dashboard query/retention budget failureCount=$dashboardDataFlowQueryRetentionBudgetFailureCount, expected=$expectedDataFlowQueryRetentionBudgetFailureCount."
+            Add-Check "dashboard-data-flow-query-retention-budget-check-count" ($dashboardDataFlowQueryRetentionBudgetCheckCount -eq $expectedDataFlowQueryRetentionBudgetCheckCount) "Dashboard query/retention budget checkCount=$dashboardDataFlowQueryRetentionBudgetCheckCount, expected=$expectedDataFlowQueryRetentionBudgetCheckCount."
+            if ($expectedDataFlowQueryRetentionBudgetResult -ne "passed") {
+                Add-Check "dashboard-data-flow-query-retention-budget-item" $dashboardDataFlowQueryRetentionBudgetItemPresent "Dashboard DATA_FLOW_QUERY_RETENTION_BUDGET readiness item present=$dashboardDataFlowQueryRetentionBudgetItemPresent."
+            }
+        }
+    }
     if ($dataFlowStorageTransitionRunbookDashboardExpected) {
         $dashboardDataFlowStorageTransitionRunbook = $dashboardData.dataFlowStorageTransitionRunbook
         $dashboardDataFlowStorageTransitionRunbookItemPresent = @($dashboardData.items | Where-Object { (Get-ObjectText $_.code) -eq "DATA_FLOW_STORAGE_TRANSITION_RUNBOOK" }).Count -gt 0
@@ -676,6 +819,7 @@ $report = [ordered]@{
     sourceReportPath = $resolvedReportPath
     syncEvidencePath = $resolvedSyncEvidencePath
     dataFlowStoragePlanPath = $resolvedDataFlowStoragePlanPath
+    dataFlowQueryRetentionBudgetPath = $resolvedDataFlowQueryRetentionBudgetPath
     dataFlowStorageTransitionRunbookPath = $resolvedDataFlowStorageTransitionRunbookPath
     dataFlowStoragePlanExpected = [bool] $dataFlowStoragePlanDashboardExpected
     dataFlowStoragePlanExpectedResult = $expectedDataFlowStoragePlanResult
@@ -685,6 +829,15 @@ $report = [ordered]@{
     dataFlowQueryPlanEvidenceExpectedProvided = [bool] $expectedDataFlowQueryPlanEvidenceProvided
     dataFlowQueryPlanEvidenceExpectedResult = $expectedDataFlowQueryPlanEvidenceResult
     dataFlowQueryPlanEvidenceExpectedFailedCount = $expectedDataFlowQueryPlanEvidenceFailedCount
+    dataFlowQueryRetentionBudgetExpected = [bool] $dataFlowQueryRetentionBudgetDashboardExpected
+    dataFlowQueryRetentionBudgetExpectedResult = $expectedDataFlowQueryRetentionBudgetResult
+    dataFlowQueryRetentionBudgetExpectedStoragePlanResult = $expectedDataFlowQueryRetentionBudgetStoragePlanResult
+    dataFlowQueryRetentionBudgetExpectedCandidateStore = $expectedDataFlowQueryRetentionBudgetCandidateStore
+    dataFlowQueryRetentionBudgetExpectedTargetP95QueryLatencyMs = $expectedDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs
+    dataFlowQueryRetentionBudgetExpectedObservedP95QueryLatencyMs = $expectedDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs
+    dataFlowQueryRetentionBudgetExpectedRetentionBudgetSeconds = $expectedDataFlowQueryRetentionBudgetRetentionBudgetSeconds
+    dataFlowQueryRetentionBudgetExpectedFailureCount = $expectedDataFlowQueryRetentionBudgetFailureCount
+    dataFlowQueryRetentionBudgetExpectedCheckCount = $expectedDataFlowQueryRetentionBudgetCheckCount
     dataFlowStorageTransitionRunbookExpected = [bool] $dataFlowStorageTransitionRunbookDashboardExpected
     dataFlowStorageTransitionRunbookExpectedResult = $expectedDataFlowStorageTransitionRunbookResult
     dataFlowStorageTransitionRunbookExpectedStoragePlanResult = $expectedDataFlowStorageTransitionRunbookStoragePlanResult
@@ -717,6 +870,16 @@ $report = [ordered]@{
     dashboardDataFlowQueryPlanEvidenceProvided = [bool] $dashboardDataFlowQueryPlanEvidenceProvided
     dashboardDataFlowQueryPlanEvidenceResult = $dashboardDataFlowQueryPlanEvidenceResult
     dashboardDataFlowQueryPlanEvidenceFailedCount = $dashboardDataFlowQueryPlanEvidenceFailedCount
+    dashboardDataFlowQueryRetentionBudgetChecked = [bool]($dataFlowQueryRetentionBudgetDashboardExpected -and $null -ne $dashboardData)
+    dashboardDataFlowQueryRetentionBudgetResult = $dashboardDataFlowQueryRetentionBudgetResult
+    dashboardDataFlowQueryRetentionBudgetStoragePlanResult = $dashboardDataFlowQueryRetentionBudgetStoragePlanResult
+    dashboardDataFlowQueryRetentionBudgetCandidateStore = $dashboardDataFlowQueryRetentionBudgetCandidateStore
+    dashboardDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs = $dashboardDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs
+    dashboardDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs = $dashboardDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs
+    dashboardDataFlowQueryRetentionBudgetRetentionBudgetSeconds = $dashboardDataFlowQueryRetentionBudgetRetentionBudgetSeconds
+    dashboardDataFlowQueryRetentionBudgetFailureCount = $dashboardDataFlowQueryRetentionBudgetFailureCount
+    dashboardDataFlowQueryRetentionBudgetCheckCount = $dashboardDataFlowQueryRetentionBudgetCheckCount
+    dashboardDataFlowQueryRetentionBudgetItemPresent = [bool] $dashboardDataFlowQueryRetentionBudgetItemPresent
     dashboardDataFlowStorageTransitionRunbookChecked = [bool]($dataFlowStorageTransitionRunbookDashboardExpected -and $null -ne $dashboardData)
     dashboardDataFlowStorageTransitionRunbookResult = $dashboardDataFlowStorageTransitionRunbookResult
     dashboardDataFlowStorageTransitionRunbookStoragePlanResult = $dashboardDataFlowStorageTransitionRunbookStoragePlanResult
@@ -727,7 +890,7 @@ $report = [ordered]@{
     checkCount = @($checks).Count
     failedCount = $failureCount
     checks = $checks
-    safetyPolicy = "This verifier writes to Kubernetes only when -RunSyncApply is supplied. It does not store admin passwords or bearer tokens in evidence output."
+    safetyPolicy = "This verifier writes to Kubernetes only when -RunSyncApply is supplied. It does not store admin passwords or bearer tokens in evidence output. Optional data-flow storage plan, query/retention budget, and transition runbook dashboard checks compare reduced JSON summaries only."
 }
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedEvidencePath) | Out-Null

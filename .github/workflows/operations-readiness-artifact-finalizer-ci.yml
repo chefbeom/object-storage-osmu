@@ -11,6 +11,10 @@ on:
         description: Optional base64-encoded latest-data-flow-storage-plan.json evidence to import directly. MariaDB/dual-write plans must include sanitized query-plan evidence summary.
         required: false
         default: ""
+      data_flow_query_retention_budget_json_base64:
+        description: Optional base64-encoded latest-data-flow-query-retention-budget-evidence.json evidence to import directly. Must be sanitized and result=passed.
+        required: false
+        default: ""
       data_flow_storage_transition_runbook_json_base64:
         description: Optional base64-encoded latest-data-flow-storage-transition-runbook-evidence.json evidence to import directly. Must be sanitized and result=passed.
         required: false
@@ -78,16 +82,28 @@ jobs:
             "monitoring_threshold_artifact_name",
             "secret_rotation_run_id",
             "secret_rotation_artifact_name",
+            "cluster_network_access_review_run_id",
+            "cluster_network_access_review_artifact_name",
+            "helm_values_hardening_run_id",
+            "helm_values_hardening_artifact_name",
+            "support_escalation_handoff_run_id",
+            "support_escalation_handoff_artifact_name",
             "commercial_integration_run_id",
             "commercial_integration_artifact_name",
             "commercial_approval_run_id",
             "commercial_approval_artifact_name",
+            "chargeback_closeout_run_id",
+            "chargeback_closeout_artifact_name",
             "enterprise_auth_run_id",
             "enterprise_auth_artifact_name",
+            "enterprise_auth_jit_rollback_run_id",
+            "enterprise_auth_jit_rollback_artifact_name",
             "operations_handoff_package_run_id",
             "operations_handoff_package_artifact_name",
             "data_flow_storage_plan_run_id",
             "data_flow_storage_plan_artifact_name",
+            "data_flow_query_retention_budget_run_id",
+            "data_flow_query_retention_budget_artifact_name",
             "data_flow_storage_transition_runbook_run_id",
             "data_flow_storage_transition_runbook_artifact_name",
             "kubernetes_operations_report_sync_run_id",
@@ -108,6 +124,19 @@ jobs:
           [IO.File]::WriteAllBytes(
             (Join-Path $artifactPath "latest-data-flow-storage-plan.json"),
             [Convert]::FromBase64String($env:OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64)
+          )
+
+      - name: Restore direct data-flow query/retention budget evidence
+        if: ${{ inputs.data_flow_query_retention_budget_json_base64 != '' }}
+        shell: pwsh
+        env:
+          OSMU_DATA_FLOW_QUERY_RETENTION_BUDGET_JSON_BASE64: ${{ inputs.data_flow_query_retention_budget_json_base64 }}
+        run: |
+          $artifactPath = ".osmu-run/operations-readiness-artifacts/data-flow-query-retention-budget"
+          New-Item -ItemType Directory -Force -Path $artifactPath | Out-Null
+          [IO.File]::WriteAllBytes(
+            (Join-Path $artifactPath "latest-data-flow-query-retention-budget-evidence.json"),
+            [Convert]::FromBase64String($env:OSMU_DATA_FLOW_QUERY_RETENTION_BUDGET_JSON_BASE64)
           )
 
       - name: Restore direct data-flow storage transition runbook evidence
@@ -204,6 +233,33 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/secret-rotation
 
+      - name: Download cluster network access review evidence
+        if: ${{ steps.artifact_inputs.outputs.cluster_network_access_review_run_id != '' && steps.artifact_inputs.outputs.cluster_network_access_review_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact_inputs.outputs.cluster_network_access_review_artifact_name }}
+          run-id: ${{ steps.artifact_inputs.outputs.cluster_network_access_review_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/cluster-network-access-review
+
+      - name: Download Helm values hardening evidence
+        if: ${{ steps.artifact_inputs.outputs.helm_values_hardening_run_id != '' && steps.artifact_inputs.outputs.helm_values_hardening_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact_inputs.outputs.helm_values_hardening_artifact_name }}
+          run-id: ${{ steps.artifact_inputs.outputs.helm_values_hardening_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/helm-values-hardening
+
+      - name: Download support escalation handoff evidence
+        if: ${{ steps.artifact_inputs.outputs.support_escalation_handoff_run_id != '' && steps.artifact_inputs.outputs.support_escalation_handoff_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact_inputs.outputs.support_escalation_handoff_artifact_name }}
+          run-id: ${{ steps.artifact_inputs.outputs.support_escalation_handoff_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/support-escalation-handoff
+
       - name: Download commercial integration evidence
         if: ${{ steps.artifact_inputs.outputs.commercial_integration_run_id != '' && steps.artifact_inputs.outputs.commercial_integration_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -221,6 +277,15 @@ jobs:
           run-id: ${{ steps.artifact_inputs.outputs.commercial_approval_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/commercial-approval
+      - name: Download chargeback closeout evidence
+        if: ${{ steps.artifact_inputs.outputs.chargeback_closeout_run_id != '' && steps.artifact_inputs.outputs.chargeback_closeout_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact_inputs.outputs.chargeback_closeout_artifact_name }}
+          run-id: ${{ steps.artifact_inputs.outputs.chargeback_closeout_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/chargeback-closeout
+
 
       - name: Download enterprise auth smoke evidence
         if: ${{ steps.artifact_inputs.outputs.enterprise_auth_run_id != '' && steps.artifact_inputs.outputs.enterprise_auth_artifact_name != '' }}
@@ -231,6 +296,14 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/enterprise-auth
 
+      - name: Download enterprise auth JIT rollback evidence
+        if: ${{ steps.artifact_inputs.outputs.enterprise_auth_jit_rollback_run_id != '' && steps.artifact_inputs.outputs.enterprise_auth_jit_rollback_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact_inputs.outputs.enterprise_auth_jit_rollback_artifact_name }}
+          run-id: ${{ steps.artifact_inputs.outputs.enterprise_auth_jit_rollback_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/enterprise-auth-jit-rollback
       - name: Download operations handoff package evidence
         if: ${{ steps.artifact_inputs.outputs.operations_handoff_package_run_id != '' && steps.artifact_inputs.outputs.operations_handoff_package_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -248,6 +321,15 @@ jobs:
           run-id: ${{ steps.artifact_inputs.outputs.data_flow_storage_plan_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/data-flow-storage-plan
+
+      - name: Download data-flow query/retention budget evidence
+        if: ${{ steps.artifact_inputs.outputs.data_flow_query_retention_budget_run_id != '' && steps.artifact_inputs.outputs.data_flow_query_retention_budget_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.artifact_inputs.outputs.data_flow_query_retention_budget_artifact_name }}
+          run-id: ${{ steps.artifact_inputs.outputs.data_flow_query_retention_budget_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/data-flow-query-retention-budget
 
       - name: Download data-flow storage transition runbook evidence
         if: ${{ steps.artifact_inputs.outputs.data_flow_storage_transition_runbook_run_id != '' && steps.artifact_inputs.outputs.data_flow_storage_transition_runbook_artifact_name != '' }}
@@ -285,12 +367,18 @@ jobs:
             @("MinioBucketCorsArtifactPath", ".osmu-run/operations-readiness-artifacts/minio-bucket-cors"),
             @("MonitoringThresholdArtifactPath", ".osmu-run/operations-readiness-artifacts/monitoring-threshold"),
             @("SecretRotationArtifactPath", ".osmu-run/operations-readiness-artifacts/secret-rotation"),
+            @("ClusterNetworkAccessReviewArtifactPath", ".osmu-run/operations-readiness-artifacts/cluster-network-access-review"),
+            @("HelmValuesHardeningArtifactPath", ".osmu-run/operations-readiness-artifacts/helm-values-hardening"),
+            @("SupportEscalationHandoffArtifactPath", ".osmu-run/operations-readiness-artifacts/support-escalation-handoff"),
             @("CommercialIntegrationArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-integration"),
             @("CommercialApprovalArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-approval"),
+            @("ChargebackCloseoutArtifactPath", ".osmu-run/operations-readiness-artifacts/chargeback-closeout"),
             @("EnterpriseAuthArtifactPath", ".osmu-run/operations-readiness-artifacts/enterprise-auth"),
+            @("EnterpriseAuthJitRollbackArtifactPath", ".osmu-run/operations-readiness-artifacts/enterprise-auth-jit-rollback"),
             @("OperationsHandoffPackageArtifactPath", ".osmu-run/operations-readiness-artifacts/operations-handoff-package"),
             @("KubernetesOperationsReportSyncArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync"),
             @("DataFlowStoragePlanArtifactPath", ".osmu-run/operations-readiness-artifacts/data-flow-storage-plan"),
+            @("DataFlowQueryRetentionBudgetArtifactPath", ".osmu-run/operations-readiness-artifacts/data-flow-query-retention-budget"),
             @("DataFlowStorageTransitionRunbookArtifactPath", ".osmu-run/operations-readiness-artifacts/data-flow-storage-transition-runbook")
           )
           foreach ($artifactRoot in $artifactRoots) {
@@ -343,18 +431,30 @@ jobs:
             .osmu-run/latest-monitoring-threshold-evidence.md
             .osmu-run/latest-secret-rotation-evidence.json
             .osmu-run/latest-secret-rotation-evidence.md
+            .osmu-run/latest-cluster-network-access-review-evidence.json
+            .osmu-run/latest-cluster-network-access-review-evidence.md
+            .osmu-run/latest-helm-values-hardening-evidence.json
+            .osmu-run/latest-helm-values-hardening-evidence.md
+            .osmu-run/latest-support-escalation-handoff-evidence.json
+            .osmu-run/latest-support-escalation-handoff-evidence.md
             .osmu-run/latest-commercial-integration-evidence.json
             .osmu-run/latest-commercial-integration-evidence.md
             .osmu-run/latest-commercial-approval-evidence.json
             .osmu-run/latest-commercial-approval-evidence.md
+            .osmu-run/latest-chargeback-closeout-evidence.json
+            .osmu-run/latest-chargeback-closeout-evidence.md
             .osmu-run/latest-enterprise-auth-smoke.json
             .osmu-run/latest-enterprise-auth-smoke.md
+            .osmu-run/latest-enterprise-auth-jit-rollback-evidence.json
+            .osmu-run/latest-enterprise-auth-jit-rollback-evidence.md
             .osmu-run/latest-operations-handoff-package.json
             .osmu-run/latest-operations-handoff-package.md
             .osmu-run/latest-kubernetes-operations-report-sync.json
             .osmu-run/latest-kubernetes-operations-report-sync-plan.json
             .osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json
             .osmu-run/latest-data-flow-storage-plan.json
+            .osmu-run/latest-data-flow-query-retention-budget-evidence.json
+            .osmu-run/latest-data-flow-query-retention-budget-evidence.md
             .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json
             .osmu-run/latest-data-flow-storage-transition-runbook-evidence.md
             .osmu-run/operations-readiness-artifacts/**

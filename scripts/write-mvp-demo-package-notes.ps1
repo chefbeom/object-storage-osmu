@@ -22,6 +22,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Read-OptionalJson([string] $PathValue, [string] $Label) {
     $resolved = Resolve-ProjectPath $PathValue
@@ -41,7 +45,7 @@ function Read-OptionalJson([string] $PathValue, [string] $Label) {
             path = $resolved
             exists = $true
             parsed = $true
-            json = (Get-Content -Raw -LiteralPath $resolved | ConvertFrom-Json)
+            json = (Read-Utf8Text $resolved | ConvertFrom-Json)
             detail = "parsed"
         }
     }
@@ -72,7 +76,7 @@ function Read-OptionalText([string] $PathValue, [string] $Label) {
         label = $Label
         path = $resolved
         exists = $true
-        text = (Get-Content -Raw -LiteralPath $resolved)
+        text = (Read-Utf8Text $resolved)
         detail = "read"
     }
 }
@@ -107,7 +111,11 @@ $demoReady = $demo.parsed -and (Get-JsonText $demo.json "result") -eq "ready" -a
 $durableGateReady = $durableGate.parsed -and (Get-JsonText $durableGate.json "result") -eq "ready" -and (Get-JsonText $durableGate.json "currentDemoStatus") -eq "docker-durable-demo-verified"
 $releasePassed = $release.parsed -and (Get-JsonText $release.json "result") -eq "passed"
 $decisionGo = $decision.exists -and $decision.text.Contains("- Durable MVP pilot: GO")
-$localReady = $demoReady -or ($durableGateReady -and $releasePassed -and $decisionGo)
+$completionResult = Get-JsonText $completion.json "result" "missing"
+$completionClass = Get-JsonText $completion.json "classification" "missing"
+$completionReady = $completion.parsed -and $completionResult -eq "ready" -and $completionClass -eq "local-durable-mvp-ready"
+$localReadyFromEvidence = $demoReady -or ($durableGateReady -and $releasePassed -and $decisionGo)
+$localReady = if ($completion.parsed) { $completionReady } else { $localReadyFromEvidence }
 $packageStatus = if ($localReady) { "local-durable-mvp-ready" } else { "local-durable-mvp-pending" }
 
 $releaseApiBase = Get-JsonText $release.json "apiBase" "http://localhost:8080/api"
@@ -115,8 +123,6 @@ $releaseFrontendBase = Get-JsonText $release.json "frontendBase" "http://localho
 $selectedS3Client = Get-JsonText $release.json "selectedS3Client" (Get-JsonText $durableGate.json "selectedS3Client" "docker-mc")
 $operationsResult = Get-JsonText $operations.json "result" "missing"
 $operationsSummary = Get-JsonText $operations.json "summary" $operations.detail
-$completionResult = Get-JsonText $completion.json "result" "missing"
-$completionClass = Get-JsonText $completion.json "classification" "missing"
 
 $notesLines = @(
     "# OSMU $Version Demo Package Notes",

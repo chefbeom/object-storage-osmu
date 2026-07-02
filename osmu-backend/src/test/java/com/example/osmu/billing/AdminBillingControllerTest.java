@@ -200,6 +200,22 @@ class AdminBillingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.proposals[*].id", hasItem(pricingPolicyProposalId)));
 
+        mockMvc.perform(get("/api/admin/billing/pricing-policy-proposals/commercial-approval-summary")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY"))
+                .andExpect(jsonPath("$.data.proposalCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.approvedPriceListCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.commercialApprovedCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.proposals[*].id", hasItem(pricingPolicyProposalId)))
+                .andExpect(jsonPath("$.data.proposals[?(@.id == " + pricingPolicyProposalId + ")].status", hasItem("PRICE_LIST_APPROVED")))
+                .andExpect(jsonPath("$.data.proposals[?(@.id == " + pricingPolicyProposalId + ")].approvedPriceList", hasItem(true)))
+                .andExpect(jsonPath("$.data.proposals[?(@.id == " + pricingPolicyProposalId + ")].commercialApprovalReference", hasItem("LEGAL-2026-0001")))
+                .andExpect(content().string(not(containsString("storageGbMonthRate"))))
+                .andExpect(content().string(not(containsString("criticalAmount"))))
+                .andExpect(content().string(not(containsString("commercial terms approved"))));
+
         mockMvc.perform(get("/api/admin/billing/chargeback-preview")
                         .header("Authorization", "Bearer " + adminToken)
                         .param("from", billingFrom)
@@ -261,6 +277,7 @@ class AdminBillingControllerTest {
                 queuedNotificationResponse,
                 "$.data.deliveries[?(@.organizationName == 'Billing Policy Org 1')].id"
         );
+        List<Integer> allDeliveryIds = JsonPath.read(queuedNotificationResponse, "$.data.deliveries[*].id");
         Integer deliveryId = deliveryIds.get(0);
 
         mockMvc.perform(post("/api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result", deliveryId)
@@ -278,6 +295,15 @@ class AdminBillingControllerTest {
                         .param("limit", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.deliveries[*].organizationName", hasItem("Billing Policy Org 1")));
+
+        for (Integer queuedDeliveryId : allDeliveryIds) {
+            mockMvc.perform(post("/api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result", queuedDeliveryId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .param("result", "SUCCESS"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.mode").value("ADAPTER_RESULT"))
+                    .andExpect(jsonPath("$.data.status").value("DELIVERY_ADAPTER_SUCCEEDED"));
+        }
 
         String invoiceDraftResponse = mockMvc.perform(post("/api/admin/billing/chargeback-invoice-drafts")
                         .header("Authorization", "Bearer " + adminToken)
@@ -407,7 +433,7 @@ class AdminBillingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mode").value("PAYMENT_PROVIDER_ADAPTER_READINESS"))
                 .andExpect(jsonPath("$.data.status").value("ACTION_REQUIRED"))
-                .andExpect(jsonPath("$.data.nativeApiSupported").value(false))
+                .andExpect(jsonPath("$.data.nativeApiSupported").value(true))
                 .andExpect(jsonPath("$.data.nativeApiReady").value(false))
                 .andExpect(jsonPath("$.data.profileCount").value(5))
                 .andExpect(jsonPath("$.data.webhookReadyProfileCount").value(0))
@@ -416,8 +442,11 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.profiles[1].providerProfile").value("CARD"))
                 .andExpect(jsonPath("$.data.profiles[1].sampleProvider").value("CARD_PROVIDER"))
                 .andExpect(jsonPath("$.data.profiles[1].webhookProfileConfigured").value(false))
-                .andExpect(jsonPath("$.data.profiles[1].nativeApiSupported").value(false))
-                .andExpect(jsonPath("$.data.profiles[1].requiredConfiguration", containsString("card.webhook-url")))
+                .andExpect(jsonPath("$.data.profiles[1].nativeApiSupported").value(true))
+                .andExpect(jsonPath("$.data.profiles[1].status").value("NATIVE_API_CONFIGURATION_REQUIRED"))
+                .andExpect(jsonPath("$.data.profiles[1].requiredConfiguration", containsString("card.native-api-url")))
+                .andExpect(jsonPath("$.data.secretPolicy", containsString("native endpoint URLs")))
+                .andExpect(jsonPath("$.data.secretPolicy", containsString("auth header values")))
                 .andExpect(jsonPath("$.data.secretPolicy", containsString("never returned")));
 
         mockMvc.perform(get("/api/admin/billing/chargeback-payment-provider-handoffs")
@@ -439,6 +468,13 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.handoff.attemptCount").value(2))
                 .andExpect(jsonPath("$.data.handoff.nextAttemptAt").exists());
 
+        mockMvc.perform(post("/api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-result", handoffId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("result", "SUCCESS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("ADAPTER_RESULT"))
+                .andExpect(jsonPath("$.data.status").value("PAYMENT_PROVIDER_ADAPTER_SUCCEEDED"));
+
         mockMvc.perform(post("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-record", finalInvoiceId)
                         .header("Authorization", "Bearer " + adminToken)
                         .param("paymentReference", "PAY-2026-0001")
@@ -449,6 +485,43 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.paymentStatus").value("PAID"))
                 .andExpect(jsonPath("$.data.invoice.paymentRecordedBy").value("admin"))
                 .andExpect(jsonPath("$.data.invoice.paymentReference").value("PAY-2026-0001"));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-closeout-summary")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("billingPeriod", "test-period")
+                        .param("from", billingFrom)
+                        .param("to", billingTo)
+                        .param("limit", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("CHARGEBACK_CLOSEOUT_SUMMARY"))
+                .andExpect(jsonPath("$.data.billingPeriod").value("test-period"))
+                .andExpect(jsonPath("$.data.closeoutStatus").value("RECONCILED"))
+                .andExpect(jsonPath("$.data.result").value("RECONCILED"))
+                .andExpect(jsonPath("$.data.invoiceDraftCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.finalInvoiceCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.paymentRequestedCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.paymentHandoffCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.paidInvoiceCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.reconciliationDifferenceMinorUnits").value(0))
+                .andExpect(jsonPath("$.data.failureCount").value(0))
+                .andExpect(jsonPath("$.data.closeoutReady").value(true))
+                .andExpect(jsonPath("$.data.invoiceFinalizationComplete").value(true))
+                .andExpect(jsonPath("$.data.paymentRequestsComplete").value(true))
+                .andExpect(jsonPath("$.data.paymentsSettled").value(true))
+                .andExpect(jsonPath("$.data.paymentHandoffsClosed").value(true))
+                .andExpect(jsonPath("$.data.notificationDeliveriesClosed").value(true))
+                .andExpect(jsonPath("$.data.reconciliationBalanced").value(true))
+                .andExpect(jsonPath("$.data.blockerCount").value(0))
+                .andExpect(jsonPath("$.data.unpaidInvoiceBlockerCount").value(0))
+                .andExpect(jsonPath("$.data.openHandoffBlockerCount").value(0))
+                .andExpect(jsonPath("$.data.openNotificationBlockerCount").value(0))
+                .andExpect(jsonPath("$.data.reconciliationBlockerCount").value(0))
+                .andExpect(jsonPath("$.data.rawCustomerPaymentDataStored").value(false))
+                .andExpect(jsonPath("$.data.rawProviderResponseStored").value(false))
+                .andExpect(jsonPath("$.data.rawSecretValuesStored").value(false))
+                .andExpect(content().string(not(containsString("PAY-2026-0001"))))
+                .andExpect(content().string(not(containsString("finance-ap"))))
+                .andExpect(content().string(not(containsString("payloadJson"))));
     }
 
     @Test

@@ -1,5 +1,8 @@
 param(
     [string] $ProductVersion = "",
+    [string] $EnvironmentName = "",
+    [string] $TargetCluster = "",
+    [string] $OperatorName = "",
     [string] $ApprovalRef = "",
     [string] $ApprovedBy = "",
     [string] $ApprovedAt = "",
@@ -35,6 +38,10 @@ function Resolve-ProjectPath([string] $path) {
         return [System.IO.Path]::GetFullPath($path)
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
+}
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
 }
 
 function Assert-SafeText([string] $Value, [string] $Label) {
@@ -215,7 +222,7 @@ function Read-PricingPolicyProposalSnapshot([string] $Path) {
         return $snapshot
     }
 
-    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    $raw = Read-Utf8Text $resolvedPath
     Assert-SafeText $raw "PricingPolicyProposalJson"
     Assert-SanitizedPricingPolicyProposalJson $raw
     try {
@@ -279,6 +286,9 @@ function Read-PricingPolicyProposalSnapshot([string] $Path) {
 
 foreach ($entry in @(
     @("ProductVersion", $ProductVersion),
+    @("EnvironmentName", $EnvironmentName),
+    @("TargetCluster", $TargetCluster),
+    @("OperatorName", $OperatorName),
     @("ApprovalRef", $ApprovalRef),
     @("ApprovedBy", $ApprovedBy),
     @("PricingApprovalRef", $PricingApprovalRef),
@@ -298,9 +308,12 @@ $pricingPolicyProposalSnapshotValid = $pricingPolicyProposalSnapshot.provided -a
 $pricingPolicyProposalCommercialApproved = $pricingPolicyProposalSnapshotValid -and $pricingPolicyProposalSnapshot.commercialApprovedCount -gt 0
 $pricingPolicyProposalEvidenceRecorded = -not [string]::IsNullOrWhiteSpace($PricingPolicyProposalEvidenceRef)
 $pricingPolicyProposalCommercialApprovalReviewed = [bool] $ConfirmPricingPolicyProposalCommercialApproval -and $pricingPolicyProposalEvidenceRecorded -and $pricingPolicyProposalCommercialApproved
-$hasAnyInput = -not [string]::IsNullOrWhiteSpace($ProductVersion + $ApprovalRef + $ApprovedBy + $ApprovedAt + $PricingApprovalRef + $TermsApprovalRef + $SupportSlaApprovalRef + $LicenseAgreementRef + $LegalApprovalRef + $PilotContractRef + $PricingPolicyProposalEvidenceRef + $PricingPolicyProposalJsonPath + $NotesRef) -or $ConfirmPricingApproved -or $ConfirmTermsApproved -or $ConfirmSupportSlaApproved -or $ConfirmLicenseApproved -or $ConfirmLegalApproved -or $ConfirmPricingPolicyProposalCommercialApproval -or $ConfirmNoSecretValues
+$hasAnyInput = -not [string]::IsNullOrWhiteSpace($ProductVersion + $EnvironmentName + $TargetCluster + $OperatorName + $ApprovalRef + $ApprovedBy + $ApprovedAt + $PricingApprovalRef + $TermsApprovalRef + $SupportSlaApprovalRef + $LicenseAgreementRef + $LegalApprovalRef + $PilotContractRef + $PricingPolicyProposalEvidenceRef + $PricingPolicyProposalJsonPath + $NotesRef) -or $ConfirmPricingApproved -or $ConfirmTermsApproved -or $ConfirmSupportSlaApproved -or $ConfirmLicenseApproved -or $ConfirmLegalApproved -or $ConfirmPricingPolicyProposalCommercialApproval -or $ConfirmNoSecretValues
 
 Add-Check "product-version" "Product version recorded" (-not [string]::IsNullOrWhiteSpace($ProductVersion)) "productVersion=$ProductVersion"
+Add-Check "environment-name" "Environment name recorded" (-not [string]::IsNullOrWhiteSpace($EnvironmentName)) "environmentName=$EnvironmentName"
+Add-Check "target-cluster" "Target cluster recorded" (-not [string]::IsNullOrWhiteSpace($TargetCluster)) "targetCluster=$TargetCluster"
+Add-Check "operator" "Operator recorded" (-not [string]::IsNullOrWhiteSpace($OperatorName)) "operatorName=$OperatorName"
 Add-Check "approval-ref" "Commercial approval reference recorded" (-not [string]::IsNullOrWhiteSpace($ApprovalRef)) "approvalRef=$ApprovalRef" $ApprovalRef
 Add-Check "approved-by" "Approver recorded" (-not [string]::IsNullOrWhiteSpace($ApprovedBy)) "approvedBy=$ApprovedBy"
 Add-Check "approved-at" "Approval timestamp recorded" (Test-DateText $ApprovedAt) "approvedAt=$ApprovedAt"
@@ -360,6 +373,9 @@ $report = [ordered]@{
     formatVersion = "osmu.commercial-approval-evidence.v1"
     generatedAt = $generatedAt
     result = $result
+    environmentName = $EnvironmentName
+    targetCluster = $TargetCluster
+    operatorName = $OperatorName
     productVersion = $ProductVersion
     approvedBy = $ApprovedBy
     approvedAt = $ApprovedAt
@@ -411,6 +427,9 @@ $markdownLines = @(
     "Generated at: $generatedAt",
     "Result: $result",
     "Product version: $ProductVersion",
+    "Environment: $EnvironmentName",
+    "Target cluster: $TargetCluster",
+    "Operator: $OperatorName",
     "Approved by: $ApprovedBy",
     "Approved at: $ApprovedAt",
     "",
@@ -455,7 +474,7 @@ foreach ($check in $checks) {
 $markdownLines += ""
 $markdownLines += "## Operator Command"
 $markdownLines += ""
-$markdownLines += "- Record passed approval evidence: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-commercial-approval-evidence.ps1 -ProductVersion <version> -ApprovalRef <approval-ref> -ApprovedBy <approver> -ApprovedAt <iso-time> -PricingApprovalRef <ref> -TermsApprovalRef <ref> -SupportSlaApprovalRef <ref> -LicenseAgreementRef <ref> -LegalApprovalRef <ref> -PilotContractRef <ref> -PricingPolicyProposalEvidenceRef <ref> -PricingPolicyProposalJsonPath .\.osmu-run\billing-pricing-policy-proposals.json -ConfirmPricingApproved -ConfirmTermsApproved -ConfirmSupportSlaApproved -ConfirmLicenseApproved -ConfirmLegalApproved -ConfirmPricingPolicyProposalCommercialApproval -RequirePricingPolicyProposalApprovalSnapshot -ConfirmNoSecretValues -FailIfNotPassed``"
+$markdownLines += "- Record passed approval evidence: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-commercial-approval-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -OperatorName <operator> -ProductVersion <version> -ApprovalRef <approval-ref> -ApprovedBy <approver> -ApprovedAt <iso-time> -PricingApprovalRef <ref> -TermsApprovalRef <ref> -SupportSlaApprovalRef <ref> -LicenseAgreementRef <ref> -LegalApprovalRef <ref> -PilotContractRef <ref> -PricingPolicyProposalEvidenceRef <ref> -PricingPolicyProposalJsonPath .\.osmu-run\billing-pricing-policy-proposals.json -ConfirmPricingApproved -ConfirmTermsApproved -ConfirmSupportSlaApproved -ConfirmLicenseApproved -ConfirmLegalApproved -ConfirmPricingPolicyProposalCommercialApproval -RequirePricingPolicyProposalApprovalSnapshot -ConfirmNoSecretValues -FailIfNotPassed``"
 
 if (-not $NoWrite) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedJsonOutputPath) | Out-Null

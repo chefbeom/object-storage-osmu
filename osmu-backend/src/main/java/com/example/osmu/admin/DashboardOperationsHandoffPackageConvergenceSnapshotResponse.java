@@ -1,6 +1,7 @@
 package com.example.osmu.admin;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.List;
 
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record DashboardOperationsHandoffPackageConvergenceSnapshotResponse(
@@ -30,6 +31,8 @@ public record DashboardOperationsHandoffPackageConvergenceSnapshotResponse(
         int finalizerGapCount,
         String currentBottleneckCode,
         String currentBottleneckTitle,
-        int recommendedCommandCount
+        int recommendedCommandCount,
+        int handoffPostDispatchCommandCount,
+        List<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> handoffPostDispatchCommands
 ) {
 }

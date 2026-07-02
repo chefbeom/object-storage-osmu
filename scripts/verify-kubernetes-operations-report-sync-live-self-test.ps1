@@ -12,6 +12,11 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Assert-Equal($Actual, $Expected, [string] $Message) {
     if ($Actual -ne $Expected) {
         throw "$Message. Expected '$Expected' but got '$Actual'."
@@ -49,6 +54,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 $scriptPath = Resolve-ProjectPath ".\scripts\verify-kubernetes-operations-report-sync-live.ps1"
 $syncEvidencePath = Join-Path $resolvedOutputDirectory "latest-kubernetes-operations-report-sync.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
+$dataFlowQueryRetentionBudgetPath = Join-Path $resolvedOutputDirectory "latest-data-flow-query-retention-budget-evidence.json"
 $dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-transition-runbook-evidence.json"
 $dashboardFixturePath = Join-Path $resolvedOutputDirectory "dashboard-readiness.json"
 $evidencePath = Join-Path $resolvedOutputDirectory "live-evidence.json"
@@ -137,6 +143,54 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
     scopePolicy = "OSMU operations analytics only. This plan is not AWS billing parity."
 })
 
+Write-JsonFixture $dataFlowQueryRetentionBudgetPath ([ordered]@{
+    formatVersion = "osmu.data-flow-query-retention-budget-evidence.v1"
+    generatedAt = "2026-06-16T00:07:00+09:00"
+    result = "passed"
+    environmentName = "sync-live-self-test"
+    targetCluster = "customer-cluster-a"
+    operator = "ops-admin"
+    evidenceRef = "data-flow-query-retention-budget-20260621"
+    dataFlowStoragePlanSnapshot = [ordered]@{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+        targetP95QueryLatencyMs = 500
+        expectedQueryWindowDays = 180
+    }
+    queryLatencyBudget = [ordered]@{
+        evidenceRef = "query-latency-run-20260621"
+        targetP95QueryLatencyMs = 500
+        observedP95QueryLatencyMs = 320
+        observedP99QueryLatencyMs = 440
+        querySampleCount = 120
+        observedQueryWindowDays = 180
+        withinBudget = $true
+    }
+    retentionBudget = [ordered]@{
+        evidenceRef = "retention-budget-run-20260621"
+        budgetSeconds = 30
+        detailedRetentionObservedSeconds = 12
+        dailyRollupRetentionObservedSeconds = 7
+        monthlyRollupRetentionObservedSeconds = 5
+        detailedRetentionDeletedRows = 1500
+        dailyRollupRetentionDeletedRows = 700
+        monthlyRollupRetentionDeletedRows = 90
+        withinBudget = $true
+    }
+    confirmations = [ordered]@{
+        queryLatencyReviewed = $true
+        retentionJobsWithinBudget = $true
+        noObjectKeysInEvidence = $true
+        noRawSqlOrExplain = $true
+        noSecretValues = $true
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 14
+    }
+    checks = @()
+    scopePolicy = "OSMU operations analytics query/retention budget only."
+})
 Write-JsonFixture $dataFlowStorageTransitionRunbookPath ([ordered]@{
     formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
     generatedAt = "2026-06-16T00:06:00+09:00"
@@ -254,6 +308,40 @@ Write-JsonFixture $dashboardFixturePath ([ordered]@{
             }
             scopePolicy = "OSMU operations analytics only. This plan is not AWS billing parity."
         }
+        dataFlowQueryRetentionBudget = [ordered]@{
+            result = "passed"
+            environmentName = "sync-live-self-test"
+            targetCluster = "customer-cluster-a"
+            operatorName = "ops-admin"
+            evidenceRef = "data-flow-query-retention-budget-20260621"
+            storagePlanResult = "passed"
+            candidateStore = "MARIADB_PARTITION"
+            targetP95QueryLatencyMs = 500
+            observedP95QueryLatencyMs = 320
+            observedP99QueryLatencyMs = 440
+            querySampleCount = 120
+            observedQueryWindowDays = 180
+            retentionBudgetSeconds = 30
+            detailedRetentionObservedSeconds = 12
+            dailyRollupRetentionObservedSeconds = 7
+            monthlyRollupRetentionObservedSeconds = 5
+            detailedRetentionDeletedRows = 1500
+            dailyRollupRetentionDeletedRows = 700
+            monthlyRollupRetentionDeletedRows = 90
+            queryLatencyWithinBudget = $true
+            retentionJobsWithinBudget = $true
+            failureCount = 0
+            checkCount = 14
+            confirmations = [ordered]@{
+                queryLatencyReviewed = $true
+                retentionJobsWithinBudget = $true
+                noObjectKeysInEvidence = $true
+                noRawSqlOrExplain = $true
+                noSecretValues = $true
+            }
+            topFailedChecks = @()
+            scopePolicy = "OSMU operations analytics query/retention budget only."
+        }
         dataFlowStorageTransitionRunbook = [ordered]@{
             result = "passed"
             environmentName = "sync-live-self-test"
@@ -285,6 +373,7 @@ Write-JsonFixture $dashboardFixturePath ([ordered]@{
     -SkipSync `
     -SyncEvidencePath $syncEvidencePath `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowQueryRetentionBudgetPath $dataFlowQueryRetentionBudgetPath `
     -DataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -DashboardReadinessFixturePath $dashboardFixturePath `
     -DashboardRetryCount 3 `
@@ -294,7 +383,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "verify-kubernetes-operations-report-sync-live.ps1 fixture pass check failed with exit code $LASTEXITCODE."
 }
 
-$evidence = Get-Content -Raw -LiteralPath $evidencePath | ConvertFrom-Json
+$evidence = Read-Utf8Text $evidencePath | ConvertFrom-Json
 Assert-Equal $evidence.formatVersion "osmu.kubernetes-operations-report-sync-live.v1" "live evidence formatVersion"
 Assert-Equal $evidence.result "passed" "live evidence result"
 Assert-Equal $evidence.syncResult "applied" "live evidence sync result"
@@ -321,6 +410,25 @@ Assert-Equal $evidence.dashboardDataFlowQueryPlanEvidenceProvided $false "live e
 Assert-Equal $evidence.dashboardDataFlowQueryPlanEvidenceResult "" "live evidence dashboard query plan result"
 Assert-Equal $evidence.dashboardDataFlowQueryPlanEvidenceFailedCount 0 "live evidence dashboard query plan failed count"
 Assert-Equal $evidence.dashboardDataFlowStoragePlanItemPresent $true "live evidence dashboard data-flow storage plan item"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetExpected $true "live evidence data-flow query/retention budget expected"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetExpectedResult "passed" "live evidence expected data-flow query/retention budget result"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetExpectedStoragePlanResult "passed" "live evidence expected data-flow query/retention budget storage plan result"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetExpectedCandidateStore "MARIADB_PARTITION" "live evidence expected data-flow query/retention budget candidate store"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetExpectedTargetP95QueryLatencyMs 500 "live evidence expected data-flow query/retention budget target p95"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetExpectedObservedP95QueryLatencyMs 320 "live evidence expected data-flow query/retention budget observed p95"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetExpectedRetentionBudgetSeconds 30 "live evidence expected data-flow query/retention budget retention seconds"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetExpectedFailureCount 0 "live evidence expected data-flow query/retention budget failure count"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetExpectedCheckCount 14 "live evidence expected data-flow query/retention budget check count"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetChecked $true "live evidence dashboard data-flow query/retention budget checked"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetResult "passed" "live evidence dashboard data-flow query/retention budget result"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetStoragePlanResult "passed" "live evidence dashboard data-flow query/retention budget storage plan result"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetCandidateStore "MARIADB_PARTITION" "live evidence dashboard data-flow query/retention budget candidate store"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetTargetP95QueryLatencyMs 500 "live evidence dashboard data-flow query/retention budget target p95"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetObservedP95QueryLatencyMs 320 "live evidence dashboard data-flow query/retention budget observed p95"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetRetentionBudgetSeconds 30 "live evidence dashboard data-flow query/retention budget retention seconds"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetFailureCount 0 "live evidence dashboard data-flow query/retention budget failure count"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetCheckCount 14 "live evidence dashboard data-flow query/retention budget check count"
+Assert-Equal $evidence.dashboardDataFlowQueryRetentionBudgetItemPresent $false "live evidence dashboard data-flow query/retention budget item"
 Assert-Equal $evidence.dataFlowStorageTransitionRunbookExpected $true "live evidence data-flow storage transition runbook expected"
 Assert-Equal $evidence.dataFlowStorageTransitionRunbookExpectedResult "passed" "live evidence expected data-flow storage transition runbook result"
 Assert-Equal $evidence.dataFlowStorageTransitionRunbookExpectedStoragePlanResult "passed" "live evidence expected data-flow storage transition runbook storage plan result"
@@ -340,6 +448,7 @@ Assert-True ($evidence.safetyPolicy.Contains("does not store admin passwords")) 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -PlanOnly `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowQueryRetentionBudgetPath $dataFlowQueryRetentionBudgetPath `
     -DataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -DashboardReadinessFixturePath $dashboardFixturePath `
     -DashboardRetryCount 2 `
@@ -348,13 +457,16 @@ Assert-True ($evidence.safetyPolicy.Contains("does not store admin passwords")) 
 if ($LASTEXITCODE -ne 0) {
     throw "verify-kubernetes-operations-report-sync-live.ps1 plan check failed with exit code $LASTEXITCODE."
 }
-$planEvidence = Get-Content -Raw -LiteralPath $planEvidencePath | ConvertFrom-Json
+$planEvidence = Read-Utf8Text $planEvidencePath | ConvertFrom-Json
 Assert-Equal $planEvidence.result "planned" "plan evidence result"
 Assert-Equal $planEvidence.failedCount 0 "plan evidence failed count"
 Assert-Equal $planEvidence.dashboardRetryCount 2 "plan evidence dashboard retry count"
 Assert-Equal $planEvidence.dataFlowStoragePlanExpected $true "plan evidence data-flow storage plan expected"
 Assert-Equal $planEvidence.dataFlowStoragePlanExpectedResult "plan-ready-execute-required" "plan evidence expected data-flow storage plan result"
 Assert-Equal $planEvidence.dataFlowQueryPlanEvidenceExpected $true "plan evidence query plan expected"
+Assert-Equal $planEvidence.dataFlowQueryRetentionBudgetExpected $true "plan evidence data-flow query/retention budget expected"
+Assert-Equal $planEvidence.dataFlowQueryRetentionBudgetExpectedResult "passed" "plan evidence expected data-flow query/retention budget result"
+Assert-Equal $planEvidence.dashboardDataFlowQueryRetentionBudgetChecked $false "plan evidence dashboard data-flow query/retention budget checked"
 Assert-Equal $planEvidence.dashboardDataFlowStoragePlanChecked $false "plan evidence dashboard data-flow storage plan checked"
 Assert-Equal $planEvidence.dataFlowStorageTransitionRunbookExpected $true "plan evidence data-flow storage transition runbook expected"
 Assert-Equal $planEvidence.dataFlowStorageTransitionRunbookExpectedResult "passed" "plan evidence expected data-flow storage transition runbook result"
@@ -381,6 +493,7 @@ $failedOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $scri
     -SkipSync `
     -SyncEvidencePath $syncEvidencePath `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowQueryRetentionBudgetPath $dataFlowQueryRetentionBudgetPath `
     -DataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -DashboardReadinessFixturePath $failedDashboardFixturePath `
     -DashboardRetryCount 2 `
@@ -392,10 +505,11 @@ if ($failedExitCode -eq 0) {
     throw "verify-kubernetes-operations-report-sync-live.ps1 must fail when dashboard sync evidence is not applied."
 }
 Assert-Contains $failedOutput "Result: failed" "failed dashboard output"
-$failedEvidence = Get-Content -Raw -LiteralPath $failedEvidencePath | ConvertFrom-Json
+$failedEvidence = Read-Utf8Text $failedEvidencePath | ConvertFrom-Json
 Assert-Equal $failedEvidence.result "failed" "failed evidence result"
 Assert-True ($failedEvidence.failedCount -gt 0) "failed evidence failed count"
 Assert-Equal $failedEvidence.dashboardMatchedExpected $false "failed evidence dashboard matched expected"
 
 Write-Host "Kubernetes operations report sync live verifier self-test passed."
 Write-Host "Live evidence: $evidencePath"
+exit 0

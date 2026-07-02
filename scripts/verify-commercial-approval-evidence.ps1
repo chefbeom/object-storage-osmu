@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -101,6 +105,9 @@ $proposalFixture | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $pricingP
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -ProductVersion "v0.1.0-rc.1" `
+    -EnvironmentName "pilot-prod-self-test" `
+    -TargetCluster "customer-cluster-a" `
+    -OperatorName "commercial-self-test" `
     -ApprovalRef "commercial-approval-board-20260620" `
     -ApprovedBy "commercial-review-board" `
     -ApprovedAt "2026-06-20T03:00:00Z" `
@@ -131,13 +138,16 @@ if ($LASTEXITCODE -ne 0) {
 Assert-True (Test-Path -LiteralPath $jsonOutputPath) "Commercial approval evidence JSON missing."
 Assert-True (Test-Path -LiteralPath $markdownOutputPath) "Commercial approval evidence markdown missing."
 
-$reportText = Get-Content -Raw -LiteralPath $jsonOutputPath
-$markdown = Get-Content -Raw -LiteralPath $markdownOutputPath
+$reportText = Read-Utf8Text $jsonOutputPath
+$markdown = Read-Utf8Text $markdownOutputPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 
 Assert-True ($report.formatVersion -eq "osmu.commercial-approval-evidence.v1") "Unexpected commercial approval evidence formatVersion."
 Assert-True ($report.result -eq "passed") "Expected result=passed."
+Assert-True ($report.environmentName -eq "pilot-prod-self-test") "Expected target environment metadata."
+Assert-True ($report.targetCluster -eq "customer-cluster-a") "Expected target cluster metadata."
+Assert-True ($report.operatorName -eq "commercial-self-test") "Expected operator metadata."
 Assert-True ($report.summary.failureCount -eq 0) "Expected zero failed checks."
 Assert-True ($checks.Count -ge 13) "Expected commercial approval checks."
 Assert-True ($report.summary.pricingPolicyProposalCommercialApproved) "Expected pricing policy proposal commercial approval summary."
@@ -360,3 +370,4 @@ Assert-Contains ($stringBoolSnapshotOutput | Out-String) "Billing pricing policy
 Write-Host "Commercial approval evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"
 Write-Host "Markdown: $markdownOutputPath"
+exit 0

@@ -3,6 +3,18 @@ name: Manual Commercial Approval Evidence
 on:
   workflow_dispatch:
     inputs:
+      environment_name:
+        description: Target environment name
+        required: true
+        default: ""
+      target_cluster:
+        description: Target cluster name
+        required: true
+        default: ""
+      operator:
+        description: Operator recording evidence
+        required: true
+        default: ""
       product_version:
         description: Product version under commercial approval
         required: true
@@ -117,6 +129,9 @@ jobs:
         shell: pwsh
         env:
           OSMU_PRODUCT_VERSION: ${{ inputs.product_version }}
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
           OSMU_APPROVAL_REF: ${{ inputs.approval_ref }}
           OSMU_APPROVED_BY: ${{ inputs.approved_by }}
           OSMU_APPROVED_AT: ${{ inputs.approved_at }}
@@ -149,6 +164,9 @@ jobs:
 
             $evidenceArgs = @(
               "-ProductVersion", $env:OSMU_PRODUCT_VERSION,
+              "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+              "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+              "-OperatorName", $env:OSMU_OPERATOR,
               "-ApprovalRef", $env:OSMU_APPROVAL_REF,
               "-ApprovedBy", $env:OSMU_APPROVED_BY,
               "-ApprovedAt", $env:OSMU_APPROVED_AT,

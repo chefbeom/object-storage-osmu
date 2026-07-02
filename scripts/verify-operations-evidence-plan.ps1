@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -44,7 +48,16 @@ $fixture = [ordered]@{
     result = "pending"
     passedCount = 1
     pendingCount = 5
+    totalCount = 6
+    checkCount = 6
     summary = "passed=1 pending=5"
+    pendingRemediationCount = 4
+    pendingRemediations = @(
+        [ordered]@{ name = "Storage expansion finalizer live evidence"; category = "storage-expansion" },
+        [ordered]@{ name = "Kubernetes DR finalizer live evidence"; category = "ha-dr" },
+        [ordered]@{ name = "Monitoring threshold target evidence"; category = "monitoring" },
+        [ordered]@{ name = "Enterprise auth target smoke evidence"; category = "enterprise-auth" }
+    )
     checks = @(
         [ordered]@{
             name = "Storage expansion finalizer live evidence"
@@ -133,7 +146,8 @@ $scriptPath = Resolve-ProjectPath ".\scripts\write-operations-evidence-plan.ps1"
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -ReadinessReportPath $fixturePath `
     -JsonOutputPath $jsonOutputPath `
-    -MarkdownOutputPath $markdownOutputPath | Out-Host
+    -MarkdownOutputPath $markdownOutputPath `
+    -GitHubRepository chefbeom/object-storage-osmu | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-plan.ps1 failed with exit code $LASTEXITCODE."
 }
@@ -141,24 +155,50 @@ if ($LASTEXITCODE -ne 0) {
 Assert-True (Test-Path -LiteralPath $jsonOutputPath) "Operations evidence plan JSON missing."
 Assert-True (Test-Path -LiteralPath $markdownOutputPath) "Operations evidence plan markdown missing."
 
-$reportText = Get-Content -Raw -LiteralPath $jsonOutputPath
-$markdown = Get-Content -Raw -LiteralPath $markdownOutputPath
+$reportText = Read-Utf8Text $jsonOutputPath
+$markdown = Read-Utf8Text $markdownOutputPath
 $report = $reportText | ConvertFrom-Json
 
 Assert-True ($report.formatVersion -eq "osmu.operations-evidence-plan.v1") "Unexpected operations evidence plan formatVersion."
 Assert-True ($report.result -eq "action-required") "Expected action-required result."
+Assert-True ($report.sourcePassedCount -eq 1) "Expected source passed count."
+Assert-True ($report.sourcePendingCount -eq 5) "Expected source pending count."
+Assert-True ($report.sourceTotalCount -eq 6) "Expected source total count."
+Assert-True ($report.sourceCheckCount -eq 6) "Expected source check count."
+Assert-True ($report.sourcePendingRemediationCount -eq 4) "Expected source pending remediation count."
+Assert-True ($report.sourcePendingRemediationEntryCount -eq 4) "Expected source pending remediation entry count."
+Assert-True ($report.sourcePendingRemediationActionCount -eq 4) "Expected source pending remediation action count."
+Assert-True ($report.sourcePendingRemediationMissingActionCount -eq 0) "Expected zero missing source remediation actions."
+Assert-True ($report.sourcePendingRemediationCoverageReady -eq $true) "Expected source pending remediation coverage to be ready."
 Assert-True ($report.pendingCount -eq 5) "Expected five pending checks."
 Assert-True ($report.actionCount -eq 4) "Expected four planned remediation actions."
 Assert-True ($report.unplannedCount -eq 1) "Expected one unplanned check."
+Assert-True ($report.pendingCategorySummary -eq "commercial=1, enterprise-auth=1, ha-dr=1, monitoring=1, storage-expansion=1") "Expected pending category summary."
+Assert-True (@($report.pendingCategoryCounts).Count -eq 5) "Expected five pending category count rows."
+Assert-True ($report.pendingCategoryCounts[0].category -eq "commercial") "Expected commercial as first pending category."
+Assert-True ($report.pendingCategoryCounts[0].count -eq 1) "Expected commercial pending category count."
+Assert-True ($report.actionSummary.totalActions -eq 4) "Expected action summary total action count."
+Assert-True ($report.actionSummary.kubernetesLiveActions -eq 2) "Expected action summary Kubernetes live count."
+Assert-True ($report.actionSummary.securityCiActions -eq 0) "Expected action summary security CI count."
+Assert-True ($report.actionSummary.operatorRemediationActions -eq 2) "Expected action summary operator remediation count."
+Assert-True ($report.actionSummary.requiresOperatorApprovalCount -eq 4) "Expected action summary operator approval count."
+Assert-True ($report.actionSummary.requiresKubeconfigSecretCount -eq 2) "Expected action summary kubeconfig count."
+Assert-True ($report.actionSummary.actionsWithPlaceholdersCount -eq 3) "Expected action summary placeholder count."
+Assert-True ($report.actionSummary.unplannedCheckCount -eq 1) "Expected action summary unplanned check count."
+Assert-True ($report.githubRepository -eq "chefbeom/object-storage-osmu") "Expected GitHub repository slug."
 
 $actions = @($report.actions)
 Assert-True ($actions[0].name -eq "Storage expansion finalizer live evidence") "Expected storage expansion as first action."
+Assert-True ($actions[0].currentDetail -eq "report not found") "Expected storage action current detail."
 Assert-True ($actions[0].workflowCommand -like "gh workflow run storage-expansion-finalizer-ci.yml*") "Expected storage workflow command."
+Assert-True ($actions[0].recommendedCommand -like "gh workflow run storage-expansion-finalizer-ci.yml*") "Expected storage recommended command."
+Assert-True ($actions[0].dispatchUrl -eq "https://github.com/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml") "Expected storage workflow dispatch URL."
 Assert-True ($actions[0].requiresKubeconfigSecret) "Storage expansion action should require kubeconfig."
 Assert-True ($actions[0].requiresOperatorApproval) "Storage expansion run_live action should require operator approval."
 Assert-True ($actions[1].name -eq "Kubernetes DR finalizer live evidence") "Expected Kubernetes DR as second action."
 Assert-True ($actions[1].requiresOperatorApproval) "Kubernetes DR action should require operator approval."
 Assert-True ($actions[1].hasPlaceholders) "Kubernetes DR action should keep placeholder markers."
+Assert-True ($actions[1].dispatchUrl -eq "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml") "Expected Kubernetes DR workflow dispatch URL."
 Assert-True (@($actions[1].operatorInputs) -contains "<YYYYMMDDTHHMMSSZ>") "Kubernetes DR action should list backup timestamp placeholder."
 Assert-True ($actions[2].name -eq "Monitoring threshold target evidence") "Expected monitoring threshold as third action."
 Assert-True ($actions[2].workflowCommand -like "gh workflow run manual-monitoring-threshold-evidence.yml*") "Expected monitoring threshold workflow command."
@@ -172,8 +212,17 @@ Assert-True (-not $actions[3].requiresKubeconfigSecret) "Enterprise auth workflo
 Assert-True (@($actions[3].operatorInputs) -contains "<api-base>") "Enterprise auth action should list API base placeholder."
 
 Assert-Contains $markdown "# OSMU Operations Evidence Plan" "Operations evidence plan markdown"
+Assert-Contains $markdown "## Action Summary" "Operations evidence plan markdown"
+Assert-Contains $markdown "Source counts: passed=1 pending=5 total=6 checks=6" "Operations evidence plan markdown"
+Assert-Contains $markdown "Source remediations: entries=4 actions=4 missingActions=0 coverageReady=True" "Operations evidence plan markdown"
+Assert-Contains $markdown "By type: kubernetes-live=2, security-ci=0, operator-remediation=2" "Operations evidence plan markdown"
+Assert-Contains $markdown "Kubeconfig secret required: 2" "Operations evidence plan markdown"
+Assert-Contains $markdown "Pending categories: commercial=1, enterprise-auth=1, ha-dr=1, monitoring=1, storage-expansion=1" "Operations evidence plan markdown"
 Assert-Contains $markdown "## Execution Order" "Operations evidence plan markdown"
+Assert-Contains $markdown "Current detail: report not found" "Operations evidence plan markdown"
+Assert-Contains $markdown "Recommended command: ``gh workflow run storage-expansion-finalizer-ci.yml" "Operations evidence plan markdown"
 Assert-Contains $markdown "gh workflow run kubernetes-dr-finalizer-ci.yml" "Operations evidence plan markdown"
+Assert-Contains $markdown "Web dispatch URL: https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml" "Operations evidence plan markdown"
 Assert-Contains $markdown "gh workflow run manual-monitoring-threshold-evidence.yml" "Operations evidence plan markdown"
 Assert-Contains $markdown "Operator approval: required" "Operations evidence plan markdown"
 Assert-Contains $markdown "## Unplanned Checks" "Operations evidence plan markdown"

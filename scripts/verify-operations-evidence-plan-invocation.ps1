@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -45,6 +49,14 @@ $invalidJsonOutputPath = Join-Path $resolvedOutputDirectory "invalid-operations-
 $invalidMarkdownOutputPath = Join-Path $resolvedOutputDirectory "invalid-operations-evidence-plan-invocation.md"
 $selectedJsonOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.json"
 $selectedMarkdownOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.md"
+$githubCliJsonOutputPath = Join-Path $resolvedOutputDirectory "github-cli-path-operations-evidence-plan-invocation.json"
+$githubCliMarkdownOutputPath = Join-Path $resolvedOutputDirectory "github-cli-path-operations-evidence-plan-invocation.md"
+$githubApiBlockedJsonOutputPath = Join-Path $resolvedOutputDirectory "github-api-blocked-operations-evidence-plan-invocation.json"
+$githubApiBlockedMarkdownOutputPath = Join-Path $resolvedOutputDirectory "github-api-blocked-operations-evidence-plan-invocation.md"
+$fakeGitHubCliDirectory = Join-Path $resolvedOutputDirectory "fake-github-cli"
+$fakeGitHubCliPath = Join-Path $fakeGitHubCliDirectory "gh.cmd"
+New-Item -ItemType Directory -Force -Path $fakeGitHubCliDirectory | Out-Null
+Set-Content -LiteralPath $fakeGitHubCliPath -Value "@echo off`r`necho fake gh %*`r`nexit /b 0`r`n" -Encoding ASCII
 
 $fixture = [ordered]@{
     formatVersion = "osmu.operations-evidence-plan.v1"
@@ -53,6 +65,10 @@ $fixture = [ordered]@{
     sourceReport = ".osmu-run/latest-operations-readiness.json"
     sourceResult = "pending"
     sourceSummary = "passed=36 pending=6"
+    sourcePassedCount = 36
+    sourcePendingCount = 6
+    sourceTotalCount = 42
+    sourceCheckCount = 42
     pendingCount = 3
     actionCount = 3
     unplannedCount = 0
@@ -123,15 +139,22 @@ if ($LASTEXITCODE -ne 0) {
     throw "invoke-operations-evidence-plan.ps1 blocked plan-only check failed with exit code $LASTEXITCODE."
 }
 
-$blockedReport = Get-Content -Raw -LiteralPath $blockedJsonOutputPath | ConvertFrom-Json
-$blockedMarkdown = Get-Content -Raw -LiteralPath $blockedMarkdownOutputPath
+$blockedReport = Read-Utf8Text $blockedJsonOutputPath | ConvertFrom-Json
+$blockedMarkdown = Read-Utf8Text $blockedMarkdownOutputPath
 
 Assert-True ($blockedReport.formatVersion -eq "osmu.operations-evidence-plan-invocation.v1") "Unexpected invocation formatVersion."
+Assert-True ($blockedReport.sourcePassedCount -eq 36) "Expected source passed count."
+Assert-True ($blockedReport.sourcePendingCount -eq 6) "Expected source pending count."
+Assert-True ($blockedReport.sourceTotalCount -eq 42) "Expected source total count."
+Assert-True ($blockedReport.sourceCheckCount -eq 42) "Expected source check count."
 Assert-True ($blockedReport.result -eq "blocked") "Expected blocked result without confirmations."
 Assert-True ($blockedReport.selectedActionCount -eq 3) "Expected three selected actions."
+Assert-True ((@($blockedReport.selectedActionOrders) -join ",") -eq "1,2,3") "Expected blocked report selected action orders."
 Assert-True ($blockedReport.blockedCount -eq 2) "Expected two blocked actions without confirmations."
 Assert-True ($blockedReport.plannedCount -eq 1) "Expected one planned action without confirmations."
 Assert-True (@(@($blockedReport.actions)[0].blockReasons) -contains "operator approval not confirmed") "Storage expansion run_live action should be blocked on operator approval."
+Assert-Contains $blockedMarkdown "Source counts: passed=36 pending=6 total=42 checks=42" "blocked invocation markdown"
+Assert-Contains $blockedMarkdown "- Selected action orders: 1, 2, 3" "blocked invocation markdown"
 Assert-Contains $blockedMarkdown "kubeconfig secret not confirmed" "blocked invocation markdown"
 Assert-Contains $blockedMarkdown "unresolved placeholders: <YYYYMMDDTHHMMSSZ>" "blocked invocation markdown"
 Assert-Contains $blockedMarkdown "operator approval not confirmed" "blocked invocation markdown"
@@ -147,13 +170,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "invoke-operations-evidence-plan.ps1 confirmed plan-only check failed with exit code $LASTEXITCODE."
 }
 
-$plannedReport = Get-Content -Raw -LiteralPath $plannedJsonOutputPath | ConvertFrom-Json
-$plannedMarkdown = Get-Content -Raw -LiteralPath $plannedMarkdownOutputPath
+$plannedReport = Read-Utf8Text $plannedJsonOutputPath | ConvertFrom-Json
+$plannedMarkdown = Read-Utf8Text $plannedMarkdownOutputPath
 $plannedActions = @($plannedReport.actions)
 
 Assert-True ($plannedReport.result -eq "planned") "Expected planned result with confirmations."
 Assert-True ($plannedReport.blockedCount -eq 0) "Expected no blocked actions with confirmations."
 Assert-True ($plannedReport.plannedCount -eq 3) "Expected three planned actions with confirmations."
+Assert-True ((@($plannedReport.selectedActionOrders) -join ",") -eq "1,2,3") "Expected planned report selected action orders."
 Assert-True ($plannedActions[1].command -like "*20260615T010203Z*") "Expected backup timestamp replacement."
 Assert-True ($plannedActions[1].unresolvedPlaceholders.Count -eq 0) "Expected no unresolved placeholders after replacement."
 Assert-Contains $plannedMarkdown "Result: planned" "planned invocation markdown"
@@ -171,7 +195,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "invoke-operations-evidence-plan.ps1 unsafe placeholder check failed with exit code $LASTEXITCODE."
 }
 
-$unsafeReport = Get-Content -Raw -LiteralPath $unsafeJsonOutputPath | ConvertFrom-Json
+$unsafeReport = Read-Utf8Text $unsafeJsonOutputPath | ConvertFrom-Json
 $unsafeAction = @($unsafeReport.actions)[0]
 Assert-True ($unsafeReport.result -eq "blocked") "Expected unsafe placeholder command to be blocked."
 Assert-True (@($unsafeAction.blockReasons) -contains "command failed allowlist/shell metacharacter check") "Expected unsafe placeholder command to fail shell metacharacter check."
@@ -189,7 +213,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "invoke-operations-evidence-plan.ps1 invalid placeholder check failed with exit code $LASTEXITCODE."
 }
 
-$invalidReport = Get-Content -Raw -LiteralPath $invalidJsonOutputPath | ConvertFrom-Json
+$invalidReport = Read-Utf8Text $invalidJsonOutputPath | ConvertFrom-Json
 $invalidAction = @($invalidReport.actions)[0]
 Assert-True ($invalidReport.result -eq "blocked") "Expected invalid known placeholder command to be blocked."
 Assert-True (@($invalidAction.blockReasons) -contains "invalid placeholder value for <YYYYMMDDTHHMMSSZ>") "Expected invalid backup timestamp to fail known placeholder validation."
@@ -208,10 +232,68 @@ if ($LASTEXITCODE -ne 0) {
     throw "invoke-operations-evidence-plan.ps1 action selection check failed with exit code $LASTEXITCODE."
 }
 
-$selectedReport = Get-Content -Raw -LiteralPath $selectedJsonOutputPath | ConvertFrom-Json
+$selectedReport = Read-Utf8Text $selectedJsonOutputPath | ConvertFrom-Json
 Assert-True ($selectedReport.result -eq "planned") "Expected selected action result to be planned."
 Assert-True ($selectedReport.selectedActionCount -eq 1) "Expected one selected action."
+Assert-True ((@($selectedReport.selectedActionOrders) -join ",") -eq "2") "Expected selected report action order scope."
 Assert-True (@($selectedReport.actions)[0].order -eq 2) "Expected action order 2 to be selected."
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -PlanPath $fixturePath `
+    -JsonOutputPath $githubCliJsonOutputPath `
+    -MarkdownOutputPath $githubCliMarkdownOutputPath `
+    -ActionOrder 2 `
+    -KubeconfigSecretConfirmed `
+    -ConfirmOperatorApproval `
+    -BackupTimestamp "20260615T010203Z" `
+    -GitHubCliPath $fakeGitHubCliPath `
+    -Execute | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "invoke-operations-evidence-plan.ps1 GitHubCliPath execute check failed with exit code $LASTEXITCODE."
+}
+
+$githubCliReport = Read-Utf8Text $githubCliJsonOutputPath | ConvertFrom-Json
+$githubCliAction = @($githubCliReport.actions)[0]
+Assert-True ($githubCliReport.result -eq "executed") "Expected GitHubCliPath execution result."
+Assert-True ($githubCliReport.githubCliPath -eq $fakeGitHubCliPath) "Expected GitHubCliPath report path."
+Assert-True ($githubCliReport.githubCliExecutionSource -eq $fakeGitHubCliPath) "Expected GitHubCliPath execution source."
+Assert-True ($githubCliAction.status -eq "executed") "Expected GitHubCliPath action execution status."
+Assert-True ($githubCliAction.exitCode -eq 0) "Expected fake GitHub CLI exit code."
+Assert-Contains (($githubCliAction.output | ConvertTo-Json -Depth 4)) "fake gh workflow run kubernetes-dr-finalizer-ci.yml" "GitHubCliPath fake output"
+$githubCliMarkdown = Read-Utf8Text $githubCliMarkdownOutputPath
+Assert-Contains $githubCliMarkdown "GitHub CLI path:" "GitHubCliPath markdown"
+
+$previousGhToken = $env:GH_TOKEN
+$previousGitHubToken = $env:GITHUB_TOKEN
+try {
+    $env:GH_TOKEN = ""
+    $env:GITHUB_TOKEN = ""
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -PlanPath $fixturePath `
+        -JsonOutputPath $githubApiBlockedJsonOutputPath `
+        -MarkdownOutputPath $githubApiBlockedMarkdownOutputPath `
+        -ActionOrder 3 `
+        -UseGitHubApi `
+        -GitHubRepository "example/osmu" `
+        -GitHubRef "main" `
+        -Execute | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "invoke-operations-evidence-plan.ps1 GitHub API blocked check failed with exit code $LASTEXITCODE."
+    }
+}
+finally {
+    $env:GH_TOKEN = $previousGhToken
+    $env:GITHUB_TOKEN = $previousGitHubToken
+}
+
+$githubApiBlockedReport = Read-Utf8Text $githubApiBlockedJsonOutputPath | ConvertFrom-Json
+$githubApiBlockedAction = @($githubApiBlockedReport.actions)[0]
+Assert-True ($githubApiBlockedReport.result -eq "blocked") "Expected GitHub API execution to block without token."
+Assert-True ($githubApiBlockedReport.useGitHubApi -eq $true) "Expected GitHub API execution mode in report."
+Assert-True ($githubApiBlockedReport.githubRepository -eq "example/osmu") "Expected explicit GitHub repository in report."
+Assert-True ($githubApiBlockedReport.githubRef -eq "main") "Expected GitHub ref in report."
+Assert-True (@($githubApiBlockedAction.blockReasons) -contains "GH_TOKEN or GITHUB_TOKEN not set for API dispatch") "Expected missing token block reason."
+Assert-True ($githubApiBlockedAction.status -eq "blocked") "Expected GitHub API action to be blocked without token."
 
 Write-Host "Operations evidence plan invocation verified."
 Write-Host "Blocked report: $blockedJsonOutputPath"

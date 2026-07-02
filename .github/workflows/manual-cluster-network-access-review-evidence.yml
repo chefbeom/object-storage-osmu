@@ -1,0 +1,196 @@
+name: Manual Cluster Network Access Review Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      review_started_at:
+        description: Cluster network access review start timestamp
+        required: true
+        default: ""
+      review_completed_at:
+        description: Cluster network access review completion timestamp
+        required: true
+        default: ""
+      change_approval_ref:
+        description: External change approval reference
+        required: true
+        default: ""
+      evidence_ref:
+        description: External cluster network access review evidence reference
+        required: true
+        default: ""
+      access_review_refs_json_base64:
+        description: Base64 JSON containing non-secret access review and verifier references
+        required: true
+        default: ""
+      confirm_backend_only_mariadb:
+        description: Confirm only backend can reach MariaDB
+        required: true
+        type: boolean
+        default: false
+      confirm_backend_only_minio:
+        description: Confirm only backend can reach MinIO
+        required: true
+        type: boolean
+        default: false
+      confirm_backup_only_mariadb_minio:
+        description: Confirm backup scope is limited to MariaDB and MinIO
+        required: true
+        type: boolean
+        default: false
+      confirm_dns_egress_scoped:
+        description: Confirm DNS egress is scoped
+        required: true
+        type: boolean
+        default: false
+      confirm_mariadb_ingress_backend_backup_only:
+        description: Confirm MariaDB ingress is backend and backup only
+        required: true
+        type: boolean
+        default: false
+      confirm_minio_ingress_backend_backup_only:
+        description: Confirm MinIO ingress is backend and backup only
+        required: true
+        type: boolean
+        default: false
+      confirm_public_ingress_limited:
+        description: Confirm public ingress is limited to expected services
+        required: true
+        type: boolean
+        default: false
+      confirm_namespace_default_deny_reviewed:
+        description: Confirm namespace default deny was reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_observability_scrape_reviewed:
+        description: Confirm observability scrape access was reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_helm_network_policy_enabled:
+        description: Confirm Helm NetworkPolicy is enabled
+        required: true
+        type: boolean
+        default: false
+      confirm_no_credential_values:
+        description: Confirm inputs contain references only, not credentials
+        required: true
+        type: boolean
+        default: false
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-cluster-network-access-review-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  cluster-network-access-review-evidence:
+    name: Manual cluster network access review evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record cluster network access review evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_REVIEW_STARTED_AT: ${{ inputs.review_started_at }}
+          OSMU_REVIEW_COMPLETED_AT: ${{ inputs.review_completed_at }}
+          OSMU_CHANGE_APPROVAL_REF: ${{ inputs.change_approval_ref }}
+          OSMU_EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          OSMU_ACCESS_REVIEW_REFS_JSON_BASE64: ${{ inputs.access_review_refs_json_base64 }}
+          OSMU_CONFIRM_BACKEND_ONLY_MARIADB: ${{ inputs.confirm_backend_only_mariadb }}
+          OSMU_CONFIRM_BACKEND_ONLY_MINIO: ${{ inputs.confirm_backend_only_minio }}
+          OSMU_CONFIRM_BACKUP_ONLY_MARIADB_MINIO: ${{ inputs.confirm_backup_only_mariadb_minio }}
+          OSMU_CONFIRM_DNS_EGRESS_SCOPED: ${{ inputs.confirm_dns_egress_scoped }}
+          OSMU_CONFIRM_MARIADB_INGRESS_BACKEND_BACKUP_ONLY: ${{ inputs.confirm_mariadb_ingress_backend_backup_only }}
+          OSMU_CONFIRM_MINIO_INGRESS_BACKEND_BACKUP_ONLY: ${{ inputs.confirm_minio_ingress_backend_backup_only }}
+          OSMU_CONFIRM_PUBLIC_INGRESS_LIMITED: ${{ inputs.confirm_public_ingress_limited }}
+          OSMU_CONFIRM_NAMESPACE_DEFAULT_DENY_REVIEWED: ${{ inputs.confirm_namespace_default_deny_reviewed }}
+          OSMU_CONFIRM_OBSERVABILITY_SCRAPE_REVIEWED: ${{ inputs.confirm_observability_scrape_reviewed }}
+          OSMU_CONFIRM_HELM_NETWORK_POLICY_ENABLED: ${{ inputs.confirm_helm_network_policy_enabled }}
+          OSMU_CONFIRM_NO_CREDENTIAL_VALUES: ${{ inputs.confirm_no_credential_values }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+        run: |
+          New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+          $refsPath = ".osmu-run/cluster-network-access-review-refs.json"
+          [System.IO.File]::WriteAllBytes($refsPath, [Convert]::FromBase64String($env:OSMU_ACCESS_REVIEW_REFS_JSON_BASE64))
+          $refs = Get-Content -Raw -LiteralPath $refsPath | ConvertFrom-Json
+
+          $evidenceArgs = @(
+            "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+            "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+            "-Operator", $env:OSMU_OPERATOR,
+            "-ReviewStartedAt", $env:OSMU_REVIEW_STARTED_AT,
+            "-ReviewCompletedAt", $env:OSMU_REVIEW_COMPLETED_AT,
+            "-ChangeApprovalRef", $env:OSMU_CHANGE_APPROVAL_REF,
+            "-DnsEgressReviewRef", ([string] $refs.dnsEgressReviewRef),
+            "-MariaDbAccessReviewRef", ([string] $refs.mariaDbAccessReviewRef),
+            "-MinioAccessReviewRef", ([string] $refs.minioAccessReviewRef),
+            "-BackupAccessReviewRef", ([string] $refs.backupAccessReviewRef),
+            "-PublicIngressReviewRef", ([string] $refs.publicIngressReviewRef),
+            "-DefaultDenyReviewRef", ([string] $refs.defaultDenyReviewRef),
+            "-ObservabilityScrapeReviewRef", ([string] $refs.observabilityScrapeReviewRef),
+            "-K8sVerifierEvidenceRef", ([string] $refs.k8sVerifierEvidenceRef),
+            "-HelmVerifierEvidenceRef", ([string] $refs.helmVerifierEvidenceRef),
+            "-EvidenceRef", $env:OSMU_EVIDENCE_REF,
+            "-JsonOutputPath", ".osmu-run/latest-cluster-network-access-review-evidence.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-cluster-network-access-review-evidence.md"
+          )
+
+          if ($env:OSMU_CONFIRM_BACKEND_ONLY_MARIADB -eq "true") { $evidenceArgs += "-ConfirmBackendOnlyMariaDb" }
+          if ($env:OSMU_CONFIRM_BACKEND_ONLY_MINIO -eq "true") { $evidenceArgs += "-ConfirmBackendOnlyMinio" }
+          if ($env:OSMU_CONFIRM_BACKUP_ONLY_MARIADB_MINIO -eq "true") { $evidenceArgs += "-ConfirmBackupOnlyMariaDbMinio" }
+          if ($env:OSMU_CONFIRM_DNS_EGRESS_SCOPED -eq "true") { $evidenceArgs += "-ConfirmDnsEgressScoped" }
+          if ($env:OSMU_CONFIRM_MARIADB_INGRESS_BACKEND_BACKUP_ONLY -eq "true") { $evidenceArgs += "-ConfirmMariaDbIngressBackendBackupOnly" }
+          if ($env:OSMU_CONFIRM_MINIO_INGRESS_BACKEND_BACKUP_ONLY -eq "true") { $evidenceArgs += "-ConfirmMinioIngressBackendBackupOnly" }
+          if ($env:OSMU_CONFIRM_PUBLIC_INGRESS_LIMITED -eq "true") { $evidenceArgs += "-ConfirmPublicIngressLimited" }
+          if ($env:OSMU_CONFIRM_NAMESPACE_DEFAULT_DENY_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmNamespaceDefaultDenyReviewed" }
+          if ($env:OSMU_CONFIRM_OBSERVABILITY_SCRAPE_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmObservabilityScrapeReviewed" }
+          if ($env:OSMU_CONFIRM_HELM_NETWORK_POLICY_ENABLED -eq "true") { $evidenceArgs += "-ConfirmHelmNetworkPolicyEnabled" }
+          if ($env:OSMU_CONFIRM_NO_CREDENTIAL_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoCredentialValues" }
+          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+          ./scripts/write-cluster-network-access-review-evidence.ps1 @evidenceArgs
+          Remove-Item -LiteralPath $refsPath -Force -ErrorAction SilentlyContinue
+
+      - name: Remove decoded reference payload
+        if: always()
+        shell: pwsh
+        run: Remove-Item -LiteralPath ".osmu-run/cluster-network-access-review-refs.json" -Force -ErrorAction SilentlyContinue
+
+      - name: Upload cluster network access review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-network-access-review-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-cluster-network-access-review-evidence.json
+            .osmu-run/latest-cluster-network-access-review-evidence.md
+          if-no-files-found: error
+          retention-days: 14

@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -44,8 +48,8 @@ $failedMarkdownPath = Join-Path $resolvedOutputDir "failed.md"
     -JsonOutputPath $planJsonPath `
     -MarkdownOutputPath $planMarkdownPath
 
-$planReport = Get-Content -Raw -LiteralPath $planJsonPath | ConvertFrom-Json
-$planMarkdown = Get-Content -Raw -LiteralPath $planMarkdownPath
+$planReport = Read-Utf8Text $planJsonPath | ConvertFrom-Json
+$planMarkdown = Read-Utf8Text $planMarkdownPath
 Assert-True ($planReport.formatVersion -eq "osmu.mariadb-query-plan-evidence.v1") "Unexpected query plan evidence formatVersion."
 Assert-True ($planReport.result -eq "plan-ready-execute-required") "Plan-only query plan evidence should require execution."
 Assert-True ($planReport.checkCount -gt 0) "Plan-only query plan evidence should include checks."
@@ -75,7 +79,7 @@ foreach ($check in $planReport.checks) {
     -MarkdownOutputPath $passedMarkdownPath `
     -FailIfNotPassed
 
-$passedReport = Get-Content -Raw -LiteralPath $passedJsonPath | ConvertFrom-Json
+$passedReport = Read-Utf8Text $passedJsonPath | ConvertFrom-Json
 Assert-True ($passedReport.result -eq "passed") "Fixture query plan evidence should pass."
 Assert-True ($passedReport.failedCount -eq 0) "Fixture query plan evidence should have no failed checks."
 
@@ -109,7 +113,7 @@ try {
 }
 Assert-True $failedAsExpected "Bad fixture must fail query plan verification."
 
-$failedReport = Get-Content -Raw -LiteralPath $failedJsonPath | ConvertFrom-Json
+$failedReport = Read-Utf8Text $failedJsonPath | ConvertFrom-Json
 Assert-True ($failedReport.result -eq "failed") "Bad fixture report should be failed."
 Assert-True ($failedReport.failedCount -gt 0) "Bad fixture report should include failed checks."
 

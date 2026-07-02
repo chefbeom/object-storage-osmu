@@ -644,6 +644,7 @@ class ChargebackPreviewServiceTest {
         assertThat(blockedHandoff.status()).isEqualTo("PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL");
         assertThat(blockedHandoff.externalPaymentEnabled()).isFalse();
         assertThat(blockedHandoff.handoff().attemptCount()).isEqualTo(1);
+        assertThat(blockedHandoff.handoff().lastError()).contains("credential/configuration");
 
         ChargebackPaymentProviderHandoffAttemptResponse retryHandoff =
                 service.recordPaymentProviderHandoffAdapterResult(
@@ -674,6 +675,68 @@ class ChargebackPreviewServiceTest {
         assertThat(paid.paymentStatus()).isEqualTo("PAID");
         assertThat(paid.invoice().paymentRecordedBy()).isEqualTo("admin");
         assertThat(paid.invoice().paymentReference()).isEqualTo("PAY-2026-0001");
+    }
+
+    @Test
+    void closeoutSummaryBreaksDownOperationalBlockers() {
+        OffsetDateTime now = OffsetDateTime.now();
+        AuthenticatedUser admin = new AuthenticatedUser(1L, "admin", "ADMIN", null);
+        organizationRepository.save(new OrganizationRecord(1L, "Blocked Closeout Org", "", 10_000L, now));
+        bucketRepository.save(new BucketRecord(1L, "blocked-closeout-bucket", "ORG", 1L, 10_000L, 1024L, 1L, now));
+
+        ChargebackInvoiceDraftCreateResponse create = service.persistInvoiceDrafts(
+                admin,
+                new ChargebackPreviewRequest(
+                        now.minusHours(1),
+                        now.plusHours(1),
+                        "krw",
+                        ONE_GIB_RATE,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        100
+                ),
+                "blocked closeout draft"
+        );
+        ChargebackInvoiceDraftResponse draft = create.invoices().get(0);
+        service.approveInvoiceDraft(admin, draft.id(), "approved for blocked closeout test");
+        ChargebackFinalInvoiceActionResponse finalized = service.finalizeInvoiceDraft(
+                admin,
+                draft.id(),
+                "final invoice awaiting settlement"
+        );
+        service.requestFinalInvoicePayment(admin, finalized.invoice().id(), "send payment request");
+        service.queuePaymentProviderHandoff(
+                admin,
+                finalized.invoice().id(),
+                "manual_ap",
+                "finance-ap",
+                "handoff waiting for adapter"
+        );
+
+        ChargebackCloseoutSummaryResponse summary = service.closeoutSummary(
+                admin,
+                "2026-06",
+                now.minusHours(2),
+                now.plusHours(2),
+                100
+        );
+
+        assertThat(summary.closeoutStatus()).isEqualTo("PENDING");
+        assertThat(summary.closeoutReady()).isFalse();
+        assertThat(summary.invoiceFinalizationComplete()).isTrue();
+        assertThat(summary.paymentRequestsComplete()).isTrue();
+        assertThat(summary.paymentsSettled()).isFalse();
+        assertThat(summary.paymentHandoffsClosed()).isFalse();
+        assertThat(summary.notificationDeliveriesClosed()).isTrue();
+        assertThat(summary.reconciliationBalanced()).isFalse();
+        assertThat(summary.unpaidInvoiceBlockerCount()).isEqualTo(1);
+        assertThat(summary.openHandoffBlockerCount()).isEqualTo(1);
+        assertThat(summary.openNotificationBlockerCount()).isZero();
+        assertThat(summary.reconciliationBlockerCount()).isEqualTo(1);
+        assertThat(summary.blockerCount()).isEqualTo(3);
+        assertThat(summary.failureCount()).isEqualTo(summary.blockerCount());
     }
 
     @Test
@@ -779,7 +842,10 @@ class ChargebackPreviewServiceTest {
         assertThat(readiness.profileCount()).isEqualTo(5);
         assertThat(readiness.webhookReadyProfileCount()).isEqualTo(2);
         assertThat(readiness.nativeApiReadyProfileCount()).isZero();
-        assertThat(readiness.secretPolicy()).contains("never returned");
+        assertThat(readiness.secretPolicy())
+                .contains("native endpoint URLs")
+                .contains("auth header values")
+                .contains("never returned");
         assertThat(readiness.profiles()).extracting(ChargebackPaymentProviderAdapterProfileResponse::providerProfile)
                 .containsExactly("GENERIC", "CARD", "BANK", "TAX", "ERP");
         assertThat(readiness.profiles().get(1).status()).isEqualTo("WEBHOOK_READY");
@@ -1032,7 +1098,7 @@ class ChargebackPreviewServiceTest {
 
             @Override
             public ChargebackPaymentProviderAdapterResult deliver(ChargebackPaymentProviderHandoffRecord record) {
-                return ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook adapter is not configured.");
+                return ChargebackPaymentProviderAdapterResult.blocked("Payment provider adapter is not configured.");
             }
         };
     }

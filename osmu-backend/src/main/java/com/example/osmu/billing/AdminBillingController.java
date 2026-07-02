@@ -101,6 +101,12 @@ public class AdminBillingController {
         return ApiResponse.of(pricingPolicyService.proposals(status, limit == null ? 50 : limit));
     }
 
+    @GetMapping("/pricing-policy-proposals/commercial-approval-summary")
+    public ApiResponse<BillingPricingPolicyCommercialApprovalSummaryResponse> pricingPolicyCommercialApprovalSummary(
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        return ApiResponse.of(pricingPolicyService.commercialApprovalSummary(limit == null ? 50 : limit));
+    }
     @PostMapping("/pricing-policy-proposals/{proposalId}/approve")
     public ApiResponse<BillingPricingPolicyProposalApprovalResponse> approvePricingPolicyProposal(
             @PathVariable long proposalId,
@@ -348,6 +354,24 @@ public class AdminBillingController {
     ) {
         AuthenticatedUser actor = authContext.currentUser(request);
         return ApiResponse.of(chargebackPreviewService.paymentProviderAdapterReadiness(actor));
+    }
+
+    @GetMapping("/chargeback-closeout-summary")
+    public ApiResponse<ChargebackCloseoutSummaryResponse> chargebackCloseoutSummary(
+            @RequestParam(name = "billingPeriod") String billingPeriod,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.closeoutSummary(
+                actor,
+                billingPeriod,
+                parseOptionalOffsetDateTime(from, "from"),
+                parseOptionalOffsetDateTime(to, "to"),
+                limit == null ? 500 : limit
+        ));
     }
 
     @PostMapping("/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result")

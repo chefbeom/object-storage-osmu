@@ -2687,6 +2687,27 @@ Response:
 - `appliedPolicy`: unchanged active chargeback pricing policy.
 - `note`: commercial price-list approval reference notice.
 
+### GET /api/admin/billing/pricing-policy-proposals/commercial-approval-summary
+
+Returns a reduced commercial approval snapshot for evidence collection. `ADMIN` only. Use this response as `PricingPolicyProposalJsonPath` input for `scripts/write-commercial-approval-evidence.ps1` when collecting target commercial approval evidence.
+
+Query parameters:
+
+- `limit` (optional): number of approved proposal rows to return, clamped to 1..200.
+
+Response:
+
+- `mode`: `BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY`
+- `proposalCount`
+- `approvedPriceListCount`
+- `commercialApprovedCount`
+- `latestCommercialApprovedAt`
+- `proposals[]`: `id`, `status`, `approvedPriceList`, `currency`, approval actor ids, commercial approval reference, and approval/effective timestamps.
+- `generatedAt`
+- `scopePolicy`, `secretPolicy`, and `note`
+
+The response is intentionally evidence-only. It omits rates, thresholds, raw price tables, contract text, customer data, license keys, payment data, proposal reasons, approval notes, credential-shaped content, and secret values.
+
 ### GET /api/admin/billing/chargeback-preview
 
 Organization chargeback pre-model. `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller's organization. This endpoint does not persist invoices or mutate billing policy; it projects costs from current organization-owned bucket usage and bounded data-flow events. Query pricing fields override `GET /api/admin/billing/pricing-policy`; omitted pricing fields use the saved policy.
@@ -2974,7 +2995,7 @@ Response:
 
 ### GET /api/admin/billing/chargeback-adapter-retry-worker/status
 
-Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state. `externalAdaptersEnabled` is true when generic notification webhook, `SLACK` notification webhook, `EMAIL` SMTP relay, or payment-provider webhook handoff adapter configuration exists.
+Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state. `externalAdaptersEnabled` is true when generic notification webhook, `SLACK` notification webhook, `EMAIL` SMTP relay, payment-provider webhook handoff adapter, or CARD/BANK/TAX/ERP native API bridge configuration exists.
 
 Query parameters:
 
@@ -2991,7 +3012,7 @@ Response:
 
 ### POST /api/admin/billing/chargeback-adapter-retry-worker/run
 
-Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, due notification rows call the configured generic webhook, `SLACK` webhook, or `EMAIL` SMTP relay adapter when available for that row's channel, and due payment handoff rows call the configured payment-provider webhook handoff adapter when available. Each row moves to success, retry, or blocked state. If a relevant adapter is not configured, the row moves to its credential/configuration blocked state without an external call.
+Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, due notification rows call the configured generic webhook, `SLACK` webhook, or `EMAIL` SMTP relay adapter when available for that row's channel, and due payment handoff rows call a configured CARD/BANK/TAX/ERP native API bridge first and then the configured payment-provider webhook handoff adapter fallback when available. Each row moves to success, retry, or blocked state. If a relevant adapter is not configured, the row moves to its credential/configuration blocked state without an external call.
 
 Query parameters:
 
@@ -3008,17 +3029,17 @@ Response:
 
 ### GET /api/admin/billing/payment-provider-adapter-readiness
 
-Returns a read-only payment-provider adapter readiness view for `GENERIC`, `CARD`, `BANK`, `TAX`, and `ERP` profiles. `ADMIN` only. The endpoint does not call notification, webhook, card, bank, tax, ERP, or payment-provider APIs and does not expose credential material. It exists to show which handoff profiles can currently use the configured webhook adapter layer, which profiles have a native provider API adapter registered and configured, and which profiles still need target configuration or concrete native implementation.
+Returns a read-only payment-provider adapter readiness view for `GENERIC`, `CARD`, `BANK`, `TAX`, and `ERP` profiles. `ADMIN` only. The endpoint does not call notification, webhook, card, bank, tax, ERP, or payment-provider APIs and does not expose credential material. It exists to show which handoff profiles can currently use the configured webhook adapter layer, which CARD/BANK/TAX/ERP profiles have the native API bridge endpoint and auth-header value configured, and which profiles still need target configuration.
 
 Response:
 
 - `mode`: `PAYMENT_PROVIDER_ADAPTER_READINESS`
 - `status`: `ACTION_REQUIRED` when no profile is configured, `WEBHOOK_PROFILE_READY` when at least one webhook profile is configured, or `NATIVE_API_READY` when at least one native provider API adapter is registered and configured.
-- `nativeApiSupported`, `nativeApiReady`: reflect registered native adapter SPI implementations; the current product still ships without concrete card/bank/tax/ERP provider implementations.
+- `nativeApiSupported`, `nativeApiReady`: reflect registered native adapter SPI implementations. The built-in CARD/BANK/TAX/ERP native API bridge marks those profiles as supported; a profile becomes ready when its `osmu.billing.payment-provider.<profile>.native-api-url` and `osmu.billing.payment-provider.<profile>.native-api-auth-header-value` settings are valid.
 - `profileCount`, `webhookReadyProfileCount`, `nativeApiReadyProfileCount`
 - `profiles[]`: profile rows with `providerProfile`, `sampleProvider`, `adapterMode`, `status`, `webhookProfileConfigured`, `nativeApiSupported`, `nativeApiReady`, `requiredConfiguration`, and `note`.
 - `scopePolicy`: read-only/no-external-call boundary.
-- `secretPolicy`: confirms webhook URLs, secret headers, HMAC secrets, certificates, provider credentials, raw provider responses, and customer payment data are not returned.
+- `secretPolicy`: confirms webhook/native endpoint URLs, secret/auth header values, HMAC/signing secrets, certificates, provider credentials, raw provider responses, and customer payment data are not returned.
 
 ### GET /api/admin/billing/chargeback-preview/export.csv
 
@@ -3142,11 +3163,11 @@ Response:
 
 ### GET /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff/preview
 
-Builds a payment-provider handoff payload for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. This is a no-send preview and does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters. `externalPaymentEnabled` reflects whether the generic `osmu.billing.payment-provider.webhook-url` or the provider-specific CARD/BANK/TAX/ERP webhook profile for the requested `paymentProvider` is valid with optional secret header and HMAC signature settings.
+Builds a payment-provider handoff payload for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. This is a no-send preview and does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters. `externalPaymentEnabled` reflects whether the requested `paymentProvider` can use a configured CARD/BANK/TAX/ERP native API bridge, the generic `osmu.billing.payment-provider.webhook-url`, or the provider-specific CARD/BANK/TAX/ERP webhook profile with optional secret header and HMAC signature settings.
 
 Query parameters:
 
-- `paymentProvider` (optional): provider code, default `MANUAL_AP`. Codes beginning with `CARD`, `BANK`, `TAX`, or `ERP` can route to matching provider-specific webhook profiles; other codes use the generic profile.
+- `paymentProvider` (optional): provider code, default `MANUAL_AP`. Codes beginning with `CARD`, `BANK`, `TAX`, or `ERP` can route to a configured CARD/BANK/TAX/ERP native API bridge before matching provider-specific webhook profile fallback; other codes use the generic payment-provider webhook profile.
 - `paymentTargetAccount` (optional): operator-visible account/route identifier, default `UNCONFIGURED`.
 
 Response:
@@ -3161,11 +3182,11 @@ Response:
 
 ### POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff
 
-Persists a payment-provider handoff outbox row for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. The row is stored with `PENDING_PAYMENT_PROVIDER_ADAPTER`; it is review/retry input for ADMIN webhook send or retry worker execution. This endpoint still does not call any external payment provider.
+Persists a payment-provider handoff outbox row for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. The row is stored with `PENDING_PAYMENT_PROVIDER_ADAPTER`; it is review/retry input for ADMIN adapter send or retry worker execution. This endpoint still does not call any external payment provider.
 
 Query parameters:
 
-- `paymentProvider` (optional): provider code, default `MANUAL_AP`. Codes beginning with `CARD`, `BANK`, `TAX`, or `ERP` can route to matching provider-specific webhook profiles; other codes use the generic profile.
+- `paymentProvider` (optional): provider code, default `MANUAL_AP`. Codes beginning with `CARD`, `BANK`, `TAX`, or `ERP` can route to a configured CARD/BANK/TAX/ERP native API bridge before matching provider-specific webhook profile fallback; other codes use the generic payment-provider webhook profile.
 - `paymentTargetAccount` (optional): operator-visible account/route identifier, default `UNCONFIGURED`.
 - `reason` (optional): single-line operator note.
 
@@ -3211,7 +3232,7 @@ Response:
 
 ### POST /api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-send
 
-Attempts configured payment-provider webhook handoff delivery for a persisted handoff row. `ADMIN` only. OSMU first selects a provider-specific webhook profile for `paymentProvider` codes beginning with `CARD`, `BANK`, `TAX`, or `ERP`; when that profile is blank it falls back to `osmu.billing.payment-provider.webhook-url`. If the selected webhook is not configured or is invalid, the row moves to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with handoff metadata, `providerProfile`, plus the original payment-provider payload, and can add timestamped HMAC-SHA256 signature headers. This is a B2B handoff adapter profile layer, not a built-in card/bank/tax/ERP processor integration. Oversized outbound payloads are blocked before any external call. It never stores the webhook URL, secret header value, signature secret, response body, or raw provider response in the outbox.
+Attempts configured payment-provider handoff delivery for a persisted handoff row. `ADMIN` only. OSMU first selects a configured CARD/BANK/TAX/ERP native API bridge for matching `paymentProvider` codes; if no native bridge is ready, it falls back to the provider-specific webhook profile and then `osmu.billing.payment-provider.webhook-url`. If no selected adapter is configured or valid, the row moves to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope with handoff metadata, `providerProfile`, plus the original payment-provider payload, and can add timestamped HMAC-SHA256 signature headers. Oversized outbound payloads are blocked before any external call. It never stores endpoint URLs, secret header values, signature secrets, response bodies, or raw provider responses in the outbox.
 
 Configuration:
 
@@ -3227,6 +3248,13 @@ Configuration:
 - `osmu.billing.payment-provider.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
 - `osmu.billing.payment-provider.max-payload-bytes` (optional): max outbound payment handoff payload size in UTF-8 bytes, clamped to 1024..262144. Default is `65536`.
 - `osmu.billing.payment-provider.allow-private-network` (optional): default `false`. When false, localhost, loopback, link-local, private IPv4/IPv6, and local-domain webhook hosts are rejected before any external call. Enable only for local/dev or explicitly approved internal network integrations.
+- `osmu.billing.payment-provider.<card|bank|tax|erp>.native-api-url` (optional): HTTP/HTTPS endpoint for the configurable native API bridge profile. The matching provider profile is selected before webhook fallback.
+- `osmu.billing.payment-provider.<card|bank|tax|erp>.native-api-auth-header-value` (required when the matching native API URL is set): credential header value sent only to the native bridge endpoint and never stored in handoff rows or evidence.
+- `osmu.billing.payment-provider.native-api.auth-header-name` (optional): credential header name for native bridge calls. Default is `Authorization`.
+- `osmu.billing.payment-provider.native-api.signature-secret` (optional): native bridge HMAC-SHA256 signing secret. When set, OSMU sends timestamp/signature headers and never stores the secret.
+- `osmu.billing.payment-provider.native-api.signature-header-name` (optional): native bridge signature header name. Default is `X-OSMU-Native-Signature`.
+- `osmu.billing.payment-provider.native-api.signature-timestamp-header-name` (optional): native bridge timestamp header name. Default is `X-OSMU-Native-Signature-Timestamp`.
+- `osmu.billing.payment-provider.native-api.timeout-ms`, `osmu.billing.payment-provider.native-api.max-payload-bytes`, and `osmu.billing.payment-provider.native-api.allow-private-network` mirror the webhook timeout, payload cap, and private-network policy for native bridge calls.
 
 Query parameters:
 
@@ -3236,9 +3264,9 @@ Response:
 
 - `mode`: `ADAPTER_RESULT`
 - `status`: `PAYMENT_PROVIDER_ADAPTER_SUCCEEDED`, `PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED`, or `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`
-- `externalPaymentEnabled`: true only when the webhook adapter is configured.
+- `externalPaymentEnabled`: true when the selected native API bridge or webhook adapter path is configured.
 - `handoff`: updated outbox row with incremented `attemptCount`, optional `nextAttemptAt`, and sanitized `lastError`.
-- `note`: webhook handoff send result summary.
+- `note`: payment-provider adapter handoff send result summary.
 
 ### POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-record
 
@@ -3257,6 +3285,27 @@ Response:
 - `finalInvoice=true`, `paymentRequest=true`
 - `invoice`: updated final invoice row with `paymentReference` and payment timestamps.
 
+### GET /api/admin/billing/chargeback-closeout-summary
+
+Returns an `ADMIN`-only sanitized chargeback closeout summary for target billing evidence. This endpoint is designed as the `ChargebackCloseoutSnapshotJsonPath` source for `scripts/write-chargeback-closeout-evidence.ps1`: it reports typed counts, reduced totals, reconciliation status, and raw-data flags without returning customer payment data, provider payloads/responses, endpoint URLs, credentials, price tables, or invoice documents.
+
+Query parameters:
+
+- `billingPeriod` (required): target billing period label recorded in the evidence snapshot. When it is `yyyy-MM` and `from`/`to` are omitted, the endpoint filters that UTC month.
+- `from` / `to` (optional): ISO-8601 offset datetime window for custom closeout evidence windows.
+- `limit` (optional): repository scan limit, default `500`, max `1000`.
+
+Response:
+
+- `mode`: `CHARGEBACK_CLOSEOUT_SUMMARY`
+- `billingPeriod`, `from`, `to`, `currency`
+- `closeoutStatus` / `result`: `RECONCILED` only when at least one final invoice is present, payment requests are complete, every final invoice is paid, payment handoffs and notification deliveries are closed, and the final-invoice total equals the paid-invoice total; otherwise `PENDING`.
+- `invoiceDraftCount`, `finalInvoiceCount`, `paymentRequestedCount`, `paymentHandoffCount`, `paidInvoiceCount`, `notificationDeliveryCount`, `adapterRetryCount`
+- `closeoutReady`, `invoiceFinalizationComplete`, `paymentRequestsComplete`, `paymentsSettled`, `paymentHandoffsClosed`, `notificationDeliveriesClosed`, `reconciliationBalanced`
+- `blockerCount`, `missingFinalInvoiceBlockerCount`, `missingPaymentRequestBlockerCount`, `unpaidInvoiceBlockerCount`, `openHandoffBlockerCount`, `openNotificationBlockerCount`, `reconciliationBlockerCount`
+- `finalInvoiceTotalMinorUnits`, `paidInvoiceTotalMinorUnits`, `paymentRequestedTotalMinorUnits`, `reconciliationDifferenceMinorUnits`, `failureCount`
+- `rawCustomerPaymentDataStored=false`, `rawProviderResponseStored=false`, `rawSecretValuesStored=false`
+- `scopePolicy`, `secretPolicy`, and `note` explaining the reduced evidence boundary.
 ### GET /api/admin/security/enterprise-auth-plan
 
 Enterprise SSO/OIDC/LDAP 도입 전 현재 인증 경계와 claim mapping plan을 조회한다. 현재 활성 login mode는 `LOCAL_PASSWORD`이며, OIDC/LDAP는 plan/readiness 상태로만 노출한다. `ADMIN`은 조회 가능하고, `AUDITOR`도 보안 검토용 read-only route로 조회할 수 있다.
@@ -4967,7 +5016,7 @@ Notes:
 
 Admin dashboard readiness snapshot. `ADMIN` required.
 
-`dataFlowStoragePlan`, `dataFlowStorageTransitionRunbook`, `operationsHandoffPackage.dataFlowStoragePlanSnapshot`, and `operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot` include the target p95 query latency/runbook transition summary so the API exposes sizing, retention, sanitized query-plan evidence, backfill/rollback rehearsal status, and cutover readiness without raw operational payloads.
+`dataFlowStoragePlan`, `dataFlowQueryRetentionBudget`, `dataFlowStorageTransitionRunbook`, `operationsHandoffPackage.dataFlowStoragePlanSnapshot`, `operationsHandoffPackage.dataFlowQueryRetentionBudgetSnapshot`, and `operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot` include the target sizing, p95 query latency, query/retention budget, and runbook transition summaries so the API exposes sizing, retention, sanitized query-plan evidence, benchmark/dry-run budget status, backfill/rollback rehearsal status, and cutover readiness without raw operational payloads.
 
 `operationsHandoffPackage.monitoringThresholdSnapshot` includes the reduced target threshold review summary so the API exposes alert mapping counts, Alertmanager route count/names, Grafana/tuning evidence counts, and confirmation flags without raw Alertmanager receiver secrets or credential-shaped payloads.
 
@@ -4975,17 +5024,23 @@ Admin dashboard readiness snapshot. `ADMIN` required.
 
 `operationsHandoffPackage.commercialIntegrationSnapshot` and `operationsHandoffPackage.commercialApprovalSnapshot` include reduced commercial handoff summaries plus explicit review confirmation flags, without raw provider responses, customer payment data, raw price tables, contract text, or license keys.
 
-`operationsHandoffPackage.operationsConvergenceSnapshot` includes reduced convergence gate fields: readiness/finalizer results, finalizer failed/gap counts, typed count validity/raw markers, Kubernetes report sync result/failed count/readiness, typed sync readiness/count validity/raw markers, and sync `sourceReportResult`. This lets the dashboard distinguish a truly ready handoff snapshot from a stale or tampered snapshot that only reports `result=ready`.
+`operationsHandoffPackage.enterpriseAuthJitRollbackSnapshot` includes the reduced admin-approved JIT rollback handoff summary when that evidence is supplied or required for active enterprise auth smoke. It exposes review window, evidence refs, confirmation booleans, reduced smoke result/counts, and failure/check counts without raw claims, OIDC tokens/codes/states, LDAP/admin passwords, IdP responses, or directory payloads.
 
-The backend also reads `.osmu-run/latest-monitoring-threshold-evidence.json` as `monitoringThresholdEvidence` when present.
+`operationsHandoffPackage.operationsConvergenceSnapshot` includes reduced convergence gate fields: readiness/finalizer results, finalizer failed/gap counts, typed count validity/raw markers, Kubernetes report sync result/failed count/readiness, typed sync readiness/count validity/raw markers, sync `sourceReportResult`, and `handoffPostDispatchCommandCount`/`handoffPostDispatchCommands[]` for the run-id/artifact collection chain, including saved run-list JSON, GitHub REST API, GitHub CLI, and direct browser run-id paths, that must follow browser dispatch. This lets the dashboard distinguish a truly ready handoff snapshot from a stale or tampered snapshot that only reports `result=ready`.
 
-The response combines runtime, backup, quota, sharing, and operations-readiness gates. When the configured files exist, the backend reads `.osmu-run/latest-operations-readiness.json`, `.osmu-run/latest-operations-evidence-plan.json`, `.osmu-run/latest-operations-evidence-plan-invocation.json`, `.osmu-run/latest-operations-invocation-unblock-plan.json`, `.osmu-run/latest-operations-dispatch-preflight.json`, `.osmu-run/latest-operations-workflow-run-ids.json`, `.osmu-run/latest-operations-artifact-collection-plan.json`, `.osmu-run/latest-operations-readiness-artifact-import.json`, `.osmu-run/latest-operations-readiness-finalize.json`, `.osmu-run/latest-operations-evidence-handoff.json`, `.osmu-run/latest-operations-handoff-package.json`, `.osmu-run/latest-storage-expansion-finalize.json`, `.osmu-run/latest-kubernetes-ha-dr-readiness.json`, `.osmu-run/latest-kubernetes-dr-finalize.json`, `.osmu-run/latest-iam-rbac-finalize.json`, `.osmu-run/latest-security-evidence-finalize.json`, `.osmu-run/latest-image-signing-evidence.json`, `.osmu-run/latest-container-security-evidence.json`, `.osmu-run/latest-secret-rotation-evidence.json`, `.osmu-run/latest-commercial-integration-evidence.json`, `.osmu-run/latest-commercial-approval-evidence.json`, `.osmu-run/latest-enterprise-auth-smoke.json`, `.osmu-run/latest-storage-backend-telemetry.json`, `.osmu-run/latest-minio-bucket-cors-verification.json`, `.osmu-run/latest-data-flow-storage-plan.json`, `.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json`, `.osmu-run/latest-operations-readiness-convergence.json`, and `.osmu-run/latest-kubernetes-operations-report-sync.json`. Non-ready operations evidence is returned as `OPERATIONS` items, usually targeting `dashboard-readiness-panel`. Individual pending operations checks can include optional `evidencePath`, `remediationCommand`, `remediationWorkflow`, `remediationWorkflowCommand`, and `remediationNote` fields copied from the operations readiness report. The generated operations evidence plan is exposed as an `OPERATIONS_EVIDENCE_PLAN` item with its plan path and regeneration command, and as a structured `operationsEvidencePlan` object with ordered executable actions. The guarded invocation report is exposed as an `OPERATIONS_EVIDENCE_PLAN_INVOCATION` item and as `operationsEvidenceInvocation`, showing planned/blocked/executed counts, action block reasons, unresolved placeholders, and invalid placeholder handoff before live workflow dispatch. The invocation unblock plan is exposed as an `OPERATIONS_INVOCATION_UNBLOCK_PLAN` item and as `operationsInvocationUnblockPlan`, showing required confirmations, unresolved or invalid placeholders, ambiguous repeated placeholders, action order lists, and copyable follow-up plan commands before live dispatch. The dispatch preflight is exposed as an `OPERATIONS_DISPATCH_PREFLIGHT` item and as `operationsDispatchPreflight`, showing failed checks, missing/unsafe/invalid inputs, required GitHub secrets, workflow file presence, input safe/valid flags, and plan/execute command previews when ready. The workflow run id plan is exposed as an `OPERATIONS_WORKFLOW_RUN_ID_PLAN` item and as `operationsWorkflowRunIdPlan`, showing query commands and recommended run-id handoff state after workflow dispatch. The artifact collection plan is exposed as an `OPERATIONS_ARTIFACT_COLLECTION_PLAN` item and as `operationsArtifactCollectionPlan`, showing missing run ids, expected artifact names, `gh run download` commands, finalizer dispatch commands, optional direct `data_flow_storage_plan_json_base64` and `data_flow_storage_transition_runbook_json_base64` guidance, optional `minio_bucket_cors_*` artifact guidance for dashboard-only browser upload CORS evidence, and the local import command before readiness artifact import. The readiness artifact import report is exposed as an `OPERATIONS_READINESS_ARTIFACT_IMPORT` item and as `operationsReadinessArtifactImport`, showing import status, imported/failed counts, source/destination paths, and the no-secret import policy. The readiness finalizer report is exposed as an `OPERATIONS_READINESS_FINALIZER` item and as `operationsReadinessFinalize`, showing selected finalizer steps, final readiness result, gaps, commands, step results, and the secret masking policy. The evidence handoff is exposed as an `OPERATIONS_EVIDENCE_HANDOFF` item and as `operationsEvidenceHandoff`, showing the current bottleneck, next command, stage readiness, missing evidence counts, and finalizer failed/gap counts. The handoff package is exposed as an `OPERATIONS_HANDOFF_PACKAGE` item and as `operationsHandoffPackage`, showing target environment, cluster, operator, confirmation flags including enterprise auth smoke snapshot review, target evidence refs, failed/planned/check counts, top checks, readiness snapshot result/count summary, convergence snapshot readiness/finalizer failed/gap/sync source summary, data-flow storage plan snapshot store/count/query-plan summary, data-flow storage transition runbook snapshot result/plan/store/failure summary, secret rotation snapshot core/failure summary, commercial integration snapshot required/pass/payment-adapter summary, commercial approval snapshot version/price-list/failure summary, enterprise auth smoke snapshot passed or scope-out summary, and no-secret policy. Storage expansion, Kubernetes HA/DR, and Kubernetes DR evidence are exposed as `STORAGE_EXPANSION_FINALIZE`, `KUBERNETES_HA_DR_READINESS`, and `KUBERNETES_DR_FINALIZE` items plus `storageExpansionFinalize`, `kubernetesHaDrReadiness`, and `kubernetesDrFinalize`, showing target namespace/tenant/service account or restore namespace labels, result/status, failed count, gaps, top checks/steps, and no-secret policy. IAM/RBAC finalizer evidence is exposed as an `IAM_RBAC_EVIDENCE` item and as `iamRbacEvidence`, showing finalizer result/status, target namespace/service account, selected backend/live auth flags, failed count, sanitized gap list, command names, step results, and no-secret policy. Security evidence finalizer/image signing/container scan evidence is exposed as a `SECURITY_EVIDENCE_FINALIZE` item and as `securityEvidence`, showing finalizer result, image signing result/digests/signature flags, container scan/SBOM result, SBOM package/hash summaries, top finalizer checks, and no-secret policy. Secret/certificate rotation evidence is exposed as a `SECRET_ROTATION_EVIDENCE` item and as `secretRotationEvidence`, showing target labels, rotation window, sanitized external evidence refs, confirmation flags, rotated/core counts, failed/planned checks, top rotations, top checks, and no-secret policy. Commercial integration/approval evidence is exposed as `COMMERCIAL_INTEGRATION_EVIDENCE`/`COMMERCIAL_APPROVAL_EVIDENCE` items and as `commercialIntegrationEvidence`/`commercialApprovalEvidence`, showing target integration coverage, payment-provider adapter readiness summary, approval references, pricing proposal approval counts, failed/planned checks, and no-secret policy before production/B2B readiness is claimed. Enterprise auth smoke evidence is exposed as an `ENTERPRISE_AUTH_SMOKE_EVIDENCE` item and as `enterpriseAuthSmokeEvidence`, showing result, execution mode, OIDC/LDAP/audit requirements, pass/fail/blocked/planned counts, scope-out reference/reason when accepted, top checks, and the secret policy. MinIO bucket CORS verification is exposed as a `MINIO_BUCKET_CORS_VERIFICATION` item and as `minioBucketCorsVerification`, showing source mode, bucket/alias labels, normalized allowed/exposed headers, max-age values, failed/planned counts, top checks, operator commands, and the no-raw-XML/no-secret policy for OSMU browser multipart upload readiness; this is not AWS S3 parity work. The data-flow storage plan is exposed as a `DATA_FLOW_STORAGE_PLAN` item and as `dataFlowStoragePlan`, showing candidate store, target sizing, retention windows, pending checks, the sanitized `queryPlanEvidence` summary for MariaDB partition/dual-write candidates, and the OSMU operations analytics scope policy before partitioned/time-series storage is enabled. The data-flow transition runbook evidence is exposed as a `DATA_FLOW_STORAGE_TRANSITION_RUNBOOK` item and as `dataFlowStorageTransitionRunbook`, showing result, target labels, storage-plan result, candidate store, target p95 query latency, failure/check counts, confirmation flags, top failed checks, and the OSMU analytics scope policy before production/B2B readiness is claimed. The convergence report is exposed as an `OPERATIONS_READINESS_CONVERGENCE` item and as `operationsReadinessConvergence`, showing the final ready/action-required decision, current bottleneck, recommended command chain, finalizer failed/gap counts, stage counts, Kubernetes report sync readiness/result/failure count, optional `kubernetesReportSyncWorkflowCommand` for Actions handoff with `data_flow_storage_plan_json_base64` and `data_flow_storage_transition_runbook_json_base64`, and no-execute safety policy.
+The backend also reads `.osmu-run/latest-monitoring-threshold-evidence.json` as `monitoringThresholdEvidence` when present. It also reads `.osmu-run/latest-support-escalation-handoff-evidence.json` as `supportEscalationHandoffEvidence` when present.
 
-`dataFlowStoragePlan.queryPlanEvidence` is a summary only: it exposes format/result/mode/counts and at most failed check metadata, but not raw SQL, raw `EXPLAIN FORMAT=JSON`, passwords, bearer tokens, or provider credentials.
+The response combines runtime, backup, quota, sharing, and operations-readiness gates. When the configured files exist, the backend reads `.osmu-run/latest-operations-readiness.json`, `.osmu-run/latest-operations-evidence-plan.json`, `.osmu-run/latest-operations-evidence-plan-invocation.json`, `.osmu-run/latest-operations-invocation-unblock-plan.json`, `.osmu-run/latest-operations-dispatch-preflight.json`, `.osmu-run/latest-operations-workflow-run-ids.json`, `.osmu-run/latest-operations-artifact-collection-plan.json`, `.osmu-run/latest-operations-readiness-artifact-import.json`, `.osmu-run/latest-operations-readiness-finalize.json`, `.osmu-run/latest-operations-evidence-handoff.json`, `.osmu-run/latest-operations-handoff-package.json`, `.osmu-run/latest-storage-expansion-finalize.json`, `.osmu-run/latest-kubernetes-ha-dr-readiness.json`, `.osmu-run/latest-kubernetes-dr-finalize.json`, `.osmu-run/latest-iam-rbac-finalize.json`, `.osmu-run/latest-security-evidence-finalize.json`, `.osmu-run/latest-image-signing-evidence.json`, `.osmu-run/latest-container-security-evidence.json`, `.osmu-run/latest-secret-rotation-evidence.json`, `.osmu-run/latest-commercial-integration-evidence.json`, `.osmu-run/latest-commercial-approval-evidence.json`, `.osmu-run/latest-enterprise-auth-smoke.json`, `.osmu-run/latest-enterprise-auth-jit-rollback-evidence.json`, `.osmu-run/latest-storage-backend-telemetry.json`, `.osmu-run/latest-support-escalation-handoff-evidence.json`, `.osmu-run/latest-minio-bucket-cors-verification.json`, `.osmu-run/latest-cluster-network-access-review-evidence.json`, `.osmu-run/latest-helm-values-hardening-evidence.json`, `.osmu-run/latest-data-flow-storage-plan.json`, `.osmu-run/latest-data-flow-query-retention-budget-evidence.json`, `.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json`, `.osmu-run/latest-operations-readiness-convergence.json`, and `.osmu-run/latest-kubernetes-operations-report-sync.json`. Non-ready operations evidence is returned as `OPERATIONS` items, usually targeting `dashboard-readiness-panel`. Individual pending operations checks can include optional `evidencePath`, `remediationCommand`, `remediationWorkflow`, `remediationWorkflowCommand`, and `remediationNote` fields copied from the operations readiness report. The operations readiness report also carries top-level `totalCount`/`checkCount`, `pendingCategorySummary`/`pendingCategoryCounts`, and `pendingRemediationCount`/`pendingRemediations[]`, letting downstream evidence plans, prototype status, and dashboard surfaces cross-check the source breakdown without re-deriving it from checks. The dashboard response also exposes the source contract directly as `operationsReadinessSummary` with `result`, `summary`, `reportPath`, `generatedAt`, passed/pending/total/check counts, `pendingCategorySummary`, `pendingCategoryCounts`, `pendingRemediationCount`, `pendingRemediations`, and `decisionRule`, so operators can see the authoritative source readiness counts/categories and next evidence commands even when downstream evidence-plan reports are absent or stale. The generated operations evidence plan is exposed as an `OPERATIONS_EVIDENCE_PLAN` item with its plan path and regeneration command, and as a structured `operationsEvidencePlan` object with source readiness passed/pending/total/check counts, source pending-remediation coverage fields, `actionSummary` counts, `pendingCategorySummary`/`pendingCategoryCounts`, ordered executable actions, per-action `currentDetail`, and per-action web dispatch URLs when repository slug resolution is available. The guarded invocation report is exposed as an `OPERATIONS_EVIDENCE_PLAN_INVOCATION` item and as `operationsEvidenceInvocation`, carrying source readiness passed/pending/total/check counts and top-level selected action orders while showing planned/blocked/executed counts, action block reasons, unresolved placeholders, and invalid placeholder handoff before live workflow dispatch. The invocation unblock plan is exposed as an `OPERATIONS_INVOCATION_UNBLOCK_PLAN` item and as `operationsInvocationUnblockPlan`, carrying the same source readiness count context while showing required confirmations, grouped confirmation/input summaries with action orders and workflow input names, unresolved or invalid placeholders, ambiguous repeated placeholders, action order lists, and copyable follow-up plan commands before live dispatch. The dispatch preflight is exposed as an `OPERATIONS_DISPATCH_PREFLIGHT` item and as `operationsDispatchPreflight`, carrying source readiness passed/pending/total/check counts while showing failed checks, missing/unsafe/invalid inputs, required GitHub secrets, workflow file presence, GitHub repository, per-workflow web dispatch URLs, input safe/valid flags, action-level input templates with ready-to-dispatch state, ready/blocked action counts and orders, workflow input names, parameter summaries, operator checklist items, GitHub CLI path mode, full plan/execute/API execute command previews when ready, GitHub ref context, Git ref safety status/ahead-behind counts/dirty working tree flag/suggested pushed ref/optional suggested push command/note, and ready-subset plan/execute/API execute command previews when only part of the selection is dispatchable. The workflow run id plan is exposed as an `OPERATIONS_WORKFLOW_RUN_ID_PLAN` item and as `operationsWorkflowRunIdPlan`, carrying source readiness passed/pending/total/check counts while showing GitHub repository, query commands, GitHub REST API query URLs and run-list command, browser workflow runs URLs, top-level workflow run-id input hints, recommended follow-up commands including direct browser run-id artifact collection, saved run-list JSON directory command, per-workflow run-list JSON file/path/existence hints, top-level selected action orders, source invocation action orders/statuses, recommended run-id handoff state after workflow dispatch, and structured `securityEvidenceFinalizerReady`, `securityEvidenceFinalizerRunIdInputs[]`, `securityEvidenceFinalizerRunIdInputHints[]`, `securityEvidenceFinalizerMissingRunIdInputs[]`, and `securityEvidenceFinalizerDependencyNote` fields showing that `security-evidence-finalizer-ci.yml` needs both `ImageSigningRunId` and `ContainerSecurityRunId`, including supplemental query/browser hints when the current selected dispatch scope only covers one of those inputs. The artifact collection plan is exposed as an `OPERATIONS_ARTIFACT_COLLECTION_PLAN` item and as `operationsArtifactCollectionPlan`, carrying source readiness passed/pending/total/check counts, top-level selected action orders, and artifact-level action metadata while showing missing run ids, expected artifact names, `gh run download` commands, finalizer dispatch commands, security source artifact counts, `securityEvidenceFinalizerReady`, structured `securityEvidenceFinalizerInputs[]`, `securityEvidenceFinalizerMissingRunIdInputs`, optional direct `data_flow_storage_plan_json_base64`, `data_flow_query_retention_budget_json_base64`, and `data_flow_storage_transition_runbook_json_base64` guidance, optional `minio_bucket_cors_*` artifact guidance for dashboard-only browser upload CORS evidence, and the local import command before readiness artifact import. The readiness artifact import report is exposed as an `OPERATIONS_READINESS_ARTIFACT_IMPORT` item and as `operationsReadinessArtifactImport`, showing import status, imported/failed counts, source/destination paths, and the no-secret import policy. The readiness finalizer report is exposed as an `OPERATIONS_READINESS_FINALIZER` item and as `operationsReadinessFinalize`, showing selected finalizer steps, final readiness result, gaps, commands, step results, and the secret masking policy. The evidence handoff is exposed as an `OPERATIONS_EVIDENCE_HANDOFF` item and as `operationsEvidenceHandoff`, showing the structured `currentBottleneck`, next command, readiness summary and passed/pending/total/check counts, stage readiness, dispatch preflight result, dispatch GitHub repository, ready/blocked dispatch template counts, ready/blocked dispatch action orders, invocation/dispatch-preflight/run-id/artifact selected action orders, dispatch preflight/run-id/artifact scope mismatch and stale flags, workflow lineage, stale downstream report count, per-workflow web dispatch URLs, workflow-run stage notes with browser workflow runs URL hints, ready-subset handoff command when available, browser-dispatch next-step routing with structured `nextStep.dispatchUrls` when GitHub CLI availability is the only failed preflight check, post-dispatch run-id collection via saved run-list JSON, GitHub REST API, or GitHub CLI, a workflow-run-id stage command that prefers the GitHub REST API collection command when available, direct browser run-id artifact collection, structured `browserDispatchChecklist[]`/`browserDispatchChecklistCount` rows with dispatch URL, runs URL, run-id parameter, artifact name, run-list JSON path, and manual artifact collection command, and artifact collection regeneration commands as `postDispatchCommands[]`, missing evidence counts, and finalizer failed/gap counts. The handoff package is exposed as an `OPERATIONS_HANDOFF_PACKAGE` item and as `operationsHandoffPackage`, showing target environment, cluster, operator, confirmation flags including chargeback closeout snapshot review and enterprise auth smoke snapshot review, target evidence refs, failed/planned/check counts, top checks, readiness snapshot result/count summary, convergence snapshot readiness/finalizer failed/gap/sync source summary plus post-dispatch run-id/artifact collection command count/list, data-flow storage plan snapshot store/count/candidate-decision/query-plan summary, data-flow query/retention budget snapshot p95/retention/failure summary, data-flow storage transition runbook snapshot result/plan/store/failure summary, secret rotation snapshot core/failure summary, commercial integration snapshot required/pass/payment-adapter summary, commercial approval snapshot version/price-list/failure summary, chargeback closeout snapshot billing-period/invoice/payment/reconciliation/no-raw-data summary, enterprise auth smoke snapshot passed or scope-out summary, optional enterprise auth JIT rollback snapshot summary, cluster network access review and Helm values hardening snapshot summaries, and no-secret policy. Storage expansion, Kubernetes HA/DR, and Kubernetes DR evidence are exposed as `STORAGE_EXPANSION_FINALIZE`, `KUBERNETES_HA_DR_READINESS`, and `KUBERNETES_DR_FINALIZE` items plus `storageExpansionFinalize`, `kubernetesHaDrReadiness`, and `kubernetesDrFinalize`, showing target namespace/tenant/service account or restore namespace labels, result/status, failed count, gaps, top checks/steps, and no-secret policy. IAM/RBAC finalizer evidence is exposed as an `IAM_RBAC_EVIDENCE` item and as `iamRbacEvidence`, showing finalizer result/status, target namespace/service account, selected backend/live auth flags, failed count, sanitized gap list, command names, step results, and no-secret policy. Security evidence finalizer/image signing/container scan evidence is exposed as a `SECURITY_EVIDENCE_FINALIZE` item and as `securityEvidence`, showing finalizer result, image signing result/digests/signature flags, container scan/SBOM result, SBOM package/hash summaries, top finalizer checks, and no-secret policy. Secret/certificate rotation evidence is exposed as a `SECRET_ROTATION_EVIDENCE` item and as `secretRotationEvidence`, showing target labels, rotation window, sanitized external evidence refs, confirmation flags, rotated/core counts, failed/planned checks, top rotations, top checks, and no-secret policy. Commercial integration/approval evidence is exposed as `COMMERCIAL_INTEGRATION_EVIDENCE`/`COMMERCIAL_APPROVAL_EVIDENCE` items and as `commercialIntegrationEvidence`/`commercialApprovalEvidence`, showing target integration coverage, payment-provider adapter readiness summary, approval references, pricing proposal approval counts, failed/planned checks, and no-secret policy before production/B2B readiness is claimed. Enterprise auth smoke evidence is exposed as an `ENTERPRISE_AUTH_SMOKE_EVIDENCE` item and as `enterpriseAuthSmokeEvidence`, showing result, execution mode, OIDC/LDAP/audit requirements, pass/fail/blocked/planned counts, scope-out reference/reason when accepted, top checks, and the secret policy. Enterprise auth JIT rollback evidence is exposed as an `ENTERPRISE_AUTH_JIT_ROLLBACK_EVIDENCE` item and as `enterpriseAuthJitRollbackEvidence`, showing target labels, review window, reduced smoke snapshot, external evidence references, confirmation booleans, failure/check counts, top checks, scope policy, and secret policy without raw claims or identity-provider payloads. Cluster network access review evidence is exposed as a `CLUSTER_NETWORK_ACCESS_REVIEW_EVIDENCE` item and as `clusterNetworkAccessReviewEvidence`, showing target labels, review window, static NetworkPolicy hashes, access review refs, confirmation booleans, failure/check counts, top checks, and no-credential policy. Helm values hardening evidence is exposed as a `HELM_VALUES_HARDENING_EVIDENCE` item and as `helmValuesHardeningEvidence`, showing target labels, review window, chart file hashes, static hardening booleans, confirmation booleans, failure/check counts, top checks, and no-credential policy. Support escalation handoff evidence is exposed as a `SUPPORT_ESCALATION_HANDOFF_EVIDENCE` item and as `supportEscalationHandoffEvidence`, showing target labels, review window, support/runbook/rollback/SLA/known-gap evidence refs, document coverage booleans, operator confirmations, failure/check counts, check rows, and no-secret policy. MinIO bucket CORS verification is exposed as a `MINIO_BUCKET_CORS_VERIFICATION` item and as `minioBucketCorsVerification`, showing source mode, bucket/alias labels, normalized allowed/exposed headers, max-age values, failed/planned counts, top checks, operator commands, and the no-raw-XML/no-secret policy for OSMU browser multipart upload readiness; this is not AWS S3 parity work. The data-flow storage plan is exposed as a `DATA_FLOW_STORAGE_PLAN` item and as `dataFlowStoragePlan`, showing candidate store, structured `candidateDecision` evidence requirements, target sizing, retention windows, pending checks, the sanitized `queryPlanEvidence` summary for MariaDB partition/dual-write candidates, and the OSMU operations analytics scope policy before partitioned/time-series storage is enabled. The data-flow query/retention budget evidence is exposed as a `DATA_FLOW_QUERY_RETENTION_BUDGET` item and as `dataFlowQueryRetentionBudget`, showing target/observed p95 and p99 query latency, sample/window counts, retention budget seconds, detailed/daily/monthly retention dry-run durations and deleted-row counts, budget booleans, confirmation flags, top failed checks, and the OSMU analytics scope policy before transition rehearsal readiness is claimed. The data-flow transition runbook evidence is exposed as a `DATA_FLOW_STORAGE_TRANSITION_RUNBOOK` item and as `dataFlowStorageTransitionRunbook`, showing result, target labels, storage-plan result, candidate store, target p95 query latency, failure/check counts, confirmation flags, top failed checks, and the OSMU analytics scope policy before production/B2B readiness is claimed. The convergence report is exposed as an `OPERATIONS_READINESS_CONVERGENCE` item and as `operationsReadinessConvergence`, showing the final ready/action-required decision, readiness summary and passed/pending/total/check counts, current bottleneck notes and dispatch URL arrays, recommended command chain notes including GitHub REST API workflow-run-id collection when available and browser-dispatch security finalizer dependency hints from the handoff checklist, structured `handoffBrowserDispatchDependencyNotes[]` copied from the handoff checklist, handoffPostDispatchCommands run-id/artifact collection chain including saved run-list JSON, GitHub REST API, and GitHub CLI paths, and dispatch URL arrays, structured `handoffStale` freshness plus handoff/readiness timestamp fields, stale handoff refresh routing when readiness is newer than the handoff report, finalizer failed/gap counts, stage counts, Kubernetes report sync readiness/result/failure count plus `kubernetesReportSyncStale`, timestamp/source, and freshness reason when the sync report is older than the latest handoff/readiness/finalizer input, optional `kubernetesReportSyncWorkflowCommand` for Actions handoff with `data_flow_storage_plan_json_base64`, `data_flow_query_retention_budget_json_base64`, and `data_flow_storage_transition_runbook_json_base64`, and no-execute safety policy.
+
+`dataFlowStoragePlan.candidateDecision` records the selected store, evidence model, MariaDB query-plan requirement, target-store requirement, pass/confirmation booleans, safe-data policy, and next action. `dataFlowStoragePlan.queryPlanEvidence` is a summary only: it exposes format/result/mode/counts and at most failed check metadata, but not raw SQL, raw `EXPLAIN FORMAT=JSON`, passwords, bearer tokens, or provider credentials.
+`dataFlowQueryRetentionBudget` is a summary only: it exposes target p95 and observed p95/p99 query latency, sample/window counts, retention dry-run durations/deleted-row counts, confirmations, and failed checks, but not raw SQL, raw EXPLAIN JSON, object keys, raw event messages, credentials, or full benchmark/retention job output.
 
 `dataFlowStorageTransitionRunbook` is a summary only: it exposes runbook result, target labels, storage-plan result, candidate store, target p95 query latency, failure/check counts, confirmations, and top failed checks, but not raw SQL, raw EXPLAIN JSON, object keys, raw event messages, credentials, or full operational command output.
 
+`operationsHandoffPackage.chargebackCloseoutSnapshot` is reduced summary only: it exposes closeout result, target labels, billing period, closeout window, check/failure/planned counts, invoice/payment/reconciliation counts, payment-provider adapter readiness status, raw-data flags, confirmations, and evidence refs, but not customer payment data, provider payloads/responses, endpoint URLs, credentials, price tables, or invoice documents.
+
 `operationsHandoffPackage.enterpriseAuthSmokeSnapshot` is also a reduced summary only: it exposes `passed` or accepted `scope-out` result, execution mode, requirement booleans, counts, and scope-out reference/reason, and `operationsHandoffPackage.confirmations.enterpriseAuthSmokeSnapshotReviewed` records the operator review confirmation; it does not expose raw identity claims, OIDC codes/states/tokens, LDAP/admin passwords, or client secrets.
+`operationsHandoffPackage.dataFlowQueryRetentionBudgetSnapshot` is reduced summary only: it exposes result, storage-plan result, candidate store, target/observed p95 query latency, retention budget seconds, failure/check counts, and confirmations, but not raw SQL, raw EXPLAIN JSON, object keys, raw event messages, credentials, or full benchmark/retention job output.
 
 `operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot` is reduced summary only: it exposes runbook result, storage-plan result, candidate store, target p95 query latency, failure/check counts, and transition confirmations, but not raw SQL, raw EXPLAIN JSON, object keys, raw event messages, credentials, or full operational command output.
 
@@ -4993,11 +5048,19 @@ The response combines runtime, backup, quota, sharing, and operations-readiness 
 
 `operationsHandoffPackage.monitoringThresholdSnapshot` is reduced summary only: it exposes threshold evidence result, target labels, required/mapped alert counts, route names/counts, Grafana panel count, tuning evidence count, failure/check counts, and confirmation flags, but not raw Alertmanager receiver secrets, webhook secrets, bearer tokens, kubeconfig values, private keys, or raw customer data.
 
-`operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote` carries the optional direct `data_flow_storage_transition_runbook_json_base64` handoff for artifact finalizer runs, parallel to `dataFlowStoragePlanInputNote`, so operators can promote sanitized transition rehearsal evidence without waiting for a manual workflow artifact.
+`operationsHandoffPackage.clusterNetworkAccessReviewSnapshot` and `operationsHandoffPackage.helmValuesHardeningSnapshot` are reduced summaries only: they expose target labels, result/counts, static NetworkPolicy or Helm hardening booleans, confirmation flags, and top check rows, but not kubeconfig values, rendered secret manifests, credentials, raw Helm secret values, or full cluster policy payloads.
+
+`operationsArtifactCollectionPlan.dataFlowQueryRetentionBudgetInputNote` carries the optional direct `data_flow_query_retention_budget_json_base64` handoff for artifact finalizer runs, parallel to `dataFlowStoragePlanInputNote`, so operators can promote sanitized query latency and retention budget evidence without waiting for a manual workflow artifact.
+
+`operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote` carries the optional direct `data_flow_storage_transition_runbook_json_base64` handoff for artifact finalizer runs, parallel to `dataFlowStoragePlanInputNote` and `dataFlowQueryRetentionBudgetInputNote`, so operators can promote sanitized transition rehearsal evidence without waiting for a manual workflow artifact.
+
+`operationsArtifactCollectionPlan.securitySourceArtifactCount`, `readySecuritySourceArtifactCount`, `missingSecuritySourceArtifactCount`, `securityEvidenceFinalizerReady`, structured `securityEvidenceFinalizerInputs[]`, and `securityEvidenceFinalizerMissingRunIdInputs` surface image-signing/container-scan source readiness separately from required operations artifact import readiness. Each security finalizer input row carries the display name, workflow, run-id parameter, artifact-name parameter, artifact name, run id, readiness booleans, selected-source flag, and note. The security evidence finalizer is ready only when both `ImageSigningRunId` and `ContainerSecurityRunId` resolve to concrete numeric run ids, so a security-only handoff cannot appear as complete just because `missingRequiredArtifactCount=0`.
 
 `operationsArtifactCollectionPlan.minioBucketCorsInputNote` carries the optional `minio_bucket_cors_*` artifact-finalizer handoff for dashboard browser multipart upload CORS visibility only. It is not a readiness gate and is not AWS S3 parity work.
 
-Response:
+The response JSON below is a synthetic field-shape fixture; its `passed=36 pending=6` operations readiness summary is not the current evidence snapshot. Use `dev-docs/prototype-status.md`, `dev-docs/development-roadmap.md`, and `.osmu-run/latest-operations-readiness.json` for current readiness counts.
+
+Response (synthetic field-shape fixture):
 
 ```json
 {
@@ -5087,7 +5150,8 @@ Response:
         "actionLabel": "Dispatch preflight",
         "evidencePath": ".osmu-run/latest-operations-dispatch-preflight.json",
         "remediationCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-dispatch-preflight.ps1",
-        "remediationNote": "Run the ready plan command first without -Execute."
+        "remediationWorkflowCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -GitHubRef main -Execute",
+        "remediationNote": "Run the ready plan command first without -Execute. Ready subset GitHub REST API dispatch command is available after setting GH_TOKEN or GITHUB_TOKEN."
       },
       {
         "severity": "WARNING",
@@ -5105,7 +5169,7 @@ Response:
         "severity": "WARNING",
         "category": "OPERATIONS",
         "code": "OPERATIONS_ARTIFACT_COLLECTION_PLAN",
-        "message": "Operations artifact collection plan is action-required: artifacts=12, missingRequired=10.",
+        "message": "Operations artifact collection plan is action-required: artifacts=12, missingRequired=10, missingSecuritySources=2, missingSecurityFinalizerInputs=ImageSigningRunId/ContainerSecurityRunId.",
         "targetPage": "dashboard",
         "targetPanel": "dashboard-readiness-panel",
         "actionLabel": "Artifact collection",
@@ -5145,13 +5209,13 @@ Response:
         "severity": "WARNING",
         "category": "OPERATIONS",
         "code": "OPERATIONS_EVIDENCE_HANDOFF",
-        "message": "Operations evidence handoff is blocked: next=resolve-invocation-blockers, blockedActions=5, missingRuns=6, missingArtifacts=4, finalizerGaps=1.",
+        "message": "Operations evidence handoff is blocked: next=dispatch-ready-subset, blockedActions=5, missingRuns=6, missingArtifacts=4, finalizerGaps=1.",
         "targetPage": "dashboard",
         "targetPanel": "dashboard-readiness-panel",
         "actionLabel": "Evidence handoff",
         "evidencePath": ".osmu-run/latest-operations-evidence-handoff.json",
-        "remediationCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1",
-        "remediationNote": "The invocation report still has blocked actions. Generate the unblock plan, fill placeholders, confirm operator approvals, and confirm kubeconfig-secret readiness before dispatch."
+        "remediationCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
+        "remediationNote": "The invocation report still has blocked actions, but 1 action(s) are ready to dispatch: 6. Run the ready subset plan command first without -Execute, then dispatch only after review and continue resolving the remaining blocked actions."
       },
       {
         "severity": "WARNING",
@@ -5169,13 +5233,13 @@ Response:
         "severity": "WARNING",
         "category": "OPERATIONS",
         "code": "OPERATIONS_READINESS_CONVERGENCE",
-        "message": "Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/7, finalizerGaps=1.",
+        "message": "Operations readiness convergence is action-required: bottleneck=dispatch-ready-subset, stages=1/7, finalizerGaps=1.",
         "targetPage": "dashboard",
         "targetPanel": "dashboard-readiness-panel",
         "actionLabel": "Convergence",
         "evidencePath": ".osmu-run/latest-operations-readiness-convergence.json",
-        "remediationCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1",
-        "remediationNote": "The invocation report still has blocked actions. This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."
+        "remediationCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
+        "remediationNote": "The invocation report still has blocked actions, but 1 action(s) are ready to dispatch: 6. This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."
       },
       {
         "severity": "WARNING",
@@ -5192,11 +5256,71 @@ Response:
         "remediationNote": "This script writes to Kubernetes only when -Apply is supplied. -ServerDryRunOnly talks to the API server without persisting changes. The default and -PlanOnly modes do not execute kubectl."
       }
     ],
+    "operationsReadinessSummary": {
+      "result": "pending",
+      "summary": "passed=36 pending=6",
+      "reportPath": ".osmu-run/latest-operations-readiness.json",
+      "generatedAt": "2026-06-27T00:00:00Z",
+      "passedCount": 36,
+      "pendingCount": 6,
+      "totalCount": 42,
+      "checkCount": 42,
+      "pendingCategorySummary": "data-flow=1, ha-dr=2, monitoring=1, security-hardening=1, storage-backend=1",
+      "pendingCategoryCounts": [
+        { "category": "data-flow", "count": 1 },
+        { "category": "ha-dr", "count": 2 },
+        { "category": "monitoring", "count": 1 },
+        { "category": "security-hardening", "count": 1 },
+        { "category": "storage-backend", "count": 1 }
+      ],
+      "pendingRemediationCount": 6,
+      "pendingRemediations": [
+        {
+          "name": "Container scan/SBOM evidence",
+          "category": "security-hardening",
+          "evidencePath": ".osmu-run/latest-container-security-evidence.json",
+          "requiredEvidence": "container scan/SBOM result=passed from GitHub-hosted workflow",
+          "detail": "report not found",
+          "command": "Dispatch .github/workflows/container-security-ci.yml on the target commit",
+          "workflow": ".github/workflows/container-security-ci.yml",
+          "workflowCommand": "gh workflow run container-security-ci.yml",
+          "note": "Run the target workflow and import the resulting artifact before claiming operations readiness."
+        }
+      ],
+      "decisionRule": "Production/B2B operations readiness is ready only when every listed evidence check is PASS."
+    },
     "operationsEvidencePlan": {
       "result": "action-required",
       "sourceSummary": "passed=36 pending=6",
+      "sourcePassedCount": 36,
+      "sourcePendingCount": 6,
+      "sourceTotalCount": 42,
+      "sourceCheckCount": 42,
+      "sourcePendingRemediationCount": 6,
+      "sourcePendingRemediationEntryCount": 6,
+      "sourcePendingRemediationActionCount": 6,
+      "sourcePendingRemediationMissingActionCount": 0,
+      "sourcePendingRemediationCoverageReady": true,
       "pendingCount": 6,
       "actionCount": 6,
+      "pendingCategorySummary": "data-flow=1, ha-dr=2, monitoring=1, security-hardening=1, storage-backend=1",
+      "pendingCategoryCounts": [
+        { "category": "data-flow", "count": 1 },
+        { "category": "ha-dr", "count": 2 },
+        { "category": "monitoring", "count": 1 },
+        { "category": "security-hardening", "count": 1 },
+        { "category": "storage-backend", "count": 1 }
+      ],
+      "actionSummary": {
+        "totalActions": 6,
+        "kubernetesLiveActions": 2,
+        "securityCiActions": 1,
+        "operatorRemediationActions": 3,
+        "requiresOperatorApprovalCount": 6,
+        "requiresKubeconfigSecretCount": 2,
+        "actionsWithPlaceholdersCount": 5,
+        "unplannedCheckCount": 0
+      },
       "unplannedCount": 0,
       "actions": [
         {
@@ -5206,6 +5330,8 @@ Response:
           "actionType": "kubernetes-live",
           "evidencePath": ".osmu-run/latest-kubernetes-dr-finalize.json",
           "requiredEvidence": "finalizer result=ready from target cluster restore drill",
+          "currentDetail": "result=planned, status=kubernetes-dr-finalize-plan",
+          "dispatchUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml",
           "workflowCommand": "gh workflow run kubernetes-dr-finalizer-ci.yml -f run_live=true -f backup_timestamp=<YYYYMMDDTHHMMSSZ> -f confirm_restore=true",
           "recommendedCommand": "gh workflow run kubernetes-dr-finalizer-ci.yml -f run_live=true -f backup_timestamp=<YYYYMMDDTHHMMSSZ> -f confirm_restore=true",
           "operatorInputs": ["<YYYYMMDDTHHMMSSZ>"],
@@ -5219,9 +5345,14 @@ Response:
       "result": "blocked",
       "sourceSummary": "passed=36 pending=6",
       "sourcePlan": ".osmu-run/latest-operations-evidence-plan.json",
+      "sourcePassedCount": 36,
+      "sourcePendingCount": 6,
+      "sourceTotalCount": 42,
+      "sourceCheckCount": 42,
       "commandMode": "Workflow",
       "executionMode": "plan-only",
       "selectedActionCount": 6,
+      "selectedActionOrders": [1, 2, 3, 4, 5, 6],
       "plannedCount": 1,
       "blockedCount": 5,
       "executedCount": 0,
@@ -5249,6 +5380,10 @@ Response:
       "sourceInvocationReport": ".osmu-run/latest-operations-evidence-plan-invocation.json",
       "sourceResult": "blocked",
       "sourceSummary": "passed=36 pending=6",
+      "sourcePassedCount": 36,
+      "sourcePendingCount": 6,
+      "sourceTotalCount": 42,
+      "sourceCheckCount": 42,
       "selectedActionCount": 6,
       "plannedCount": 1,
       "blockedCount": 5,
@@ -5257,12 +5392,35 @@ Response:
       "needsOperatorApprovalConfirmation": true,
       "requiredPlaceholderCount": 6,
       "ambiguousRepeatedPlaceholderCount": 2,
+      "confirmationGroupCount": 2,
+      "requiredInputGroupCount": 6,
       "blockedActionOrders": [1, 2, 3, 4, 5],
       "plannedActionOrders": [6],
       "confirmedPlanCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3,4,5,6 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>",
       "blockedOnlyPlanCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3,4,5 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>",
       "plannedOnlyCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
       "decisionRule": "Resolve placeholders and confirmations before execution.",
+      "confirmationGroups": [
+        {
+          "kind": "operator-approval",
+          "label": "Operator approval",
+          "flag": "-ConfirmOperatorApproval",
+          "actionCount": 5,
+          "actionOrders": [1, 2, 3, 4, 5]
+        }
+      ],
+      "requiredInputGroups": [
+        {
+          "placeholder": "<YYYYMMDDTHHMMSSZ>",
+          "parameter": "BackupTimestamp",
+          "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+          "actionCount": 1,
+          "actionOrders": [1],
+          "workflowInputs": ["backup_timestamp"],
+          "occurrenceCount": 1,
+          "ambiguousRepeatedPlaceholder": false
+        }
+      ],
       "actions": [
         {
           "order": 1,
@@ -5283,6 +5441,7 @@ Response:
               "placeholder": "<YYYYMMDDTHHMMSSZ>",
               "parameter": "BackupTimestamp",
               "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+              "workflowInputs": ["backup_timestamp"],
               "occurrenceCount": 1,
               "ambiguousRepeatedPlaceholder": false
             }
@@ -5295,8 +5454,16 @@ Response:
       "result": "action-required",
       "sourceUnblockPlan": ".osmu-run/latest-operations-invocation-unblock-plan.json",
       "sourceResult": "action-required",
+      "sourcePassedCount": 36,
+      "sourcePendingCount": 6,
+      "sourceTotalCount": 42,
+      "sourceCheckCount": 42,
       "selectedActionCount": 6,
       "selectedActionOrders": [1, 2, 3, 4, 5, 6],
+      "readyActionCount": 1,
+      "readyActionOrders": [6],
+      "blockedActionCount": 5,
+      "blockedActionOrders": [1, 2, 3, 4, 5],
       "needsKubeconfigSecretConfirmation": true,
       "needsOperatorApprovalConfirmation": true,
       "requiredInputCount": 6,
@@ -5306,16 +5473,49 @@ Response:
       "invalidInputCount": 0,
       "failedCheckCount": 3,
       "warningCheckCount": 2,
-      "requiredGitHubSecrets": ["OSMU_KUBECONFIG_BASE64", "OSMU_ADMIN_PASSWORD", "GITHUB_TOKEN"],
+      "githubCliPath": "C:/tools/gh.exe",
+      "githubRepository": "chefbeom/object-storage-osmu",
+      "githubRef": "main",
+      "gitRefSafety": {
+        "checked": true,
+        "status": "action-required",
+        "githubRef": "main",
+        "currentBranch": "main",
+        "shortCommitSha": "a0730b64",
+        "upstreamRef": "origin/main",
+        "aheadCount": 25,
+        "behindCount": 0,
+        "workingTreeDirty": true,
+        "githubRefMatchesCurrentBranch": true,
+        "githubRefLikelyContainsCommit": false,
+        "suggestedGitHubRef": "codex/operations-readiness-a0730b64",
+        "note": "Working tree has uncommitted changes; commit intended changes, rerun preflight, then push a branch before dispatch."
+      },      "requiredGitHubSecrets": ["OSMU_KUBECONFIG_BASE64", "OSMU_ADMIN_PASSWORD", "GITHUB_TOKEN"],
       "workflowFiles": [
         {
           "actionOrder": 1,
           "workflow": "storage-expansion-finalizer-ci.yml",
+          "sourceActionCount": 1,
+          "primaryActionOrder": 1,
+          "primaryActionName": "Storage expansion finalizer live evidence",
+          "primaryActionStatus": "blocked",
+          "actionOrders": [1],
+          "actionNames": ["Storage expansion finalizer live evidence"],
+          "actionStatuses": ["blocked"],
+          "actionCategories": ["storage-expansion"],
+          "actionTypes": ["kubernetes-live"],
           "path": ".github/workflows/storage-expansion-finalizer-ci.yml",
+          "dispatchUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml",
           "exists": true,
           "requiredSecrets": ["OSMU_KUBECONFIG_BASE64", "OSMU_ADMIN_PASSWORD"]
         }
       ],
+      "readyPlanCommand": "",
+      "executeCommand": "",
+      "apiExecuteCommand": "",
+      "readySubsetPlanCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:/tools/gh.exe -ActionOrder 6",
+      "readySubsetExecuteCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:/tools/gh.exe -ActionOrder 6 -Execute",
+      "readySubsetApiExecuteCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:/tools/gh.exe -ActionOrder 6 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -GitHubRef main -Execute",
       "checks": [
         {
           "code": "KUBECONFIG_SECRET_CONFIRMED",
@@ -5328,30 +5528,163 @@ Response:
           "actionOrder": 3,
           "placeholder": "<YYYYMMDDTHHMMSSZ>",
           "parameter": "BackupTimestamp",
+          "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+          "workflowInputs": ["backup_timestamp"],
           "supplied": false,
           "safeValue": true,
           "validValue": true,
           "ambiguousRepeatedPlaceholder": false
         }
       ],
-      "decisionRule": "Run the ready plan command first without -Execute."
+      "inputTemplates": [
+        {
+          "actionOrder": 3,
+          "name": "Kubernetes DR finalizer live evidence",
+          "category": "ha-dr",
+          "actionType": "kubernetes-live",
+          "commandMode": "Workflow",
+          "dispatchUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml",
+          "workflow": "kubernetes-dr-finalizer-ci.yml",
+          "needsOperatorApprovalConfirmation": true,
+          "needsKubeconfigSecretConfirmation": true,
+          "requiredSecrets": ["OSMU_KUBECONFIG_BASE64", "OSMU_ADMIN_PASSWORD"],
+          "workflowInputNames": ["backup_timestamp"],
+          "readyToDispatch": false,
+          "missingInputCount": 1,
+          "unsafeInputCount": 0,
+          "invalidInputCount": 0,
+          "ambiguousInputCount": 0,
+          "missingInputParameters": ["BackupTimestamp"],
+          "unsafeInputParameters": [],
+          "invalidInputParameters": [],
+          "inputs": [
+            {
+              "actionOrder": 3,
+              "placeholder": "<YYYYMMDDTHHMMSSZ>",
+              "parameter": "BackupTimestamp",
+              "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+              "workflowInputs": ["backup_timestamp"],
+              "supplied": false,
+              "safeValue": true,
+              "validValue": true,
+              "ambiguousRepeatedPlaceholder": false
+            }
+          ],
+          "operatorChecklist": [
+            "Confirm operator approval",
+            "Confirm OSMU_KUBECONFIG_BASE64 secret readiness",
+            "Ensure GitHub secret OSMU_KUBECONFIG_BASE64 is configured",
+            "Ensure GitHub secret OSMU_ADMIN_PASSWORD is configured",
+            "Fill 1 required input value(s)"
+          ]
+        }
+      ],
+      "decisionRule": "Run the ready plan command first without -Execute. Use GitHub CLI auth or -UseGitHubApi with GH_TOKEN/GITHUB_TOKEN before live dispatch."
     },
     "operationsWorkflowRunIdPlan": {
       "result": "query-required",
       "sourceInvocationReport": ".osmu-run/latest-operations-evidence-plan-invocation.json",
       "invocationResult": "blocked",
+      "sourceSummary": "passed=36 pending=6",
+      "sourcePassedCount": 36,
+      "sourcePendingCount": 6,
+      "sourceTotalCount": 42,
+      "sourceCheckCount": 42,
+      "selectedActionOrders": [1, 2, 3, 4, 5, 6],
+      "githubRepository": "chefbeom/object-storage-osmu",
       "branch": "main",
       "queryMode": "plan-only",
+      "runListJsonDirectory": ".\\.osmu-run\\workflow-run-lists",
+      "runListJsonDirectoryCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory .\\.osmu-run\\workflow-run-lists",
+      "githubApiRunListCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1",
+      "githubApiBaseUrl": "https://api.github.com",
       "workflowCount": 7,
       "readyWorkflowCount": 0,
       "missingWorkflowCount": 7,
       "artifactCollectionPlanCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ImageSigningVersion v0.1.0-rc.1 -CommitSha abc123",
+      "securityEvidenceFinalizerReady": false,
+      "securityEvidenceFinalizerRunIdInputs": ["ImageSigningRunId", "ContainerSecurityRunId"],
+      "securityEvidenceFinalizerRunIdInputHints": [
+        {
+          "workflow": "image-publish-sign-ci.yml",
+          "group": "image-signing-source",
+          "actionOrders": [],
+          "runIdParameter": "ImageSigningRunId",
+          "artifactName": "osmu-image-signing-v0.1.0-rc.1-abc123",
+          "runsUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml",
+          "runListJsonPath": ".\\.osmu-run\\workflow-run-lists\\image-publish-sign-ci.yml.json",
+          "queryCommand": "gh run list --workflow image-publish-sign-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle",
+          "gitHubApiQueryUrl": "https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20",
+          "sourceSelected": false,
+          "supplementalForSecurityFinalizer": true
+        },
+        {
+          "workflow": "container-security-ci.yml",
+          "group": "container-security-source",
+          "actionOrders": [6],
+          "runIdParameter": "ContainerSecurityRunId",
+          "artifactName": "osmu-container-security-abc123",
+          "runsUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml",
+          "runListJsonPath": ".\\.osmu-run\\workflow-run-lists\\container-security-ci.yml.json",
+          "queryCommand": "gh run list --workflow container-security-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle",
+          "gitHubApiQueryUrl": "https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20",
+          "sourceSelected": true,
+          "supplementalForSecurityFinalizer": false
+        }
+      ],
+      "securityEvidenceFinalizerMissingRunIdInputs": ["ImageSigningRunId", "ContainerSecurityRunId"],
+      "securityEvidenceFinalizerDependencyNote": "Security finalizer dependency: this dispatch can supply ContainerSecurityRunId; also collect ImageSigningRunId before running security-evidence-finalizer-ci.yml.",
       "securityEvidenceFinalizerCommand": "gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=<image-signing-run-id>",
-      "workflows": [
+      "browserWorkflowRunsUrls": ["https://github.com/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml"],
+      "workflowRunIdInputs": [
         {
           "workflow": "storage-expansion-finalizer-ci.yml",
           "group": "storage-expansion",
+          "actionOrders": [1],
+          "runIdParameter": "StorageExpansionRunId",
+          "artifactName": "storage-expansion-finalizer-<run-id>",
+          "requiredForReadiness": true,
+          "readyForArtifactDownload": false,
+          "runsUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml",
+          "runListJsonPath": ".\\.osmu-run\\workflow-run-lists\\storage-expansion-finalizer-ci.yml.json",
           "queryCommand": "gh run list --workflow storage-expansion-finalizer-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle",
+          "gitHubApiQueryUrl": "https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20",
+          "sourceSelected": true,
+          "supplementalForSecurityFinalizer": false
+        }
+      ],
+      "recommendedCommands": [
+        {
+          "order": 1,
+          "name": "Collect run ids from saved run-list JSON",
+          "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory .\\.osmu-run\\workflow-run-lists",
+          "reason": "Use after browser dispatch when GitHub CLI is unavailable locally.",
+          "dispatchUrls": ["https://github.com/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml"]
+        },
+        {
+          "order": 2,
+          "name": "Collect workflow run ids with GitHub REST API",
+          "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1",
+          "reason": "Use after browser dispatch when GitHub CLI is unavailable and the repository Actions API is readable.",
+          "dispatchUrls": ["https://github.com/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml"]
+        }
+      ],
+      "workflows": [
+        {
+          "workflow": "storage-expansion-finalizer-ci.yml",
+          "sourceActionCount": 1,
+          "primaryActionOrder": 1,
+          "primaryActionName": "Storage expansion finalizer live evidence",
+          "primaryActionStatus": "blocked",
+          "actionOrders": [1],
+          "actionNames": ["Storage expansion finalizer live evidence"],
+          "actionStatuses": ["blocked"],
+          "actionCategories": ["storage-expansion"],
+          "actionTypes": ["kubernetes-live"],
+          "group": "storage-expansion",
+          "runsUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml",
+          "queryCommand": "gh run list --workflow storage-expansion-finalizer-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle",
+          "gitHubApiQueryUrl": "https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20",
           "candidateCount": 0,
           "runIdParameter": "StorageExpansionRunId",
           "artifactName": "storage-expansion-finalizer-<run-id>",
@@ -5363,12 +5696,25 @@ Response:
       "result": "action-required",
       "sourceInvocationReport": ".osmu-run/latest-operations-evidence-plan-invocation.json",
       "invocationResult": "blocked",
+      "sourceSummary": "passed=36 pending=6",
+      "sourcePassedCount": 36,
+      "sourcePendingCount": 6,
+      "sourceTotalCount": 42,
+      "sourceCheckCount": 42,
+      "selectedActionOrders": [1, 2, 3, 4, 5, 6],
       "invocationSummary": "selected=6 planned=1 blocked=5 executed=0 failed=0",
       "artifactCount": 7,
       "requiredArtifactCount": 5,
       "readyArtifactCount": 0,
       "missingRequiredArtifactCount": 5,
+      "securitySourceArtifactCount": 2,
+      "readySecuritySourceArtifactCount": 0,
+      "missingSecuritySourceArtifactCount": 2,
+      "securityEvidenceFinalizerReady": false,
+      "securityEvidenceFinalizerMissingRunIdInputs": ["ImageSigningRunId", "ContainerSecurityRunId"],
+      "securityEvidenceFinalizerCommand": "gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=<image-signing-run-id> -f image_signing_artifact_name=osmu-image-signing-v0.1.0-rc.1-<commit-sha> -f container_security_run_id=<container-security-run-id> -f container_security_artifact_name=osmu-container-security-<commit-sha> -f fail_if_not_passed=true",
       "operationsArtifactFinalizerCommand": "gh workflow run operations-readiness-artifact-finalizer-ci.yml -f storage_expansion_run_id=<storage-expansion-run-id> -f kubernetes_operations_report_sync_run_id=<kubernetes-operations-report-sync-run-id>",
+      "dataFlowQueryRetentionBudgetInputNote": "Optional direct data-flow query/retention budget input: add -f data_flow_query_retention_budget_json_base64=<base64-latest-data-flow-query-retention-budget-json> to operations-readiness-artifact-finalizer-ci.yml when target query latency and retention budget evidence should be imported without waiting for a manual workflow artifact. The snapshot must be sanitized and result=passed.",
       "dataFlowStoragePlanInputNote": "Optional direct data-flow plan input: add -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> to operations-readiness-artifact-finalizer-ci.yml when target data-flow storage transition evidence should be imported without waiting for a Kubernetes operations report sync artifact. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary.",
       "dataFlowStorageTransitionRunbookInputNote": "Optional direct data-flow transition runbook input: add -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json> to operations-readiness-artifact-finalizer-ci.yml when target transition rehearsal evidence should be imported without waiting for a manual workflow artifact. The snapshot must be sanitized and result=passed.",
       "minioBucketCorsInputNote": "Optional MinIO bucket CORS input: add -f minio_bucket_cors_run_id=<minio-bucket-cors-run-id> -f minio_bucket_cors_artifact_name=minio-bucket-cors-verification-<minio-bucket-cors-run-id> to operations-readiness-artifact-finalizer-ci.yml to promote browser multipart upload CORS verification for dashboard visibility. This is not a readiness gate or AWS S3 parity work.",
@@ -5377,6 +5723,15 @@ Response:
         {
           "group": "storage-expansion",
           "workflow": "storage-expansion-finalizer-ci.yml",
+          "sourceActionCount": 1,
+          "primaryActionOrder": 1,
+          "primaryActionName": "Storage expansion finalizer live evidence",
+          "primaryActionStatus": "blocked",
+          "actionOrders": [1],
+          "actionNames": ["Storage expansion finalizer live evidence"],
+          "actionStatuses": ["blocked"],
+          "actionCategories": ["storage-expansion"],
+          "actionTypes": ["kubernetes-live"],
           "runId": "<storage-expansion-run-id>",
           "artifactName": "storage-expansion-finalizer-<storage-expansion-run-id>",
           "downloadCommand": "gh run download <storage-expansion-run-id> -n storage-expansion-finalizer-<storage-expansion-run-id> -D .osmu-run/operations-readiness-artifacts/storage-expansion",
@@ -5542,13 +5897,53 @@ Response:
         "stageCount": 6,
         "readyStageCount": 6,
         "finalizerGapCount": 0,
-        "recommendedCommandCount": 1
+        "recommendedCommandCount": 1,
+        "handoffPostDispatchCommandCount": 5,
+        "handoffPostDispatchCommands": [
+          {
+            "name": "Collect workflow run ids from saved run-list JSON",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory <run-list-json-dir>",
+            "note": "Use after browser dispatch when GitHub CLI is unavailable locally."
+          },
+          {
+            "name": "Collect workflow run ids with GitHub REST API",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1",
+            "note": "Use after browser dispatch when GitHub CLI is unavailable and the repository Actions API is readable. Uses GH_TOKEN or GITHUB_TOKEN if present and never writes token values."
+          },
+          {
+            "name": "Collect workflow run ids with GitHub CLI",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -Execute",
+            "note": "Use after browser dispatch when gh is installed and authenticated."
+          },
+          {
+            "name": "Regenerate artifact collection plan with browser run ids",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ContainerSecurityRunId <ContainerSecurityRunId> -ImageSigningVersion v0.1.0-rc.1 -CommitSha abc123",
+            "note": "Use when the workflow run page URL is available but gh/run-list JSON is not. Replace any <RunIdParameter> placeholders with numeric GitHub Actions run ids or full workflow run URLs before running."
+          },
+          {
+            "name": "Regenerate artifact collection plan after run id collection",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ImageSigningVersion v0.1.0-rc.1 -CommitSha abc123",
+            "note": "Use after run-id collection so artifact commands stay in scope."
+          }
+        ]
       },
       "dataFlowStoragePlanSnapshot": {
         "result": "passed",
         "environmentName": "pilot-prod",
         "targetCluster": "customer-cluster-a",
         "candidateStore": "MARIADB_PARTITION",
+        "candidateDecision": {
+          "candidateStore": "MARIADB_PARTITION",
+          "decision": "Use MariaDB partitioned tables for long-window data-flow analytics.",
+          "evidenceModel": "passed-mariadb-query-plan-evidence",
+          "requiresMariaDbQueryEvidence": true,
+          "requiresTargetStoreEvidence": false,
+          "queryPlanEvidenceRequired": true,
+          "queryPlanEvidencePassed": true,
+          "targetStoreEvidenceConfirmed": true,
+          "safeDataPolicy": "Candidate decisions must use sanitized evidence summaries only.",
+          "nextAction": "Candidate evidence is ready for transition runbook rehearsal."
+        },
         "expectedPeakEventsPerDay": 250000,
         "expectedQueryWindowDays": 180,
         "targetP95QueryLatencyMs": 500,
@@ -5560,6 +5955,36 @@ Response:
           "result": "passed",
           "mode": "fixture",
           "failedCount": 0
+        }
+      },
+      "dataFlowQueryRetentionBudgetSnapshot": {
+        "result": "passed",
+        "generatedAt": "2026-06-20T02:10:00Z",
+        "environmentName": "pilot-prod",
+        "targetCluster": "customer-cluster-a",
+        "operatorName": "ops-admin",
+        "evidenceRef": "latest-data-flow-query-retention-budget-passed",
+        "storagePlanResult": "passed",
+        "candidateStore": "MARIADB_PARTITION",
+        "targetP95QueryLatencyMs": 500,
+        "observedP95QueryLatencyMs": 420,
+        "observedP99QueryLatencyMs": 470,
+        "querySampleCount": 2500,
+        "observedQueryWindowDays": 180,
+        "retentionBudgetSeconds": 30,
+        "detailedRetentionObservedSeconds": 24,
+        "dailyRollupRetentionObservedSeconds": 12,
+        "monthlyRollupRetentionObservedSeconds": 8,
+        "detailedRetentionDeletedRows": 120000,
+        "dailyRollupRetentionDeletedRows": 1800,
+        "monthlyRollupRetentionDeletedRows": 36,
+        "queryLatencyWithinBudget": true,
+        "retentionJobsWithinBudget": true,
+        "failureCount": 0,
+        "checkCount": 23,
+        "confirmations": {
+          "noRawSqlOrExplain": true,
+          "noSecretValues": true
         }
       },
       "dataFlowStorageTransitionRunbookSnapshot": {
@@ -5667,6 +6092,11 @@ Response:
         "routes": ["osmu-critical", "osmu-data-flow", "osmu-storage"],
         "grafanaPanelCount": 11,
         "tuningEvidenceCount": 11,
+        "alertTargetCoverageComplete": true,
+        "routeCoverageComplete": true,
+        "grafanaPanelCoverageComplete": true,
+        "tuningEvidenceCoverageComplete": true,
+        "thresholdMappingComplete": true,
         "failureCount": 0,
         "checkCount": 24,
         "confirmations": {
@@ -5688,9 +6118,9 @@ Response:
           "evidenceRef": ""
         }
       ],
-      "decisionRule": "Production/B2B operations handoff package readiness requires result=passed and, when required, ready operations readiness/convergence plus passed and reviewed data-flow/monitoring threshold/commercial/enterprise-auth snapshots.",
+      "decisionRule": "Production/B2B operations handoff package readiness requires result=passed and, when required, ready operations readiness/convergence plus passed and reviewed data-flow/monitoring threshold/commercial/chargeback closeout/enterprise-auth snapshots.",
       "scopePolicy": "This package is a handoff wrapper and does not execute kubectl, gh, provider APIs, notification adapters, or payment adapters.",
-      "secretPolicy": "Evidence stores references and reduced readiness/convergence/data-flow/monitoring threshold snapshot summaries only and must not contain passwords, bearer tokens, kubeconfig values, private keys, provider credentials, raw provider responses, raw Alertmanager receiver secrets, raw remediation commands containing credentials, or customer payment data."
+      "secretPolicy": "Evidence stores references and reduced readiness/convergence/data-flow/chargeback closeout/monitoring threshold snapshot summaries only and must not contain passwords, bearer tokens, kubeconfig values, private keys, provider credentials, raw provider responses, raw Alertmanager receiver secrets, raw remediation commands containing credentials, or customer payment data."
     },
     "storageExpansionFinalize": {
       "result": "failed",
@@ -5918,6 +6348,11 @@ Response:
       "routes": ["osmu-backend", "osmu-data-flow", "osmu-backup"],
       "grafanaPanelCount": 11,
       "tuningEvidenceCount": 11,
+      "alertTargetCoverageComplete": true,
+      "routeCoverageComplete": true,
+      "grafanaPanelCoverageComplete": true,
+      "tuningEvidenceCoverageComplete": true,
+      "thresholdMappingComplete": true,
       "evidenceRefs": {
         "changeApproval": "CHG-2026-MONITORING",
         "prometheusRules": "prom-rules-run-20260621",
@@ -5947,7 +6382,151 @@ Response:
       ],
       "secretPolicy": "Evidence stores only labels, refs, timestamps, booleans, and target threshold metadata; it does not contain credentials or raw receiver secrets."
     },
-    "commercialIntegrationEvidence": {
+    "clusterNetworkAccessReviewEvidence": {
+      "result": "failed",
+      "generatedAt": "2026-06-24T02:00:00Z",
+      "environmentName": "pilot-prod",
+      "targetCluster": "customer-cluster-a",
+      "operatorName": "network-admin",
+      "reviewWindow": {
+        "startedAt": "2026-06-24T01:30:00Z",
+        "completedAt": "2026-06-24T02:00:00Z",
+        "ordered": "true"
+      },
+      "evidence": {
+        "dnsEgressReviewRef": "dns-egress-review-20260624",
+        "mariaDbAccessReviewRef": "mariadb-access-review-20260624",
+        "minioAccessReviewRef": "minio-access-review-20260624",
+        "k8sVerifierEvidenceRef": "k8s-networkpolicy-verifier-20260624",
+        "helmVerifierEvidenceRef": "helm-networkpolicy-verifier-20260624"
+      },
+      "staticSnapshot": {
+        "networkPolicyManifestPath": "infra/k8s/networkpolicy.yaml",
+        "networkPolicyManifestSha256": "abc123",
+        "dnsEgressScoped": "false",
+        "helmNetworkPolicyEnabled": "true"
+      },
+      "confirmations": {
+        "backendOnlyMariaDb": true,
+        "backendOnlyMinio": true,
+        "dnsEgressScoped": false,
+        "noCredentialValues": true
+      },
+      "passCount": 20,
+      "failureCount": 1,
+      "totalCount": 21,
+      "checks": [
+        {
+          "id": "dns-egress-review-confirmed",
+          "name": "DNS egress scope confirmed",
+          "status": "FAIL",
+          "passed": false,
+          "detail": "Operator must confirm DNS egress is scoped to cluster DNS.",
+          "evidenceRef": "dns-egress-review-20260624"
+        }
+      ],
+      "secretPolicy": "Evidence must contain references only, never kubeconfig, bearer tokens, passwords, private keys, access keys, or raw secret values."
+    },
+    "helmValuesHardeningEvidence": {
+      "result": "failed",
+      "generatedAt": "2026-06-24T02:30:00Z",
+      "environmentName": "pilot-prod",
+      "targetCluster": "customer-cluster-a",
+      "operatorName": "platform-admin",
+      "reviewWindow": {
+        "startedAt": "2026-06-24T02:00:00Z",
+        "completedAt": "2026-06-24T02:30:00Z",
+        "ordered": "true"
+      },
+      "evidence": {
+        "helmVerifierEvidenceRef": "helm-template-verifier-20260624",
+        "kubernetesVerifierEvidenceRef": "kubernetes-manifest-verifier-20260624",
+        "containerHardeningEvidenceRef": "container-hardening-review-20260624",
+        "clusterNetworkAccessReviewEvidenceRef": "cluster-network-access-review-20260624"
+      },
+      "staticSnapshot": {
+        "chartDirectory": "infra/helm/osmu",
+        "chartFileCount": "1",
+        "networkPolicyEnabled": "true",
+        "tlsIngress": "false",
+        "operationsReportsReadOnly": "true"
+      },
+      "confirmations": {
+        "secretsExternalized": true,
+        "networkPolicyEnabled": true,
+        "tlsIngressReviewed": false,
+        "operationsReportsReadOnly": true,
+        "noCredentialValues": true
+      },
+      "passCount": 18,
+      "failureCount": 1,
+      "totalCount": 19,
+      "checks": [
+        {
+          "id": "tls-ingress-confirmed",
+          "name": "TLS ingress review confirmed",
+          "status": "FAIL",
+          "passed": false,
+          "detail": "Operator must confirm TLS/ingress settings are reviewed.",
+          "evidenceRef": "helm-values-hardening-20260624"
+        }
+      ],
+      "secretPolicy": "Evidence stores references and file hashes only. Production secret values, kubeconfig, bearer tokens, private keys, or raw credentials must never be embedded."
+    },
+    "supportEscalationHandoffEvidence": {
+      "result": "failed",
+      "generatedAt": "2026-06-24T01:30:00Z",
+      "environmentName": "pilot-prod",
+      "targetCluster": "customer-cluster-a",
+      "operatorName": "support-admin",
+      "reviewWindow": {
+        "startedAt": "2026-06-24T01:00:00Z",
+        "completedAt": "2026-06-24T01:30:00Z",
+        "ordered": "true"
+      },
+      "evidence": {
+        "operationsHandoffPackageRef": "operations-handoff-package-prep-20260624",
+        "runbookReviewRef": "operator-runbook-review-20260624",
+        "supportEscalationRef": "support-escalation-routing-20260624",
+        "supportSlaRef": "support-sla-approval-20260624",
+        "knownGapsRef": "known-gaps-acceptance-20260624"
+      },
+      "documentSnapshot": {
+        "runbookCoverage": true,
+        "troubleshootingCoverage": true,
+        "rollbackCoverage": true,
+        "supportEscalationCoverage": true,
+        "supportSlaCoverage": true,
+        "knownGapsCoverage": true,
+        "handoffPackageCoverage": true
+      },
+      "confirmations": {
+        "runbookReviewed": true,
+        "troubleshootingReviewed": true,
+        "rollbackPathReviewed": true,
+        "supportEscalationReviewed": true,
+        "supportSlaReviewed": false,
+        "knownGapsAccepted": true,
+        "operationsHandoffReferenceReady": true,
+        "noCredentialValues": true
+      },
+      "passCount": 30,
+      "failureCount": 1,
+      "totalCount": 31,
+      "checks": [
+        {
+          "id": "support-sla-reviewed-confirmed",
+          "name": "Support SLA review confirmed",
+          "status": "FAIL",
+          "passed": false,
+          "detail": "Operator must confirm support SLA review.",
+          "evidenceRef": "support-sla-approval-20260624"
+        }
+      ],
+      "scopePolicy": "Reviews local handoff documentation and operator-approved references without contacting ticketing systems, support desks, customers, or production clusters.",
+      "secretPolicy": "Evidence stores document hashes, labels, booleans, and non-secret references only.",
+      "decisionRule": "Production/B2B support escalation handoff readiness requires result=passed, zero failed checks, current document hashes, non-secret handoff references, and typed operator confirmations."
+    },    "commercialIntegrationEvidence": {
       "result": "failed",
       "generatedAt": "2026-06-20T03:00:00Z",
       "environmentName": "pilot-prod",
@@ -6036,6 +6615,53 @@ Response:
       ],
       "secretPolicy": "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, raw OIDC claim JSON, and credential-like scope-out references are never written to this evidence."
     },
+    "enterpriseAuthJitRollbackEvidence": {
+      "result": "failed",
+      "generatedAt": "2026-06-20T04:30:00Z",
+      "environmentName": "pilot-prod",
+      "targetCluster": "customer-cluster-a",
+      "operatorName": "security-admin",
+      "evidenceRef": "enterprise-auth-jit-rollback-review-20260620",
+      "reviewWindow": {
+        "startedAt": "2026-06-20T04:00:00Z",
+        "completedAt": "2026-06-20T04:30:00Z"
+      },
+      "enterpriseAuthSmokeSnapshot": {
+        "provided": true,
+        "parsed": true,
+        "formatVersion": "osmu.enterprise-auth-smoke.v1",
+        "result": "passed",
+        "executionMode": "execute",
+        "passCount": 8,
+        "failCount": 0,
+        "blockedCount": 0,
+        "plannedCount": 0,
+        "scopeOutAccepted": false
+      },
+      "evidenceRefs": {
+        "jitRollbackRunbook": "jit-rollback-runbook-20260620",
+        "localLoginFallback": "local-login-fallback-20260620"
+      },
+      "confirmations": {
+        "callbackAutoJitDisabled": true,
+        "localPasswordFallbackValidated": false,
+        "noRawClaims": true,
+        "noSecretValues": true
+      },
+      "failureCount": 1,
+      "checkCount": 9,
+      "checks": [
+        {
+          "id": "local-password-fallback-confirmed",
+          "name": "Local password fallback validated",
+          "status": "FAIL",
+          "passed": false,
+          "detail": "ConfirmLocalPasswordFallbackValidated=False",
+          "evidenceRef": "local-login-fallback-20260620"
+        }
+      ],
+      "secretPolicy": "Evidence stores only environment labels, operator/change references, timestamps, booleans, reduced enterprise auth smoke summary, and external evidence references; it does not contain passwords, bearer tokens, OIDC codes/states, access/refresh/id tokens, LDAP/admin passwords, client secrets, raw OIDC claims, raw identity provider responses, or raw directory data."
+    },
     "minioBucketCorsVerification": {
       "result": "failed",
       "generatedAt": "2026-06-20T05:00:00Z",
@@ -6077,6 +6703,18 @@ Response:
       "operatorName": "ops-admin",
       "evidenceRef": "data-flow-sizing-run-20260621",
       "candidateStore": "MARIADB_PARTITION",
+      "candidateDecision": {
+        "candidateStore": "MARIADB_PARTITION",
+        "decision": "Use MariaDB partitioned tables for long-window data-flow analytics.",
+        "evidenceModel": "passed-mariadb-query-plan-evidence",
+        "requiresMariaDbQueryEvidence": true,
+        "requiresTargetStoreEvidence": false,
+        "queryPlanEvidenceRequired": true,
+        "queryPlanEvidencePassed": false,
+        "targetStoreEvidenceConfirmed": true,
+        "safeDataPolicy": "Candidate decisions must use sanitized evidence summaries only; do not store raw SQL, raw EXPLAIN JSON, object keys, raw event messages, or secrets.",
+        "nextAction": "Attach passed MariaDB query-plan evidence before promoting the storage transition plan."
+      },
       "expectedPeakEventsPerDay": 250000,
       "expectedQueryWindowDays": 180,
       "targetP95QueryLatencyMs": 500,
@@ -6126,6 +6764,48 @@ Response:
       },
       "scopePolicy": "OSMU operations analytics only. This plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages."
     },
+    "dataFlowQueryRetentionBudget": {
+      "result": "failed",
+      "generatedAt": "2026-06-21T09:25:00Z",
+      "environmentName": "pilot-prod",
+      "targetCluster": "customer-cluster-a",
+      "operatorName": "ops-admin",
+      "evidenceRef": "data-flow-query-retention-budget-run-20260621",
+      "storagePlanResult": "passed",
+      "candidateStore": "MARIADB_PARTITION",
+      "targetP95QueryLatencyMs": 500,
+      "observedP95QueryLatencyMs": 420,
+      "observedP99QueryLatencyMs": 470,
+      "querySampleCount": 2500,
+      "observedQueryWindowDays": 180,
+      "retentionBudgetSeconds": 30,
+      "detailedRetentionObservedSeconds": 31,
+      "dailyRollupRetentionObservedSeconds": 18,
+      "monthlyRollupRetentionObservedSeconds": 9,
+      "detailedRetentionDeletedRows": 120000,
+      "dailyRollupRetentionDeletedRows": 1800,
+      "monthlyRollupRetentionDeletedRows": 36,
+      "queryLatencyWithinBudget": true,
+      "retentionJobsWithinBudget": false,
+      "failureCount": 1,
+      "checkCount": 23,
+      "confirmations": {
+        "queryLatencyReviewed": true,
+        "retentionJobsWithinBudget": false,
+        "noRawSqlOrExplain": true,
+        "noSecretValues": true
+      },
+      "topFailedChecks": [
+        {
+          "id": "retention-jobs-within-budget",
+          "name": "Retention jobs completed within budget",
+          "status": "FAIL",
+          "passed": false,
+          "detail": "detailedRetentionObservedSeconds=31 budgetSeconds=30"
+        }
+      ],
+      "scopePolicy": "OSMU operations analytics query/retention budget only. This is not AWS billing parity, and evidence must not include raw SQL, raw EXPLAIN JSON, object keys, raw event messages, or credentials."
+    },
     "dataFlowStorageTransitionRunbook": {
       "result": "failed",
       "generatedAt": "2026-06-21T09:30:00Z",
@@ -6163,14 +6843,99 @@ Response:
       "result": "blocked",
       "generatedAt": "2026-06-16T07:15:09+09:00",
       "nextStep": {
-        "code": "resolve-invocation-blockers",
-        "title": "Resolve invocation blockers",
-        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1",
-        "reason": "The invocation report still has blocked actions.",
-        "note": "Generate the unblock plan, fill placeholders, confirm operator approvals, and confirm kubeconfig-secret readiness before dispatch."
+        "code": "dispatch-ready-subset",
+        "title": "Plan ready dispatch subset",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
+        "reason": "The invocation report still has blocked actions, but 1 action(s) are ready to dispatch: 6.",
+        "note": "Run the ready subset plan command first without -Execute, then dispatch only after review and continue resolving the remaining blocked actions. Web dispatch URL(s) for ready templates: action 6: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml. Review failed preflight checks and operator approvals before using browser dispatch."
       },
-      "stageCount": 7,
+      "currentBottleneck": {
+        "code": "dispatch-ready-subset",
+        "title": "Plan ready dispatch subset",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
+        "reason": "The invocation report still has blocked actions, but 1 action(s) are ready to dispatch: 6.",
+        "note": "Run the ready subset plan command first without -Execute, then dispatch only after review and continue resolving the remaining blocked actions. Web dispatch URL(s) for ready templates: action 6: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml. Review failed preflight checks and operator approvals before using browser dispatch."
+      },
+      "stageCount": 8,
       "readyStageCount": 1,
+      "readinessSummary": "passed=36 pending=6",
+      "readinessPassedCount": 36,
+      "readinessPendingCount": 6,
+      "readinessTotalCount": 42,
+      "readinessCheckCount": 42,
+      "dispatchGithubRepository": "chefbeom/object-storage-osmu",
+      "dispatchPreflightResult": "action-required",
+      "readyDispatchTemplateCount": 1,
+      "blockedDispatchTemplateCount": 5,
+      "readyDispatchActionOrders": [6],
+      "staleReportCount": 1,
+      "blockedDispatchActionOrders": [1, 2, 3, 4, 5],
+      "invocationSelectedActionOrders": [6],
+      "dispatchPreflightSelectedActionOrders": [6],
+      "dispatchPreflightScopeMismatch": false,
+      "readyDispatchWorkflows": [
+        {
+          "actionOrder": 6,
+          "name": "Container scan/SBOM evidence",
+          "category": "security",
+          "actionType": "github-workflow",
+          "commandMode": "workflow",
+          "dispatchUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml",
+          "workflow": "container-security-ci.yml",
+          "readyToDispatch": true,
+          "missingInputCount": 0,
+          "unsafeInputCount": 0,
+          "invalidInputCount": 0,
+          "ambiguousInputCount": 0,
+          "requiredSecrets": [],
+          "workflowInputNames": []
+        }
+      ],
+      "blockedDispatchWorkflows": [
+        {
+          "actionOrder": 1,
+          "name": "Storage expansion finalizer live evidence",
+          "category": "storage-expansion",
+          "actionType": "kubernetes-live",
+          "commandMode": "workflow",
+          "dispatchUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml",
+          "workflow": "storage-expansion-finalizer-ci.yml",
+          "readyToDispatch": false,
+          "missingInputCount": 1,
+          "unsafeInputCount": 0,
+          "invalidInputCount": 0,
+          "ambiguousInputCount": 0,
+          "requiredSecrets": ["OSMU_KUBECONFIG_BASE64"],
+          "workflowInputNames": ["namespace"],
+          "missingInputParameters": ["Placeholder"]
+        }
+      ],
+      "browserDispatchChecklistCount": 1,
+      "browserDispatchChecklist": [
+        {
+          "actionOrder": 6,
+          "name": "Container scan/SBOM evidence",
+          "category": "security",
+          "actionType": "github-workflow",
+          "workflow": "container-security-ci.yml",
+          "dispatchUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml",
+          "runsUrl": "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml",
+          "runIdParameter": "ContainerSecurityRunId",
+          "artifactName": "osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68",
+          "runListJsonPath": ".\\.osmu-run\\workflow-run-lists\\container-security-ci.yml.json",
+          "runListJsonDirectoryCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory .\\.osmu-run\\workflow-run-lists",
+          "manualArtifactCollectionCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ContainerSecurityRunId <ContainerSecurityRunId> -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68",
+          "workflowInputNames": [],
+          "operatorChecklist": [],
+          "steps": [
+            "Open the workflow dispatch URL and select branch main.",
+            "No workflow inputs are required for this dispatch template.",
+            "Run the workflow and open the workflow run page from the runs URL.",
+            "Copy the numeric run id or full workflow run URL into ContainerSecurityRunId.",
+            "Regenerate artifact collection with the manual run-id command."
+          ]
+        }
+      ],
       "blockedActionCount": 5,
       "missingWorkflowRunCount": 6,
       "missingRequiredArtifactCount": 4,
@@ -6198,9 +6963,18 @@ Response:
       "kubernetesOperationsReportSyncReportPath": ".osmu-run/latest-kubernetes-operations-report-sync.json",
       "handoffExists": true,
       "handoffResult": "blocked",
+      "handoffStale": false,
+      "handoffTimestamp": "2026-06-16T08:45:35+09:00",
+      "handoffTimestampSource": "generatedAt",
+      "readinessTimestamp": "2026-06-16T08:45:30+09:00",
+      "readinessTimestampSource": "generatedAt",
       "readinessExists": true,
       "readinessResult": "pending",
       "readinessSummary": "passed=36 pending=6",
+      "readinessPassedCount": 36,
+      "readinessPendingCount": 6,
+      "readinessTotalCount": 42,
+      "readinessCheckCount": 42,
       "finalizerExists": true,
       "finalizerResult": "pending",
       "finalizerReadinessResult": "pending",
@@ -6209,37 +6983,48 @@ Response:
       "finalizerFailedCountRaw": "0",
       "kubernetesReportSyncExists": true,
       "kubernetesReportSyncResult": "planned",
+      "kubernetesReportSyncStale": true,
+      "kubernetesReportSyncTimestamp": "2026-06-16T08:40:00+09:00",
+      "kubernetesReportSyncTimestampSource": "generatedAt",
+      "kubernetesReportSyncFreshnessReason": "Kubernetes operations report sync evidence is older than the latest handoff/readiness/finalizer input: sync=2026-06-16T08:40:00+09:00 via generatedAt; latest=2026-06-16T08:45:35+09:00 via generatedAt.",
       "kubernetesReportSyncFailedCount": 0,
       "kubernetesReportSyncFailedCountValid": false,
       "kubernetesReportSyncFailedCountRaw": "0",
       "kubernetesReportSyncConfigMapName": "osmu-operations-reports",
       "kubernetesReportSyncConfigMapKey": "latest-operations-readiness-convergence.json",
       "kubernetesReportSyncSourceReportResult": "action-required",
-      "kubernetesReportSyncWorkflowCommand": "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>",
-      "kubernetesReportSyncWorkflowNote": "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap, and include data_flow_storage_transition_runbook_json_base64 only when .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json should be carried into the same ConfigMap. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary, and transition runbook evidence must be result=passed with no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content. Omit inputs when no target analytics-storage evidence is ready.",
+      "kubernetesReportSyncWorkflowCommand": "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_query_retention_budget_json_base64=<base64-latest-data-flow-query-retention-budget-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>",
+      "kubernetesReportSyncWorkflowNote": "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap, include data_flow_query_retention_budget_json_base64 only when .osmu-run/latest-data-flow-query-retention-budget-evidence.json should be carried into the same ConfigMap, and include data_flow_storage_transition_runbook_json_base64 only when .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json should be carried into the same ConfigMap. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary, and query/retention budget and transition runbook evidence must be result=passed with no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content. Omit inputs when no target analytics-storage evidence is ready.",
       "kubernetesReportSyncReady": false,
       "finalizerGapCount": 1,
-      "stageCount": 7,
+      "stageCount": 8,
       "readyStageCount": 1,
       "blockedActionCount": 5,
       "missingWorkflowRunCount": 6,
       "missingRequiredArtifactCount": 4,
       "failedImportCount": 0,
       "currentBottleneck": {
-        "code": "resolve-invocation-blockers",
-        "title": "Resolve invocation blockers",
-        "reason": "The invocation report still has blocked actions.",
-        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1"
+        "code": "dispatch-ready-subset",
+        "title": "Plan ready dispatch subset",
+        "reason": "The invocation report still has blocked actions, but 1 action(s) are ready to dispatch: 6.",
+        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
+        "note": "Web dispatch URL(s) for ready templates: action 6: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml. Review failed preflight checks and operator approvals before using browser dispatch. Security finalizer dependency: this dispatch can supply ContainerSecurityRunId; also collect ImageSigningRunId before running security-evidence-finalizer-ci.yml.",
+        "dispatchUrls": ["https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"]
       },
+      "handoffBrowserDispatchDependencyNotes": [
+        "Security finalizer dependency: this dispatch can supply ContainerSecurityRunId; also collect ImageSigningRunId before running security-evidence-finalizer-ci.yml."
+      ],
       "recommendedCommands": [
         {
           "order": 1,
-          "name": "Resolve invocation blockers",
-          "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1",
-          "reason": "The invocation report still has blocked actions."
+          "name": "Plan ready dispatch subset",
+          "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
+          "reason": "The invocation report still has blocked actions, but 1 action(s) are ready to dispatch: 6.",
+          "note": "Web dispatch URL(s) for ready templates: action 6: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml. Review failed preflight checks and operator approvals before using browser dispatch. Security finalizer dependency: this dispatch can supply ContainerSecurityRunId; also collect ImageSigningRunId before running security-evidence-finalizer-ci.yml.",
+          "dispatchUrls": ["https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"]
         }
       ],
-      "decisionRule": "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, typed integer failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, typed integer failedCount=0, and sourceReportResult=ready.",
+      "decisionRule": "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, typed integer failedCount=0, and no gaps, and the Kubernetes operations report sync evidence is fresh against the latest handoff/readiness/finalizer inputs and confirms result=applied, typed integer failedCount=0, and sourceReportResult=ready.",
       "safetyPolicy": "This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."
     },
     "kubernetesOperationsReportSync": {
@@ -6250,13 +7035,25 @@ Response:
       "configMapKey": "latest-operations-readiness-convergence.json",
       "evidenceConfigMapKey": "latest-kubernetes-operations-report-sync.json",
       "dataFlowStoragePlanConfigMapKey": "latest-data-flow-storage-plan.json",
+      "dataFlowQueryRetentionBudgetConfigMapKey": "latest-data-flow-query-retention-budget-evidence.json",
       "dataFlowStorageTransitionRunbookConfigMapKey": "latest-data-flow-storage-transition-runbook-evidence.json",
       "publishDataFlowStoragePlanToConfigMap": true,
+      "publishDataFlowQueryRetentionBudgetToConfigMap": true,
       "publishDataFlowStorageTransitionRunbookToConfigMap": true,
       "sourceReportPath": ".osmu-run/latest-operations-readiness-convergence.json",
       "sourceReportFormatVersion": "osmu.operations-readiness-convergence.v1",
       "sourceReportResult": "action-required",
       "sourceReportBytes": 5249,
+      "dataFlowQueryRetentionBudgetResult": "passed",
+      "dataFlowQueryRetentionBudgetStoragePlanResult": "passed",
+      "dataFlowQueryRetentionBudgetCandidateStore": "MARIADB_PARTITION",
+      "dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs": 500,
+      "dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs": 420,
+      "dataFlowQueryRetentionBudgetRetentionBudgetSeconds": 30,
+      "dataFlowQueryRetentionBudgetFailureCount": 0,
+      "dataFlowQueryRetentionBudgetCheckCount": 8,
+      "dataFlowQueryRetentionBudgetBytes": 1024,
+      "dataFlowQueryRetentionBudgetSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       "sourceReportSha256": "abc123",
       "dataFlowStorageTransitionRunbookResult": "failed",
       "dataFlowStorageTransitionRunbookStoragePlanResult": "plan-ready-execute-required",
@@ -6265,9 +7062,9 @@ Response:
       "dataFlowStorageTransitionRunbookCheckCount": 10,
       "dataFlowStorageTransitionRunbookBytes": 2048,
       "dataFlowStorageTransitionRunbookSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "clientDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=client -o yaml",
-      "serverDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=server -o yaml",
-      "applyCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=client -o yaml | kubectl apply -f -",
+      "clientDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --from-file=latest-data-flow-query-retention-budget-evidence.json=.osmu-run/latest-data-flow-query-retention-budget-evidence.json --dry-run=client -o yaml",
+      "serverDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --from-file=latest-data-flow-query-retention-budget-evidence.json=.osmu-run/latest-data-flow-query-retention-budget-evidence.json --dry-run=server -o yaml",
+      "applyCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --from-file=latest-data-flow-query-retention-budget-evidence.json=.osmu-run/latest-data-flow-query-retention-budget-evidence.json --dry-run=client -o yaml | kubectl apply -f -",
       "checkCount": 3,
       "failedCount": 0,
       "checks": [
@@ -6706,4 +7503,3 @@ Response:
   }
 }
 ```
-

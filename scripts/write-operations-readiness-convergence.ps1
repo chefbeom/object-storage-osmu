@@ -18,6 +18,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Read-OptionalJson([string] $PathValue) {
     $resolved = Resolve-ProjectPath $PathValue
     if (-not (Test-Path -LiteralPath $resolved)) {
@@ -30,7 +34,7 @@ function Read-OptionalJson([string] $PathValue) {
     return [ordered]@{
         path = $resolved
         exists = $true
-        json = (Get-Content -Raw -LiteralPath $resolved | ConvertFrom-Json)
+        json = (Read-Utf8Text $resolved | ConvertFrom-Json)
     }
 }
 
@@ -64,6 +68,66 @@ function Get-Int([object] $Object, [string] $Name) {
     catch {
         return 0
     }
+}
+
+function Get-Bool([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return $false
+    }
+    if ($value -is [bool]) {
+        return $value
+    }
+    $parsed = $false
+    if ([bool]::TryParse([string] $value, [ref] $parsed)) {
+        return $parsed
+    }
+    return $false
+}
+function Get-ReportTimestamp([object] $Report) {
+    if ($null -eq $Report -or -not $Report.exists) {
+        return [pscustomobject]@{
+            valid = $false
+            value = $null
+            raw = ""
+            source = "missing"
+        }
+    }
+    $raw = Get-Text $Report.json "generatedAt"
+    $parsed = [DateTimeOffset]::MinValue
+    if ((-not [string]::IsNullOrWhiteSpace($raw)) -and [DateTimeOffset]::TryParse($raw, [ref] $parsed)) {
+        return [pscustomobject]@{
+            valid = $true
+            value = $parsed.ToUniversalTime()
+            raw = $raw
+            source = "generatedAt"
+        }
+    }
+    try {
+        $lastWrite = (Get-Item -LiteralPath $Report.path).LastWriteTimeUtc
+        $fallback = [DateTimeOffset]::new([DateTime]::SpecifyKind($lastWrite, [DateTimeKind]::Utc))
+        return [pscustomobject]@{
+            valid = $true
+            value = $fallback
+            raw = $fallback.ToString("o")
+            source = "fileLastWriteTimeUtc"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            valid = $false
+            value = $null
+            raw = ""
+            source = "unavailable"
+        }
+    }
+}
+
+function Format-ReportTimestamp([object] $Timestamp) {
+    if ($null -eq $Timestamp -or -not $Timestamp.valid) {
+        return "unknown"
+    }
+    return "$($Timestamp.raw) via $($Timestamp.source)"
 }
 
 function Get-RequiredInt([object] $Object, [string] $Name) {
@@ -106,17 +170,75 @@ function Get-ArrayCount([object] $Value) {
     return @($Value).Count
 }
 
+
+function Get-Array([object] $Value) {
+    if ($null -eq $Value) {
+        return @()
+    }
+    if ($Value -is [System.Array]) {
+        return @($Value)
+    }
+    if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
+        return @($Value)
+    }
+    return @($Value)
+}
+function Get-ReadyDispatchUrls([object] $HandoffReport) {
+    $urls = New-Object System.Collections.Generic.List[string]
+    $seen = @{}
+    $workflows = Get-JsonProperty $HandoffReport "readyDispatchWorkflows"
+    foreach ($workflow in @($workflows)) {
+        $url = Get-Text $workflow "dispatchUrl"
+        if ([string]::IsNullOrWhiteSpace($url) -or $seen.ContainsKey($url)) {
+            continue
+        }
+        $seen[$url] = $true
+        [void] $urls.Add($url)
+    }
+    return @($urls)
+}
+
+function Get-BrowserDispatchDependencyNotes([object] $HandoffReport) {
+    $notes = New-Object System.Collections.Generic.List[string]
+    $seen = @{}
+    $checklist = Get-JsonProperty $HandoffReport "browserDispatchChecklist"
+    foreach ($item in @($checklist)) {
+        $note = Get-Text $item "securityFinalizerDependencyNote"
+        if ([string]::IsNullOrWhiteSpace($note) -or $seen.ContainsKey($note)) {
+            continue
+        }
+        $seen[$note] = $true
+        [void] $notes.Add($note)
+    }
+    return @($notes)
+}
+
+function Join-NoteParts([string[]] $Parts) {
+    $result = New-Object System.Collections.Generic.List[string]
+    foreach ($part in @($Parts)) {
+        if (-not [string]::IsNullOrWhiteSpace($part)) {
+            [void] $result.Add($part.Trim())
+        }
+    }
+    return ($result -join " ").Trim()
+}
+
 function Is-ReadyResult([string] $Result) {
     return @("ready", "passed", "go") -contains $Result.ToLowerInvariant()
 }
 
-function New-Command([int] $Order, [string] $Name, [string] $Command, [string] $Reason) {
-    return [ordered]@{
+function New-Command([int] $Order, [string] $Name, [string] $Command, [string] $Reason, [string] $Note = "", [string[]] $DispatchUrls = @()) {
+    $commandResult = [ordered]@{
         order = $Order
         name = $Name
         command = $Command
         reason = $Reason
+        note = $Note
     }
+    if (@($DispatchUrls).Count -gt 0) {
+        $commandResult.dispatchUrls = @($DispatchUrls)
+    }
+    return $commandResult
 }
 
 function Quote-PowerShellArgument([string] $Value) {
@@ -195,7 +317,7 @@ function Get-KubernetesReportSyncWorkflowCommand([object] $Report, [bool] $Exist
         }
     }
 
-    return "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=$namespace -f report_path=$reportPath -f run_live=$runLive -f apply=$apply -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>"
+    return "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=$namespace -f report_path=$reportPath -f run_live=$runLive -f apply=$apply -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_query_retention_budget_json_base64=<base64-latest-data-flow-query-retention-budget-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>"
 }
 
 $handoff = Read-OptionalJson $HandoffReportPath
@@ -205,6 +327,27 @@ $kubernetesReportSync = Read-OptionalJson $KubernetesOperationsReportSyncReportP
 
 $handoffResult = Get-Text $handoff.json "result"
 $readinessResult = Get-Text $readiness.json "result"
+$readinessSummary = Get-Text $readiness.json "summary"
+$readinessPassedCount = Get-Int $readiness.json "passedCount"
+$readinessPendingCount = Get-Int $readiness.json "pendingCount"
+$readinessTotalCount = Get-Int $readiness.json "totalCount"
+$readinessCheckCount = Get-Int $readiness.json "checkCount"
+$handoffTimestamp = Get-ReportTimestamp $handoff
+$readinessTimestamp = Get-ReportTimestamp $readiness
+$handoffStale = $handoff.exists -and $readiness.exists -and $handoffTimestamp.valid -and $readinessTimestamp.valid -and ($handoffTimestamp.value -lt $readinessTimestamp.value)
+$refreshHandoffCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1"
+$refreshHandoffReason = "The operations readiness report is newer than the evidence handoff report, so the selected bottleneck may be stale."
+$refreshHandoffNote = "Readiness timestamp: $(Format-ReportTimestamp $readinessTimestamp); handoff timestamp: $(Format-ReportTimestamp $handoffTimestamp)."
+$finalizerTimestamp = Get-ReportTimestamp $finalize
+$kubernetesReportSyncTimestamp = Get-ReportTimestamp $kubernetesReportSync
+$latestSyncSourceTimestamp = @($handoffTimestamp, $readinessTimestamp, $finalizerTimestamp) | Where-Object { $_.valid } | Sort-Object -Property value -Descending | Select-Object -First 1
+$kubernetesReportSyncStale = $kubernetesReportSync.exists -and $kubernetesReportSyncTimestamp.valid -and $null -ne $latestSyncSourceTimestamp -and $latestSyncSourceTimestamp.valid -and ($kubernetesReportSyncTimestamp.value -lt $latestSyncSourceTimestamp.value)
+$kubernetesReportSyncFreshnessReason = if ($kubernetesReportSyncStale) {
+    "Kubernetes operations report sync evidence is older than the latest handoff/readiness/finalizer input: sync=$(Format-ReportTimestamp $kubernetesReportSyncTimestamp); latest=$(Format-ReportTimestamp $latestSyncSourceTimestamp)."
+}
+else {
+    ""
+}
 $finalizerResult = Get-Text $finalize.json "result"
 $finalizerReadinessResult = Get-Text $finalize.json "readinessResult"
 $finalizerFailedCountResult = Get-RequiredInt $finalize.json "failedCount"
@@ -217,17 +360,35 @@ $kubernetesReportSyncSourceReportResult = Get-Text $kubernetesReportSync.json "s
 $nextStep = Get-JsonProperty $handoff.json "nextStep"
 $nextCode = Get-Text $nextStep "code"
 $nextCommand = Get-Text $nextStep "command"
+$nextStepDispatchUrls = if ($nextCode -like "dispatch-ready-subset*") { Get-ReadyDispatchUrls $handoff.json } else { @() }
+$handoffBrowserDispatchDependencyNotes = if ($nextCode -like "dispatch-ready-subset*") { Get-BrowserDispatchDependencyNotes $handoff.json } else { @() }
+$handoffSecurityEvidenceFinalizerRunIdInputHints = @(Get-Array (Get-JsonProperty $handoff.json "securityEvidenceFinalizerRunIdInputHints"))
+$handoffBrowserDispatchDependencyNote = Join-NoteParts $handoffBrowserDispatchDependencyNotes
+$nextStepNote = Join-NoteParts @((Get-Text $nextStep "note"), $handoffBrowserDispatchDependencyNote)
+$handoffPostDispatchCommands = @(Get-Array (Get-JsonProperty $handoff.json "postDispatchCommands") | ForEach-Object {
+    [ordered]@{
+        name = Get-Text $_ "name"
+        command = Get-Text $_ "command"
+        note = Get-Text $_ "note"
+    }
+} | Where-Object { -not [string]::IsNullOrWhiteSpace($_.name) -or -not [string]::IsNullOrWhiteSpace($_.command) -or -not [string]::IsNullOrWhiteSpace($_.note) })
 $kubernetesReportSyncCommand = Get-KubernetesReportSyncNextCommand $kubernetesReportSync.json $kubernetesReportSync.exists
 $kubernetesReportSyncWorkflowCommand = Get-KubernetesReportSyncWorkflowCommand $kubernetesReportSync.json $kubernetesReportSync.exists
 $handoffReady = $handoff.exists -and (Is-ReadyResult $handoffResult) -and "none".Equals($nextCode, [System.StringComparison]::OrdinalIgnoreCase)
 $readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
 $finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizerResult) -and (Is-ReadyResult $finalizerReadinessResult) -and $finalizerFailedCountResult.valid -and $finalizerFailedCount -eq 0 -and $finalizerGapCount -eq 0
-$kubernetesReportSyncReady = $kubernetesReportSync.exists -and "applied".Equals($kubernetesReportSyncResult, [System.StringComparison]::OrdinalIgnoreCase) -and $kubernetesReportSyncFailedCountResult.valid -and $kubernetesReportSyncFailedCount -eq 0 -and (Is-ReadyResult $kubernetesReportSyncSourceReportResult)
+$kubernetesReportSyncReady = $kubernetesReportSync.exists -and (-not $kubernetesReportSyncStale) -and "applied".Equals($kubernetesReportSyncResult, [System.StringComparison]::OrdinalIgnoreCase) -and $kubernetesReportSyncFailedCountResult.valid -and $kubernetesReportSyncFailedCount -eq 0 -and (Is-ReadyResult $kubernetesReportSyncSourceReportResult)
+$kubernetesReportSyncRequiredReason = if ($kubernetesReportSyncStale) {
+    $kubernetesReportSyncFreshnessReason
+}
+else {
+    "The convergence report has not been confirmed as applied to the Kubernetes operations report ConfigMap."
+}
 
 $recommendedCommands = @()
 $seenCommands = @{}
 
-function Add-RecommendedCommand([string] $Name, [string] $Command, [string] $Reason) {
+function Add-RecommendedCommand([string] $Name, [string] $Command, [string] $Reason, [string] $Note = "", [string[]] $DispatchUrls = @()) {
     if ([string]::IsNullOrWhiteSpace($Command)) {
         return
     }
@@ -235,20 +396,30 @@ function Add-RecommendedCommand([string] $Name, [string] $Command, [string] $Rea
         return
     }
     $seenCommands[$Command] = $true
-    $script:recommendedCommands += New-Command (@($script:recommendedCommands).Count + 1) $Name $Command $Reason
+    $script:recommendedCommands += New-Command (@($script:recommendedCommands).Count + 1) $Name $Command $Reason $Note $DispatchUrls
 }
 
 if (-not $handoff.exists) {
     Add-RecommendedCommand `
         "Generate operations evidence handoff" `
-        "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1" `
+        $refreshHandoffCommand `
         "The handoff report is missing, so the current bottleneck cannot be selected yet."
+}
+elseif ($handoffStale) {
+    Add-RecommendedCommand `
+        "Refresh operations evidence handoff" `
+        $refreshHandoffCommand `
+        $refreshHandoffReason `
+        $refreshHandoffNote
 }
 elseif (-not (Is-ReadyResult $handoffResult) -or -not "none".Equals($nextCode, [System.StringComparison]::OrdinalIgnoreCase)) {
     Add-RecommendedCommand `
         (Get-Text $nextStep "title") `
         $nextCommand `
-        (Get-Text $nextStep "reason")
+        (Get-Text $nextStep "reason") `
+        $nextStepNote `
+        $nextStepDispatchUrls
+
 
     $stages = Get-JsonProperty $handoff.json "stages"
     foreach ($stage in @($stages)) {
@@ -277,17 +448,26 @@ elseif ($handoffReady -and $readinessReady -and $finalizerReady -and -not $kuber
     Add-RecommendedCommand `
         "Sync Kubernetes operations report ConfigMap" `
         $kubernetesReportSyncCommand `
-        "The convergence report has not been confirmed as applied to the Kubernetes operations report ConfigMap."
+        $kubernetesReportSyncRequiredReason
 }
 
-$result = if ($handoffReady -and $readinessReady -and $finalizerReady -and $kubernetesReportSyncReady) { "ready" } else { "action-required" }
+$result = if ((-not $handoffStale) -and $handoffReady -and $readinessReady -and $finalizerReady -and $kubernetesReportSyncReady) { "ready" } else { "action-required" }
 
 $currentBottleneck = if (-not $handoff.exists) {
     [ordered]@{
         code = "write-handoff"
         title = "Generate operations evidence handoff"
         reason = "The handoff report is missing."
-        command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1"
+        command = $refreshHandoffCommand
+    }
+}
+elseif ($handoffStale) {
+    [ordered]@{
+        code = "refresh-handoff"
+        title = "Refresh operations evidence handoff"
+        reason = $refreshHandoffReason
+        command = $refreshHandoffCommand
+        note = $refreshHandoffNote
     }
 }
 elseif ($handoffReady -and -not $readinessReady) {
@@ -310,7 +490,7 @@ elseif ($handoffReady -and $readinessReady -and $finalizerReady -and -not $kuber
     [ordered]@{
         code = "sync-kubernetes-operations-report"
         title = "Sync Kubernetes operations report ConfigMap"
-        reason = "The convergence report has not been confirmed as applied to the Kubernetes operations report ConfigMap."
+        reason = $kubernetesReportSyncRequiredReason
         command = $kubernetesReportSyncCommand
     }
 }
@@ -320,7 +500,11 @@ else {
         title = Get-Text $nextStep "title"
         reason = Get-Text $nextStep "reason"
         command = $nextCommand
+        note = $nextStepNote
     }
+}
+if (@($nextStepDispatchUrls).Count -gt 0 -and $currentBottleneck.code -like "dispatch-ready-subset*") {
+    $currentBottleneck.dispatchUrls = @($nextStepDispatchUrls)
 }
 
 $generatedAt = [DateTimeOffset]::Now.ToString("o")
@@ -334,9 +518,18 @@ $report = [ordered]@{
     kubernetesOperationsReportSyncReportPath = $kubernetesReportSync.path
     handoffExists = [bool] $handoff.exists
     handoffResult = $handoffResult
+    handoffStale = [bool] $handoffStale
+    handoffTimestamp = $handoffTimestamp.raw
+    handoffTimestampSource = $handoffTimestamp.source
+    readinessTimestamp = $readinessTimestamp.raw
+    readinessTimestampSource = $readinessTimestamp.source
     readinessExists = [bool] $readiness.exists
     readinessResult = $readinessResult
-    readinessSummary = Get-Text $readiness.json "summary"
+    readinessSummary = $readinessSummary
+    readinessPassedCount = $readinessPassedCount
+    readinessPendingCount = $readinessPendingCount
+    readinessTotalCount = $readinessTotalCount
+    readinessCheckCount = $readinessCheckCount
     finalizerExists = [bool] $finalize.exists
     finalizerResult = $finalizerResult
     finalizerReadinessResult = $finalizerReadinessResult
@@ -346,6 +539,10 @@ $report = [ordered]@{
     finalizerGapCount = $finalizerGapCount
     kubernetesReportSyncExists = [bool] $kubernetesReportSync.exists
     kubernetesReportSyncResult = $kubernetesReportSyncResult
+    kubernetesReportSyncStale = [bool] $kubernetesReportSyncStale
+    kubernetesReportSyncTimestamp = $kubernetesReportSyncTimestamp.raw
+    kubernetesReportSyncTimestampSource = $kubernetesReportSyncTimestamp.source
+    kubernetesReportSyncFreshnessReason = $kubernetesReportSyncFreshnessReason
     kubernetesReportSyncFailedCount = $kubernetesReportSyncFailedCount
     kubernetesReportSyncFailedCountValid = [bool] $kubernetesReportSyncFailedCountResult.valid
     kubernetesReportSyncFailedCountRaw = [string] $kubernetesReportSyncFailedCountResult.raw
@@ -353,7 +550,7 @@ $report = [ordered]@{
     kubernetesReportSyncConfigMapKey = Get-Text $kubernetesReportSync.json "configMapKey"
     kubernetesReportSyncSourceReportResult = $kubernetesReportSyncSourceReportResult
     kubernetesReportSyncWorkflowCommand = $kubernetesReportSyncWorkflowCommand
-    kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap, and include data_flow_storage_transition_runbook_json_base64 only when .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json should be carried into the same ConfigMap. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary, and transition runbook evidence must be result=passed with no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content. Omit inputs when no target analytics-storage evidence is ready."
+    kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap, include data_flow_query_retention_budget_json_base64 only when .osmu-run/latest-data-flow-query-retention-budget-evidence.json should be carried into the same ConfigMap, and include data_flow_storage_transition_runbook_json_base64 only when .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json should be carried into the same ConfigMap. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary, and query/retention budget and transition runbook evidence must be result=passed with no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content. Omit inputs when no target analytics-storage evidence is ready."
     kubernetesReportSyncReady = [bool] $kubernetesReportSyncReady
     handoffFinalizerGapCount = Get-Int $handoff.json "finalizerGapCount"
     stageCount = Get-Int $handoff.json "stageCount"
@@ -363,8 +560,12 @@ $report = [ordered]@{
     missingRequiredArtifactCount = Get-Int $handoff.json "missingRequiredArtifactCount"
     failedImportCount = Get-Int $handoff.json "failedImportCount"
     currentBottleneck = $currentBottleneck
+    handoffBrowserDispatchDependencyNotes = @($handoffBrowserDispatchDependencyNotes)
+    handoffSecurityEvidenceFinalizerRunIdInputHintCount = $handoffSecurityEvidenceFinalizerRunIdInputHints.Count
+    handoffSecurityEvidenceFinalizerRunIdInputHints = @($handoffSecurityEvidenceFinalizerRunIdInputHints)
+    handoffPostDispatchCommands = @($handoffPostDispatchCommands)
     recommendedCommands = $recommendedCommands
-    decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, typed integer failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, typed integer failedCount=0, and sourceReportResult=ready."
+    decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, typed integer failedCount=0, and no gaps, and the Kubernetes operations report sync evidence is fresh against the latest handoff/readiness/finalizer inputs and confirms result=applied, typed integer failedCount=0, and sourceReportResult=ready."
     safetyPolicy = "This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."
 }
 
@@ -379,29 +580,53 @@ $markdownLines = @(
     "- Code: $($currentBottleneck.code)",
     "- Title: $($currentBottleneck.title)",
     "- Reason: $($currentBottleneck.reason)",
+    "- Note: $($currentBottleneck.note)",
     "- Command: ``$($currentBottleneck.command)``",
     "",
     "## Status",
     "",
     "- Handoff: $handoffResult",
+    "- Handoff stale: $handoffStale",
+    "- Handoff timestamp: $(Format-ReportTimestamp $handoffTimestamp)",
+    "- Readiness timestamp: $(Format-ReportTimestamp $readinessTimestamp)",
     "- Readiness: $readinessResult",
     "- Readiness summary: $($report.readinessSummary)",
+    "- Readiness counts: passed=$($report.readinessPassedCount) pending=$($report.readinessPendingCount) total=$($report.readinessTotalCount) checks=$($report.readinessCheckCount)",
     "- Finalizer: $finalizerResult",
     "- Finalizer readiness: $finalizerReadinessResult",
     "- Kubernetes report sync: $kubernetesReportSyncResult",
+    "- Kubernetes report sync stale: $kubernetesReportSyncStale",
+    "- Kubernetes report sync timestamp: $(Format-ReportTimestamp $kubernetesReportSyncTimestamp)",
     "- Kubernetes report sync ready: $kubernetesReportSyncReady",
     "- Kubernetes report sync ConfigMap: $($report.kubernetesReportSyncConfigMapName)",
     "- Kubernetes report sync workflow: ``$($report.kubernetesReportSyncWorkflowCommand)``",
     "- Kubernetes report sync workflow note: $($report.kubernetesReportSyncWorkflowNote)",
+    "- Kubernetes report sync freshness reason: $($report.kubernetesReportSyncFreshnessReason)",
     "- Stages: $($report.readyStageCount)/$($report.stageCount) ready",
     "- Blocked actions: $($report.blockedActionCount)",
     "- Missing workflow runs: $($report.missingWorkflowRunCount)",
+    "- Handoff security finalizer run-id hints: $($report.handoffSecurityEvidenceFinalizerRunIdInputHintCount)",
     "- Missing required artifacts: $($report.missingRequiredArtifactCount)",
     "- Finalizer gaps: $($report.finalizerGapCount)",
     "",
     "## Recommended Commands",
     ""
 )
+$bottleneckDispatchUrls = @($currentBottleneck.dispatchUrls) | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_) }
+if ($bottleneckDispatchUrls.Count -gt 0) {
+    $statusIndex = [Array]::IndexOf($markdownLines, "## Status")
+    if ($statusIndex -gt 0) {
+        $dispatchLines = @("- Dispatch URLs:")
+        foreach ($url in $bottleneckDispatchUrls) {
+            $dispatchLines += "  - $url"
+        }
+        $markdownLines = @(
+            $markdownLines[0..($statusIndex - 2)] +
+            $dispatchLines +
+            $markdownLines[($statusIndex - 1)..($markdownLines.Count - 1)]
+        )
+    }
+}
 if ($recommendedCommands.Count -eq 0) {
     $markdownLines += "- None"
 }
@@ -410,6 +635,50 @@ else {
         $markdownLines += "- $($command.order). $($command.name): ``$($command.command)``"
         if (-not [string]::IsNullOrWhiteSpace($command.reason)) {
             $markdownLines += "  - Reason: $($command.reason)"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($command.note)) {
+            $markdownLines += "  - Note: $($command.note)"
+        }
+        $commandDispatchUrls = @($command.dispatchUrls) | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_) }
+        if ($commandDispatchUrls.Count -gt 0) {
+            $markdownLines += "  - Dispatch URLs:"
+            foreach ($url in $commandDispatchUrls) {
+                $markdownLines += "    - $url"
+            }
+        }
+    }
+}
+$markdownLines += ""
+$markdownLines += "## Handoff Security Finalizer Run-id Hints"
+$markdownLines += ""
+if ($handoffSecurityEvidenceFinalizerRunIdInputHints.Count -eq 0) {
+    $markdownLines += "- None"
+}
+else {
+    foreach ($hint in $handoffSecurityEvidenceFinalizerRunIdInputHints) {
+        $runIdParameter = Get-Text $hint "runIdParameter"
+        if ([string]::IsNullOrWhiteSpace($runIdParameter)) { $runIdParameter = "RunId" }
+        $workflowName = Get-Text $hint "workflow"
+        if ([string]::IsNullOrWhiteSpace($workflowName)) { $workflowName = "workflow unknown" }
+        $sourceState = if (Get-Bool $hint "sourceSelected") { "selected" } elseif (Get-Bool $hint "supplementalForSecurityFinalizer") { "supplemental" } else { "hint" }
+        $markdownLines += "- ${runIdParameter}: workflow=$workflowName / source=$sourceState"
+        $runsUrl = Get-Text $hint "runsUrl"
+        if (-not [string]::IsNullOrWhiteSpace($runsUrl)) { $markdownLines += "  - Runs URL: $runsUrl" }
+        $runListJsonPath = Get-Text $hint "runListJsonPath"
+        if (-not [string]::IsNullOrWhiteSpace($runListJsonPath)) { $markdownLines += "  - Run-list JSON path: $runListJsonPath" }
+    }
+}
+$markdownLines += ""
+$markdownLines += "## Handoff Post Dispatch Commands"
+$markdownLines += ""
+if ($handoffPostDispatchCommands.Count -eq 0) {
+    $markdownLines += "- None"
+}
+else {
+    foreach ($command in $handoffPostDispatchCommands) {
+        $markdownLines += "- $($command.name): ``$($command.command)``"
+        if (-not [string]::IsNullOrWhiteSpace($command.note)) {
+            $markdownLines += "  - Note: $($command.note)"
         }
     }
 }

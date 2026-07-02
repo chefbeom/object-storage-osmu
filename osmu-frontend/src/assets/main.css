@@ -1265,6 +1265,18 @@ label {
   gap: 8px;
 }
 
+.readiness-dispatch-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .readiness-evidence-plan-actions li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2337,7 +2349,8 @@ tbody tr.selected {
     grid-template-columns: 1fr;
   }
 
-  .readiness-evidence-plan-actions button {
+  .readiness-evidence-plan-actions button,
+  .readiness-evidence-plan-actions .readiness-dispatch-link {
     justify-self: start;
   }
 

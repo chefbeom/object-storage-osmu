@@ -4,7 +4,7 @@ param(
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-evidence-plan-invocation.md",
     [ValidateSet("Workflow", "Local", "Recommended")]
     [string] $CommandMode = "Workflow",
-    [int[]] $ActionOrder = @(),
+    [string[]] $ActionOrder = @(),
     [string[]] $Category = @(),
     [string[]] $Placeholder = @(),
     [string] $BackupTimestamp = "",
@@ -18,11 +18,40 @@ param(
     [switch] $ContinueOnError,
     [switch] $AllowUnsafeCommand,
     [switch] $NoWrite,
-    [string] $PowerShellCommand = ""
+    [string] $PowerShellCommand = "",
+    [string] $GitHubCliPath = "",
+    [switch] $UseGitHubApi,
+    [string] $GitHubRepository = "",
+    [string] $GitHubRef = "main",
+    [string] $GitHubApiBaseUrl = "https://api.github.com"
 )
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
+function ConvertTo-ActionOrderArray([object[]] $Values) {
+    $orders = New-Object System.Collections.Generic.List[int]
+    foreach ($value in @($Values)) {
+        if ($null -eq $value) {
+            continue
+        }
+        foreach ($part in ([string] $value -split '[,\s]+')) {
+            $trimmed = $part.Trim()
+            if ([string]::IsNullOrWhiteSpace($trimmed)) {
+                continue
+            }
+            $order = 0
+            if (-not [int]::TryParse($trimmed, [ref] $order) -or $order -le 0) {
+                throw "ActionOrder values must be positive integers. Invalid value: $trimmed"
+            }
+            if (-not $orders.Contains($order)) {
+                $orders.Add($order) | Out-Null
+            }
+        }
+    }
+    return @($orders | Sort-Object -Unique)
+}
+
+$ActionOrder = @(ConvertTo-ActionOrderArray $ActionOrder)
 
 function Resolve-ProjectPath([string] $path) {
     if ([System.IO.Path]::IsPathRooted($path)) {
@@ -31,6 +60,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Get-JsonProperty([object] $Object, [string] $Name) {
     if ($null -eq $Object) {
         return $null
@@ -48,6 +81,24 @@ function Get-Text([object] $Object, [string] $Name) {
         return ""
     }
     return [string] $value
+}
+
+function Get-IntOrDefault([object] $Object, [string] $Name, [int] $DefaultValue) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return $DefaultValue
+    }
+    if ($value -is [int]) {
+        return [int] $value
+    }
+    if ($value -is [long]) {
+        return [int] $value
+    }
+    $parsed = 0
+    if ([int]::TryParse(([string] $value), [ref] $parsed)) {
+        return $parsed
+    }
+    return $DefaultValue
 }
 
 function Get-Bool([object] $Object, [string] $Name) {
@@ -115,6 +166,159 @@ function Apply-Replacements([string] $Command, [hashtable] $Map) {
         $result = $result.Replace([string] $key, [string] $Map[$key])
     }
     return $result
+}
+
+function Resolve-GitHubCliCandidate([string] $PathValue) {
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return ""
+    }
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return [System.IO.Path]::GetFullPath($PathValue)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $PathValue))
+}
+
+function Test-GitHubWorkflowCommand([string] $Command) {
+    if ([string]::IsNullOrWhiteSpace($Command)) {
+        return $false
+    }
+    return $Command.Trim().ToLowerInvariant().StartsWith("gh workflow run ")
+}
+function Normalize-GitHubRepositorySlug([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+    $trimmed = $Value.Trim()
+    if ($trimmed -match '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
+        if ($trimmed.EndsWith(".git", [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $trimmed.Substring(0, $trimmed.Length - 4)
+        }
+        return $trimmed
+    }
+    if ($trimmed -match '^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?$') {
+        return $matches[1]
+    }
+    if ($trimmed -match '^git@github\.com:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?$') {
+        return $matches[1]
+    }
+    return ""
+}
+
+function Resolve-GitHubRepositorySlug([string] $ExplicitRepository) {
+    $explicit = Normalize-GitHubRepositorySlug $ExplicitRepository
+    if (-not [string]::IsNullOrWhiteSpace($explicit)) {
+        return $explicit
+    }
+    $environmentRepository = Normalize-GitHubRepositorySlug $env:GITHUB_REPOSITORY
+    if (-not [string]::IsNullOrWhiteSpace($environmentRepository)) {
+        return $environmentRepository
+    }
+    try {
+        $remote = git -C $root config --get remote.origin.url 2>$null
+        return Normalize-GitHubRepositorySlug ([string] $remote)
+    }
+    catch {
+        return ""
+    }
+}
+
+function Convert-GitHubWorkflowCommandToDispatch([string] $Command) {
+    $parts = @($Command.Trim() -split '\s+')
+    if ($parts.Count -lt 4 -or $parts[0] -ne "gh" -or $parts[1] -ne "workflow" -or $parts[2] -ne "run") {
+        throw "Unsupported GitHub workflow command: $Command"
+    }
+
+    $workflow = [string] $parts[3]
+    if ($workflow.Contains("/") -or $workflow.Contains("\")) {
+        $workflow = [System.IO.Path]::GetFileName($workflow)
+    }
+
+    $inputs = [ordered]@{}
+    for ($i = 4; $i -lt $parts.Count; $i++) {
+        $part = [string] $parts[$i]
+        if ($part -eq "-f" -or $part -eq "--field" -or $part -eq "-F") {
+            if ($i + 1 -ge $parts.Count) {
+                throw "Missing value after $part in GitHub workflow command."
+            }
+            $field = [string] $parts[$i + 1]
+            $separatorIndex = $field.IndexOf("=")
+            if ($separatorIndex -le 0) {
+                throw "Workflow input must use name=value format: $field"
+            }
+            $name = $field.Substring(0, $separatorIndex)
+            $value = $field.Substring($separatorIndex + 1)
+            $inputs[$name] = $value
+            $i++
+        }
+        else {
+            throw "Unsupported gh workflow run argument for API dispatch: $part"
+        }
+    }
+
+    return [ordered]@{
+        workflow = $workflow
+        inputs = $inputs
+    }
+}
+
+function Invoke-GitHubWorkflowDispatchApi([string] $Command) {
+    $repositorySlug = $script:ResolvedGitHubRepositorySlug
+    if ([string]::IsNullOrWhiteSpace($repositorySlug)) {
+        throw "GitHub repository is required for API dispatch. Pass -GitHubRepository owner/repo or set GITHUB_REPOSITORY."
+    }
+    $token = if (-not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) { $env:GH_TOKEN } else { $env:GITHUB_TOKEN }
+    if ([string]::IsNullOrWhiteSpace($token)) {
+        throw "GH_TOKEN or GITHUB_TOKEN is required for GitHub workflow dispatch through the REST API."
+    }
+    if ([string]::IsNullOrWhiteSpace($GitHubRef)) {
+        throw "GitHubRef is required for GitHub workflow dispatch through the REST API."
+    }
+
+    $dispatch = Convert-GitHubWorkflowCommandToDispatch $Command
+    $encodedWorkflow = [System.Uri]::EscapeDataString([string] $dispatch.workflow)
+    $base = if ([string]::IsNullOrWhiteSpace($GitHubApiBaseUrl)) { "https://api.github.com" } else { $GitHubApiBaseUrl.TrimEnd("/") }
+    $uri = "$base/repos/$repositorySlug/actions/workflows/$encodedWorkflow/dispatches"
+    $body = [ordered]@{
+        ref = $GitHubRef
+    }
+    if ($dispatch.inputs.Count -gt 0) {
+        $body.inputs = $dispatch.inputs
+    }
+
+    $headers = @{
+        "Accept" = "application/vnd.github+json"
+        "Authorization" = "Bearer $token"
+        "User-Agent" = "OSMU-operations-evidence-plan-invocation"
+        "X-GitHub-Api-Version" = "2022-11-28"
+    }
+    $json = $body | ConvertTo-Json -Depth 10 -Compress
+    try {
+        Invoke-RestMethod -Uri $uri -Headers $headers -Method Post -ContentType "application/json" -Body $json | Out-Null
+        return [ordered]@{
+            exitCode = 0
+            output = @("workflow dispatch accepted: workflow=$($dispatch.workflow) ref=$GitHubRef repository=$repositorySlug")
+        }
+    }
+    catch {
+        return [ordered]@{
+            exitCode = 1
+            output = @("GitHub workflow dispatch failed for $($dispatch.workflow): $($_.Exception.Message)")
+        }
+    }
+}
+
+function Get-GitHubCliExecutionSource {
+    if (-not [string]::IsNullOrWhiteSpace($script:ResolvedGitHubCliPath)) {
+        if (Test-Path -LiteralPath $script:ResolvedGitHubCliPath) {
+            return $script:ResolvedGitHubCliPath
+        }
+        return ""
+    }
+    $command = Get-Command gh -ErrorAction SilentlyContinue
+    if ($null -eq $command) {
+        return ""
+    }
+    return [string] $command.Source
 }
 
 function Get-UnresolvedPlaceholders([string] $Command) {
@@ -228,6 +432,16 @@ function Test-SafeCommand([string] $Command) {
 }
 
 function Invoke-CommandString([string] $Command) {
+    if ($UseGitHubApi -and (Test-GitHubWorkflowCommand $Command)) {
+        return Invoke-GitHubWorkflowDispatchApi $Command
+    }
+
+    $previousPath = $env:Path
+    if ((Test-GitHubWorkflowCommand $Command) -and -not [string]::IsNullOrWhiteSpace($script:ResolvedGitHubCliPath)) {
+        $githubCliDirectory = Split-Path -Parent $script:ResolvedGitHubCliPath
+        $env:Path = "$githubCliDirectory;$env:Path"
+    }
+
     $pwsh = $PowerShellCommand
     if ([string]::IsNullOrWhiteSpace($pwsh)) {
         if ($PSVersionTable.PSEdition -eq "Core") {
@@ -243,11 +457,16 @@ function Invoke-CommandString([string] $Command) {
         $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $Command)
     }
 
-    $output = & $pwsh @arguments 2>&1
-    $exitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { [int] $global:LASTEXITCODE }
-    return [ordered]@{
-        exitCode = $exitCode
-        output = @($output | ForEach-Object { [string] $_ })
+    try {
+        $output = & $pwsh @arguments 2>&1
+        $exitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { [int] $global:LASTEXITCODE }
+        return [ordered]@{
+            exitCode = $exitCode
+            output = @($output | ForEach-Object { [string] $_ })
+        }
+    }
+    finally {
+        $env:Path = $previousPath
     }
 }
 
@@ -256,15 +475,19 @@ if (-not (Test-Path -LiteralPath $resolvedPlanPath)) {
     throw "Operations evidence plan not found: $resolvedPlanPath"
 }
 
-$plan = Get-Content -Raw -LiteralPath $resolvedPlanPath | ConvertFrom-Json
+$plan = Read-Utf8Text $resolvedPlanPath | ConvertFrom-Json
 if ($plan.formatVersion -ne "osmu.operations-evidence-plan.v1") {
     throw "Unexpected operations evidence plan formatVersion: $($plan.formatVersion)"
 }
 
 $replacementMap = New-ReplacementMap
+$script:ResolvedGitHubCliPath = Resolve-GitHubCliCandidate $GitHubCliPath
+$script:ResolvedGitHubRepositorySlug = Resolve-GitHubRepositorySlug $GitHubRepository
+$githubCliExecutionSource = Get-GitHubCliExecutionSource
 $actionResults = New-Object System.Collections.Generic.List[object]
 $allActions = @($plan.actions)
 $selectedActions = @($allActions | Where-Object { Test-ActionSelected $_ })
+$selectedActionOrders = @($selectedActions | ForEach-Object { [int] (Get-JsonProperty $_ "order") } | Where-Object { $_ -gt 0 } | Sort-Object -Unique)
 
 foreach ($action in $selectedActions) {
     $command = Select-ActionCommand $action
@@ -293,6 +516,26 @@ foreach ($action in $selectedActions) {
     }
     if (-not $safeCommand -and -not $AllowUnsafeCommand) {
         $blockReasons.Add("command failed allowlist/shell metacharacter check")
+    }
+    if ($Execute -and $UseGitHubApi -and (Test-GitHubWorkflowCommand $resolvedCommand)) {
+        if ([string]::IsNullOrWhiteSpace($script:ResolvedGitHubRepositorySlug)) {
+            $blockReasons.Add("GitHub repository not resolved for API dispatch")
+        }
+        $tokenPresent = (-not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) -or (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN))
+        if (-not $tokenPresent) {
+            $blockReasons.Add("GH_TOKEN or GITHUB_TOKEN not set for API dispatch")
+        }
+        if ([string]::IsNullOrWhiteSpace($GitHubRef)) {
+            $blockReasons.Add("GitHubRef not set for API dispatch")
+        }
+    }
+    elseif ($Execute -and (Test-GitHubWorkflowCommand $resolvedCommand) -and [string]::IsNullOrWhiteSpace($githubCliExecutionSource)) {
+        if ([string]::IsNullOrWhiteSpace($script:ResolvedGitHubCliPath)) {
+            $blockReasons.Add("GitHub CLI not found on PATH")
+        }
+        else {
+            $blockReasons.Add("GitHub CLI not found at explicit path: $script:ResolvedGitHubCliPath")
+        }
     }
 
     $status = "planned"
@@ -357,6 +600,10 @@ $plannedCount = Count-ActionResultStatus $actionResults "planned"
 $blockedCount = Count-ActionResultStatus $actionResults "blocked"
 $executedCount = Count-ActionResultStatus $actionResults "executed"
 $failedCount = Count-ActionResultStatus $actionResults "failed"
+$sourcePassedCount = Get-IntOrDefault $plan "sourcePassedCount" 0
+$sourcePendingCount = Get-IntOrDefault $plan "sourcePendingCount" 0
+$sourceTotalCount = Get-IntOrDefault $plan "sourceTotalCount" 0
+$sourceCheckCount = Get-IntOrDefault $plan "sourceCheckCount" 0
 $selectedCount = $actionResults.Count
 $result = if ($selectedCount -eq 0) {
     "ready"
@@ -384,9 +631,20 @@ $report = [ordered]@{
     sourcePlan = $resolvedPlanPath
     sourceResult = Get-Text $plan "result"
     sourceSummary = Get-Text $plan "sourceSummary"
+    sourcePassedCount = $sourcePassedCount
+    sourcePendingCount = $sourcePendingCount
+    sourceTotalCount = $sourceTotalCount
+    sourceCheckCount = $sourceCheckCount
     commandMode = $CommandMode
     executionMode = if ($Execute) { "execute" } else { "plan-only" }
+    githubCliPath = $script:ResolvedGitHubCliPath
+    githubCliExecutionSource = $githubCliExecutionSource
+    useGitHubApi = [bool] $UseGitHubApi
+    githubRepository = $script:ResolvedGitHubRepositorySlug
+    githubRef = $GitHubRef
+    githubApiBaseUrl = $GitHubApiBaseUrl
     selectedActionCount = $selectedCount
+    selectedActionOrders = @($selectedActionOrders)
     plannedCount = $plannedCount
     blockedCount = $blockedCount
     executedCount = $executedCount
@@ -403,8 +661,10 @@ $markdownLines = @(
     "Source plan: $resolvedPlanPath",
     "Source result: $($report.sourceResult)",
     "Source summary: $($report.sourceSummary)",
+    "Source counts: passed=$sourcePassedCount pending=$sourcePendingCount total=$sourceTotalCount checks=$sourceCheckCount",
     "Command mode: $CommandMode",
     "Execution mode: $($report.executionMode)",
+    "GitHub CLI path: $(if ([string]::IsNullOrWhiteSpace($script:ResolvedGitHubCliPath)) { 'PATH lookup' } else { $script:ResolvedGitHubCliPath })",
     "",
     "## Decision Rule",
     "",
@@ -413,6 +673,7 @@ $markdownLines = @(
     "## Summary",
     "",
     "- Selected actions: $selectedCount",
+    "- Selected action orders: $(if ($selectedActionOrders.Count -gt 0) { $selectedActionOrders -join ', ' } else { 'none' })",
     "- Planned: $plannedCount",
     "- Blocked: $blockedCount",
     "- Executed: $executedCount",

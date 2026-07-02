@@ -22,6 +22,11 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Get-ObjectProperty($object, [string] $name) {
     if ($null -eq $object) {
         return $null
@@ -62,7 +67,7 @@ function Read-Evidence([string] $path, [string] $label) {
             path = $resolvedPath
             exists = $true
             parsed = $true
-            data = (Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json)
+            data = (Read-Utf8Text $resolvedPath | ConvertFrom-Json)
             detail = "evidence parsed"
         }
     }

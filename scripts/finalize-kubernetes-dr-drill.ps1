@@ -84,6 +84,10 @@ function Resolve-ProjectPath([string] $path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Format-Value([string] $value) {
     if ($null -eq $value) {
@@ -203,7 +207,7 @@ function Read-JsonFile([string] $Path, [string] $Label) {
     if (-not (Test-Path -LiteralPath $resolved)) {
         throw "$Label not found: $resolved"
     }
-    return Get-Content -Raw -Encoding UTF8 -LiteralPath $resolved | ConvertFrom-Json
+    return Read-Utf8Text $resolved | ConvertFrom-Json
 }
 
 function Assert-KubernetesQuantity([string] $Name, [string] $Value) {

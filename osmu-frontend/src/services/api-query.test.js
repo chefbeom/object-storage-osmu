@@ -32,12 +32,14 @@ import {
   getAuditLogs,
   getBackupRestoreDrillEvidence,
   getBillingPricingPolicy,
+  getBillingPricingPolicyCommercialApprovalSummary,
   getBillingPricingPolicyProposals,
   getBuckets,
   getChargebackAlertNotificationPreview,
   getChargebackAlertNotificationOutbox,
   getChargebackAdapterRetryWorkerStatus,
   getChargebackAlerts,
+  getChargebackCloseoutSummary,
   getChargebackFinalInvoices,
   getChargebackInvoiceDrafts,
   getChargebackPaymentProviderHandoffPreview,
@@ -1481,6 +1483,18 @@ test('chargeback final invoice wrappers finalize update payment status and queue
         invoice: { id: 9, paymentReference: 'PAY-2026-0001' },
       },
     }),
+    () => jsonResponse({
+      data: {
+        mode: 'CHARGEBACK_CLOSEOUT_SUMMARY',
+        billingPeriod: '2026-06',
+        result: 'RECONCILED',
+        failureCount: 0,
+        reconciliationDifferenceMinorUnits: 0,
+        rawCustomerPaymentDataStored: false,
+        rawProviderResponseStored: false,
+        rawSecretValuesStored: false,
+      },
+    }),
   ])
 
   try {
@@ -1508,6 +1522,12 @@ test('chargeback final invoice wrappers finalize update payment status and queue
     const paid = await recordChargebackInvoicePayment(9, {
       paymentReference: 'PAY-2026-0001',
       paymentNote: 'paid',
+    })
+    const closeout = await getChargebackCloseoutSummary({
+      billingPeriod: '2026-06',
+      from: '2026-06-01T00:00:00.000Z',
+      to: '2026-07-01T00:00:00.000Z',
+      limit: 100,
     })
 
     const finalizeUrl = new URL(fetchMock.calls[0].url)
@@ -1570,6 +1590,16 @@ test('chargeback final invoice wrappers finalize update payment status and queue
     assert.equal(recordUrl.searchParams.get('paymentNote'), 'paid')
     assert.equal(fetchMock.calls[8].options.method, 'POST')
     assert.equal(paid.data.paymentStatus, 'PAID')
+
+    const closeoutUrl = new URL(fetchMock.calls[9].url)
+    assert.equal(closeoutUrl.pathname, '/api/admin/billing/chargeback-closeout-summary')
+    assert.equal(closeoutUrl.searchParams.get('billingPeriod'), '2026-06')
+    assert.equal(closeoutUrl.searchParams.get('from'), '2026-06-01T00:00:00.000Z')
+    assert.equal(closeoutUrl.searchParams.get('to'), '2026-07-01T00:00:00.000Z')
+    assert.equal(closeoutUrl.searchParams.get('limit'), '100')
+    assert.equal(fetchMock.calls[9].options.method, undefined)
+    assert.equal(closeout.data.result, 'RECONCILED')
+    assert.equal(closeout.data.failureCount, 0)
   } finally {
     cleanupFetch(fetchMock)
   }
@@ -1672,6 +1702,22 @@ test('billing pricing policy proposal wrappers create list and approve internal 
         appliedPolicy: { currency: 'KRW', storageGbMonthRate: 1.25 },
       },
     }),
+    () => jsonResponse({
+      data: {
+        mode: 'BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY',
+        proposalCount: 1,
+        approvedPriceListCount: 1,
+        commercialApprovedCount: 1,
+        proposals: [
+          {
+            id: 11,
+            status: 'PRICE_LIST_APPROVED',
+            approvedPriceList: true,
+            commercialApprovalReference: 'LEGAL-2026-0001',
+          },
+        ],
+      },
+    }),
   ])
 
   try {
@@ -1692,6 +1738,7 @@ test('billing pricing policy proposal wrappers create list and approve internal 
       approvalNote: 'commercial approved',
       effectiveFrom: '2026-06-20T00:00:00Z',
     })
+    const commercialSummary = await getBillingPricingPolicyCommercialApprovalSummary({ limit: 25 })
 
     assert.equal(new URL(fetchMock.calls[0].url).pathname, '/api/admin/billing/pricing-policy-proposals')
     assert.equal(fetchMock.calls[0].options.method, 'POST')
@@ -1731,6 +1778,13 @@ test('billing pricing policy proposal wrappers create list and approve internal 
     assert.equal(fetchMock.calls[3].options.method, 'POST')
     assert.equal(priceListApproved.data.status, 'PRICE_LIST_APPROVED')
     assert.equal(priceListApproved.data.approvedPriceList, true)
+
+    const commercialSummaryUrl = new URL(fetchMock.calls[4].url)
+    assert.equal(commercialSummaryUrl.pathname, '/api/admin/billing/pricing-policy-proposals/commercial-approval-summary')
+    assert.equal(commercialSummaryUrl.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[4].options.method, undefined)
+    assert.equal(commercialSummary.data.mode, 'BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY')
+    assert.equal(commercialSummary.data.commercialApprovedCount, 1)
   } finally {
     cleanupFetch(fetchMock)
   }

@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -73,8 +77,8 @@ if ($LASTEXITCODE -ne 0) {
 Assert-True (Test-Path -LiteralPath $jsonOutputPath) "Monitoring threshold evidence JSON missing."
 Assert-True (Test-Path -LiteralPath $markdownOutputPath) "Monitoring threshold evidence markdown missing."
 
-$reportText = Get-Content -Raw -LiteralPath $jsonOutputPath
-$markdown = Get-Content -Raw -LiteralPath $markdownOutputPath
+$reportText = Read-Utf8Text $jsonOutputPath
+$markdown = Read-Utf8Text $markdownOutputPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 
@@ -85,6 +89,11 @@ Assert-True ($report.thresholdTargetSummary.requiredAlertCount -ge 10) "Expected
 Assert-True ($report.thresholdTargetSummary.mappedAlertCount -ge $report.thresholdTargetSummary.requiredAlertCount) "Expected mapped alert targets."
 Assert-True ($report.thresholdTargetSummary.grafanaPanelCount -ge $report.thresholdTargetSummary.requiredAlertCount) "Expected Grafana panel mappings."
 Assert-True ($report.thresholdTargetSummary.tuningEvidenceCount -ge $report.thresholdTargetSummary.requiredAlertCount) "Expected tuning evidence mappings."
+Assert-True ($report.thresholdTargetSummary.alertTargetCoverageComplete) "Expected alert target coverage complete."
+Assert-True ($report.thresholdTargetSummary.routeCoverageComplete) "Expected route coverage complete."
+Assert-True ($report.thresholdTargetSummary.grafanaPanelCoverageComplete) "Expected Grafana panel coverage complete."
+Assert-True ($report.thresholdTargetSummary.tuningEvidenceCoverageComplete) "Expected tuning evidence coverage complete."
+Assert-True ($report.thresholdTargetSummary.thresholdMappingComplete) "Expected threshold mapping complete."
 Assert-True (@($report.thresholdTargetSummary.routes | Where-Object { $_ -eq "osmu-data-flow" }).Count -eq 1) "Expected osmu-data-flow route."
 Assert-True ($report.confirmations.prometheusRulesLoaded) "Expected Prometheus rules confirmation."
 Assert-True ($report.confirmations.grafanaDashboardImported) "Expected Grafana dashboard confirmation."
@@ -96,6 +105,7 @@ Assert-True (@($checks | Where-Object { $_.id -eq "threshold-alert-targets-compl
 
 Assert-Contains $markdown "# OSMU Monitoring Threshold Evidence" "monitoring threshold evidence markdown"
 Assert-Contains $markdown "Alertmanager Routes" "monitoring threshold evidence markdown"
+Assert-Contains $markdown "Threshold mapping complete: True" "monitoring threshold evidence markdown"
 Assert-Contains $markdown "Record passed target evidence" "monitoring threshold evidence markdown"
 Assert-Contains $report.secretPolicy "does not contain passwords" "monitoring threshold evidence JSON"
 Assert-Contains $report.decisionRule "Production/B2B monitoring readiness requires result=passed" "monitoring threshold evidence JSON"
@@ -212,3 +222,4 @@ Assert-True (Test-Path -LiteralPath $missingTargetJsonOutputPath) "Missing targe
 Write-Host "Monitoring threshold evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"
 Write-Host "Markdown: $markdownOutputPath"
+exit 0

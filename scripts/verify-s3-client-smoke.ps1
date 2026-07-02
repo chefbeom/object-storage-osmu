@@ -1305,6 +1305,11 @@ function Invoke-McSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretK
             Invoke-External $mc.Source @("alias", "set", $alias, $s3Endpoint, $accessKey, $secretKey, "--api", "S3v4") | Out-Null
         }
 
+        $bucketList = Invoke-ExternalText $mc.Source @("ls", $alias)
+        $bucketNamePattern = "(^|\s)$([regex]::Escape($bucketName))/?(\s|$)"
+        if ($bucketList -notmatch $bucketNamePattern) {
+            throw "MinIO Client root bucket listing did not include $bucketName."
+        }
         Invoke-External $mc.Source @("ls", "$alias/$bucketName") | Out-Null
 
         $bodyPath = New-SmokeFile $tempDir "mc-smoke.txt" "osmu mc smoke"
@@ -1412,6 +1417,11 @@ function Invoke-DockerizedMcSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey
             Invoke-DockerMc $tempDir @("alias", "set", $alias, $dockerS3Endpoint, $accessKey, $secretKey, "--api", "S3v4") | Out-Null
         }
 
+        $bucketList = Invoke-DockerMc $tempDir @("ls", $alias) -ReturnText
+        $bucketNamePattern = "(^|\s)$([regex]::Escape($bucketName))/?(\s|$)"
+        if ($bucketList -notmatch $bucketNamePattern) {
+            throw "Dockerized MinIO Client root bucket listing did not include $bucketName."
+        }
         Invoke-DockerMc $tempDir @("ls", "$alias/$bucketName") | Out-Null
 
         $bodyPath = New-SmokeFile $tempDir "docker-mc-smoke.txt" "osmu docker mc smoke"

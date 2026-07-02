@@ -12,12 +12,17 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Assert-FileResultPassed([string] $path, [string] $label, [string] $formatVersion) {
     $resolvedPath = Resolve-ProjectPath $path
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
         throw "$label evidence missing: $resolvedPath"
     }
-    $evidence = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+    $evidence = Read-Utf8Text $resolvedPath | ConvertFrom-Json
     if ($evidence.formatVersion -ne $formatVersion) {
         throw "$label formatVersion mismatch: $($evidence.formatVersion)"
     }

@@ -164,6 +164,33 @@ function Get-S3SelectionReady([string] $Selection, [bool] $AwsAvailable, [bool] 
     }
 }
 
+function Get-BlockingAction([string] $CheckName, [string] $Selection) {
+    switch ($CheckName) {
+        "Docker CLI" { return "Install or repair Docker Desktop so docker is available on PATH, then rerun durable preflight." }
+        "Docker daemon" { return "Start Docker Desktop and wait until docker info succeeds, then rerun durable preflight." }
+        "Docker Compose config" { return "Fix the Docker Compose file or env source until docker compose config --quiet succeeds." }
+        "Local env file" { return "Restore infra/local/.env or infra/local/.env.example before running the durable demo." }
+        "Docker Compose file" { return "Restore infra/local/docker-compose.yml before running the durable demo." }
+        "Node.js" { return "Install Node.js before running frontend and Browser E2E durable demo checks." }
+        "npm" { return "Install npm or repair the Node.js installation before running frontend checks." }
+        "Selected real S3 client path" {
+            if ($Selection -eq "docker-mc") {
+                return "Start Docker Desktop for dockerized MinIO Client, or rerun preflight with an installed host S3 client selection."
+            }
+            return "Install or configure the selected S3 client path, or choose auto/docker-mc when Docker is running."
+        }
+        default { return "Resolve the failed required preflight check, then rerun durable preflight." }
+    }
+}
+
+function Get-BlockingActionCommand([string] $CheckName, [string] $Selection) {
+    switch ($CheckName) {
+        "Docker daemon" { return "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -S3Client $Selection" }
+        "Selected real S3 client path" { return "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -S3Client $Selection" }
+        default { return "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -S3Client $Selection" }
+    }
+}
+
 $resolvedEnvFile = Resolve-ProjectPath $EnvFile
 $resolvedEnvExample = Resolve-ProjectPath $EnvExample
 $resolvedComposeFile = Resolve-ProjectPath $ComposeFile
@@ -308,6 +335,17 @@ else {
 
 $requiredFailures = @($script:Checks | Where-Object { $_.required -and $_.status -eq "FAIL" })
 $result = if ($requiredFailures.Count -eq 0) { "ready" } else { "pending" }
+$blockingActions = @($requiredFailures | ForEach-Object {
+    [ordered]@{
+        check = $_.name
+        detail = $_.detail
+        action = Get-BlockingAction $_.name $S3Client
+        command = Get-BlockingActionCommand $_.name $S3Client
+    }
+})
+$readyNextActionCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-durable-mvp-demo.ps1 -S3Client $S3Client -EnableRealMultipartEvidence"
+$nextAction = if ($result -eq "ready") { "Run the durable MVP finalizer with real multipart evidence." } elseif ($blockingActions.Count -gt 0) { $blockingActions[0].action } else { "Rerun durable preflight." }
+$nextActionCommand = if ($result -eq "ready") { $readyNextActionCommand } elseif ($blockingActions.Count -gt 0) { $blockingActions[0].command } else { "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -S3Client $S3Client" }
 $report = [pscustomobject]@{
     generatedAt = [DateTimeOffset]::Now.ToString("o")
     result = $result
@@ -317,11 +355,16 @@ $report = [pscustomobject]@{
     composeFile = $resolvedComposeFile
     composeEnvFile = $composeEnvFile
     requiredFailures = @($requiredFailures | ForEach-Object { $_.name })
+    nextAction = $nextAction
+    nextActionCommand = $nextActionCommand
+    blockingActions = @($blockingActions)
     checks = @($script:Checks | ForEach-Object { $_ })
     nextCommands = @(
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -S3Client $S3Client",
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-gate.ps1 -S3Client $S3Client",
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-gate.ps1 -S3Client $S3Client -EnableRealMultipartEvidence",
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-durable-mvp-demo.ps1 -S3Client $S3Client",
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-durable-mvp-demo.ps1 -S3Client $S3Client -EnableRealMultipartEvidence",
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -S3Client $S3Client -FailIfDurablePending"
     )
 }
@@ -335,6 +378,11 @@ $summaryLines = @(
     "Selected S3 client: $($report.selectedS3Client)",
     "Docker config: $($report.dockerConfig)",
     "",
+    "## Next Action",
+    "",
+    "- $($report.nextAction)",
+    "- Command: ``$($report.nextActionCommand)``",
+    "",
     "## Checks",
     ""
 )
@@ -346,6 +394,18 @@ foreach ($check in $script:Checks) {
         $line = "$line Evidence: $($check.evidence)"
     }
     $summaryLines += $line
+}
+
+if ($report.blockingActions.Count -gt 0) {
+    $summaryLines += @(
+        "",
+        "## Blocking Actions",
+        ""
+    )
+    foreach ($action in $report.blockingActions) {
+        $summaryLines += "- $($action.check): $($action.action)"
+        $summaryLines += "  - Command: ``$($action.command)``"
+    }
 }
 
 $summaryLines += @(

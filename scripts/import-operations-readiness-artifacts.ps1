@@ -8,12 +8,18 @@ param(
     [string] $MinioBucketCorsArtifactPath = "",
     [string] $MonitoringThresholdArtifactPath = "",
     [string] $SecretRotationArtifactPath = "",
+    [string] $ClusterNetworkAccessReviewArtifactPath = "",
+    [string] $HelmValuesHardeningArtifactPath = "",
+    [string] $SupportEscalationHandoffArtifactPath = "",
     [string] $CommercialIntegrationArtifactPath = "",
     [string] $CommercialApprovalArtifactPath = "",
+    [string] $ChargebackCloseoutArtifactPath = "",
     [string] $EnterpriseAuthArtifactPath = "",
+    [string] $EnterpriseAuthJitRollbackArtifactPath = "",
     [string] $OperationsHandoffPackageArtifactPath = "",
     [string] $KubernetesOperationsReportSyncArtifactPath = "",
     [string] $DataFlowStoragePlanArtifactPath = "",
+    [string] $DataFlowQueryRetentionBudgetArtifactPath = "",
     [string] $DataFlowStorageTransitionRunbookArtifactPath = "",
     [string] $OutputDirectory = ".\.osmu-run",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-readiness-artifact-import.json",
@@ -32,6 +38,10 @@ function Resolve-ProjectPath([string] $path) {
         return [System.IO.Path]::GetFullPath($path)
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
+}
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
 }
 
 function Add-Entry(
@@ -90,6 +100,43 @@ function Get-JsonProperty([object] $Object, [string] $Name) {
         return $null
     }
     return $property.Value
+}
+
+function Get-TargetEvidenceFieldValues([object] $Json) {
+    if ($null -eq $Json) {
+        return @()
+    }
+    $values = New-Object System.Collections.ArrayList
+    foreach ($source in @((Get-JsonProperty $Json "target"), $Json)) {
+        if ($null -eq $source) { continue }
+        foreach ($name in @("environmentName", "targetCluster", "cluster", "namespace", "sourceNamespace", "restoreNamespace", "operator", "operatorName", "reviewedBy", "approvedBy")) {
+            $value = [string] (Get-JsonProperty $source $name)
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                [void] $values.Add($value)
+            }
+        }
+    }
+    return @($values)
+}
+
+function Test-SelfTestTargetEvidenceJson([object] $Json) {
+    $selfTestPattern = "(?i)(^|[-_ .])(self[-_ .]?test|fixture|sample)([-_ .]|$)"
+    $markers = @()
+    foreach ($value in (Get-TargetEvidenceFieldValues $Json)) {
+        if ($value -match $selfTestPattern) {
+            $markers += $value
+        }
+    }
+    if ($markers.Count -gt 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "self-test target evidence rejected markers=$($markers -join ',')"
+        }
+    }
+    return [pscustomobject]@{
+        passed = $true
+        detail = "target evidence markers accepted"
+    }
 }
 
 function Get-JsonInt([object] $Object, [string] $Name) {
@@ -203,7 +250,7 @@ function Test-OperationsEvidenceRawContent([string] $Raw, [string] $Label) {
 
 function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] $ExpectedValue) {
     try {
-        $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+        $json = Read-Utf8Text $Path | ConvertFrom-Json
     }
     catch {
         return [pscustomobject]@{
@@ -222,7 +269,7 @@ function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] 
 
 function Test-StorageExpansionRbacAuthEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -319,7 +366,7 @@ function Test-StorageExpansionRbacAuthEvidenceJson([string] $Path) {
 
 function Test-StorageExpansionServerDryRunEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -415,7 +462,7 @@ function Test-StorageExpansionServerDryRunEvidenceJson([string] $Path) {
 
 function Test-StorageExpansionFinalizeJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -524,7 +571,7 @@ function Test-StorageExpansionFinalizeJson([string] $Path) {
 
 function Test-KubernetesHaDrReadinessEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -640,7 +687,7 @@ function Test-KubernetesHaDrReadinessEvidenceJson([string] $Path) {
 
 function Test-KubernetesDrFinalizeJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -854,7 +901,7 @@ function Test-KubernetesDrFinalizeJson([string] $Path) {
 
 function Test-IamRbacFinalizeJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -1034,7 +1081,7 @@ function Test-SecurityEvidenceRawContent([string] $Raw, [string] $Label) {
 
 function Test-SecurityEvidenceFinalizerJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -1195,7 +1242,7 @@ function Test-SecurityEvidenceFinalizerJson([string] $Path) {
 
 function Test-ImageSigningEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -1328,7 +1375,7 @@ function Test-ImageSigningEvidenceJson([string] $Path) {
 
 function Test-ContainerSecurityEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -1499,7 +1546,7 @@ function Test-ContainerSecurityEvidenceJson([string] $Path) {
 
 function Test-StorageBackendTelemetryEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -1507,6 +1554,11 @@ function Test-StorageBackendTelemetryEvidenceJson([string] $Path) {
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -1680,7 +1732,7 @@ function Test-StorageBackendTelemetryEvidenceJson([string] $Path) {
 
 function Test-SecretRotationEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -1688,6 +1740,11 @@ function Test-SecretRotationEvidenceJson([string] $Path) {
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -1883,7 +1940,7 @@ function Test-SecretRotationEvidenceJson([string] $Path) {
 
 function Test-CommercialIntegrationEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -1891,6 +1948,11 @@ function Test-CommercialIntegrationEvidenceJson([string] $Path) {
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -2155,7 +2217,7 @@ function Test-CommercialIntegrationEvidenceJson([string] $Path) {
 
 function Test-CommercialApprovalEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -2163,6 +2225,11 @@ function Test-CommercialApprovalEvidenceJson([string] $Path) {
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -2408,9 +2475,172 @@ function Test-CommercialApprovalEvidenceJson([string] $Path) {
     }
 }
 
+function Test-ChargebackCloseoutEvidenceJson([string] $Path) {
+    try {
+        $raw = Read-Utf8Text $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{ passed = $false; detail = "invalid JSON: $($_.Exception.Message)" }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.chargeback-closeout-evidence.v1") {
+        return [pscustomobject]@{ passed = $false; detail = "formatVersion=$formatVersion expected=osmu.chargeback-closeout-evidence.v1" }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{ passed = $false; detail = "result=$result expected=passed" }
+    }
+
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "generatedAt=$generatedAt expected ISO timestamp" }
+    }
+
+    foreach ($field in @("decisionRule", "scopePolicy", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{ passed = $false; detail = "$field missing" }
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(rawProviderResponse|raw_provider_response|providerResponse|provider_response|responseBody|response_body|responseHeaders|response_headers|webhookUrl|webhook_url|endpointUrl|endpoint_url|callbackUrl|callback_url|customerData|customer_data|customerEmail|customer_email|customerName|customer_name|customerPaymentData|customer_payment_data|paymentCard|payment_card|cardNumber|card_number|pan|bankAccount|bank_account|routingNumber|routing_number|taxId|tax_id|paymentTargetAccount|payment_target_account|rawPriceTable|raw_price_table|priceTable|price_table|rawInvoice|raw_invoice|invoicePdf|invoice_pdf|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|webhook[_-]?secret|smtp[_-]?pass)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{ passed = $false; detail = "chargeback closeout evidence contains raw customer/payment/provider or credential-shaped content" }
+        }
+    }
+
+    $target = Get-JsonProperty $json "target"
+    foreach ($field in @("environmentName", "targetCluster", "operator", "billingPeriod", "closeoutStartedAt", "closeoutCompletedAt", "changeApprovalRef")) {
+        $value = [string] (Get-JsonProperty $target $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{ passed = $false; detail = "target.$field missing" }
+        }
+    }
+    $startedAt = [string] (Get-JsonProperty $target "closeoutStartedAt")
+    $completedAt = [string] (Get-JsonProperty $target "closeoutCompletedAt")
+    $parsedStartedAt = [DateTimeOffset]::MinValue
+    $parsedCompletedAt = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse($startedAt, [ref] $parsedStartedAt) -or -not [DateTimeOffset]::TryParse($completedAt, [ref] $parsedCompletedAt) -or $parsedCompletedAt -lt $parsedStartedAt) {
+        return [pscustomobject]@{ passed = $false; detail = "target closeout window invalid startedAt=$startedAt completedAt=$completedAt" }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $checkCount = Get-RequiredJsonInt $summary "checkCount"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $plannedCount = Get-RequiredJsonInt $summary "plannedCount"
+    $requiredRefCount = Get-RequiredJsonInt $summary "requiredEvidenceRefCount"
+    $providedRefCount = Get-RequiredJsonInt $summary "providedEvidenceRefCount"
+    foreach ($countResult in @(
+        @{ name = "checkCount"; value = $checkCount },
+        @{ name = "failureCount"; value = $failureCount },
+        @{ name = "plannedCount"; value = $plannedCount },
+        @{ name = "requiredEvidenceRefCount"; value = $requiredRefCount },
+        @{ name = "providedEvidenceRefCount"; value = $providedRefCount }
+    )) {
+        $name = [string] $countResult["name"]
+        $value = $countResult["value"]
+        if (-not $value.valid) {
+            return [pscustomobject]@{ passed = $false; detail = "summary.$name=$($value.raw)(valid=False) expected integer" }
+        }
+    }
+    if ($checkCount.value -lt 20 -or $failureCount.value -ne 0 -or $plannedCount.value -ne 0 -or $requiredRefCount.value -lt 14 -or $providedRefCount.value -ne $requiredRefCount.value) {
+        return [pscustomobject]@{ passed = $false; detail = "summary incomplete checks=$($checkCount.value) failures=$($failureCount.value) planned=$($plannedCount.value) refs=$($providedRefCount.value)/$($requiredRefCount.value)" }
+    }
+
+    foreach ($summaryBoolName in @("chargebackCloseoutSnapshotValid", "paymentProviderAdapterReadinessSnapshotValid", "paymentProviderAdapterReadinessReviewed", "commercialEvidenceReviewed")) {
+        $summaryBool = Get-RequiredJsonBool $summary $summaryBoolName
+        if (-not $summaryBool.valid -or -not $summaryBool.value) {
+            return [pscustomobject]@{ passed = $false; detail = "summary.$summaryBoolName=$($summaryBool.raw) expected boolean true" }
+        }
+    }
+
+    $evidenceRefs = Get-JsonProperty $json "evidenceRefs"
+    foreach ($refName in @("pricingPolicy", "pricingProposalApproval", "chargebackPreview", "chargebackTrendExport", "invoiceDraft", "invoiceFinalization", "paymentRequest", "paymentProviderHandoff", "paymentProviderAdapterReadiness", "notificationDelivery", "adapterRetryWorker", "reconciliation", "commercialIntegration", "commercialApproval")) {
+        $refValue = [string] (Get-JsonProperty $evidenceRefs $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) {
+            return [pscustomobject]@{ passed = $false; detail = "evidenceRefs.$refName missing" }
+        }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    foreach ($confirmationName in @("pricingPolicyReviewed", "priceListApproved", "usageWindowReviewed", "chargebackPreviewReviewed", "trendExportReviewed", "invoiceDraftReviewed", "invoiceFinalized", "paymentRequestReviewed", "paymentProviderHandoffReviewed", "paymentProviderAdapterReadinessReviewed", "notificationDeliveryReviewed", "adapterRetryReviewed", "reconciliationReviewed", "commercialIntegrationReviewed", "commercialApprovalReviewed", "noRawCustomerPaymentData", "noRawProviderResponses", "noSecretValues", "requirePaymentProviderAdapterReadinessSnapshot")) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) {
+            return [pscustomobject]@{ passed = $false; detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true" }
+        }
+    }
+
+    $closeoutSnapshot = Get-JsonProperty $json "chargebackCloseoutSnapshot"
+    $closeoutSnapshotValid = Get-RequiredJsonBool $closeoutSnapshot "valid"
+    if (-not $closeoutSnapshotValid.valid -or -not $closeoutSnapshotValid.value) {
+        return [pscustomobject]@{ passed = $false; detail = "chargebackCloseoutSnapshot.valid=$($closeoutSnapshotValid.raw) expected boolean true" }
+    }
+    $closeoutCounts = Get-JsonProperty $closeoutSnapshot "counts"
+    foreach ($countName in @("invoiceDraftCount", "finalInvoiceCount", "paymentRequestedCount", "paymentHandoffCount", "paidInvoiceCount")) {
+        $count = Get-RequiredJsonInt $closeoutCounts $countName
+        if (-not $count.valid -or $count.value -le 0) {
+            return [pscustomobject]@{ passed = $false; detail = "chargebackCloseoutSnapshot.counts.$countName=$($count.raw) expected positive integer" }
+        }
+    }
+    foreach ($countName in @("failureCount", "reconciliationDifferenceMinorUnits")) {
+        $count = Get-RequiredJsonInt $closeoutCounts $countName
+        if (-not $count.valid -or $count.value -ne 0) {
+            return [pscustomobject]@{ passed = $false; detail = "chargebackCloseoutSnapshot.counts.$countName=$($count.raw) expected integer zero" }
+        }
+    }
+    $rawDataFlags = Get-JsonProperty $closeoutSnapshot "rawDataFlags"
+    foreach ($flagName in @("rawCustomerPaymentDataStored", "rawProviderResponseStored", "rawSecretValuesStored")) {
+        $flag = Get-RequiredJsonBool $rawDataFlags $flagName
+        if (-not $flag.valid -or $flag.value) {
+            return [pscustomobject]@{ passed = $false; detail = "chargebackCloseoutSnapshot.rawDataFlags.$flagName=$($flag.raw) expected boolean false" }
+        }
+    }
+
+    $paymentReadiness = Get-JsonProperty $json "paymentProviderAdapterReadiness"
+    foreach ($fieldName in @("provided", "parsed", "valid", "profileCoverageValid")) {
+        $field = Get-RequiredJsonBool $paymentReadiness $fieldName
+        if (-not $field.valid -or -not $field.value) {
+            return [pscustomobject]@{ passed = $false; detail = "paymentProviderAdapterReadiness.$fieldName=$($field.raw) expected boolean true" }
+        }
+    }
+
+    $checksObject = Get-JsonProperty $json "checks"
+    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    foreach ($requiredCheck in @("target-metadata", "closeout-window-order", "change-approval-ref", "chargeback-closeout-snapshot-valid", "payment-provider-adapter-readiness-snapshot-valid", "payment-provider-adapter-readiness-reviewed", "commercial-integration-reviewed", "commercial-approval-reviewed", "no-raw-customer-payment-data", "no-raw-provider-responses", "no-secret-values")) {
+        $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheck })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{ passed = $false; detail = "checks.$requiredCheck missing" }
+        }
+        $checkPassed = Get-RequiredJsonBool $match[0] "passed"
+        $checkStatus = [string] (Get-JsonProperty $match[0] "status")
+        if (-not $checkPassed.valid -or -not $checkPassed.value -or $checkStatus -ne "PASS") {
+            return [pscustomobject]@{ passed = $false; detail = "checks.$requiredCheck status=$checkStatus passed=$($checkPassed.raw) expected PASS and boolean true" }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result billingPeriod=$($target.billingPeriod) environmentName=$($target.environmentName) targetCluster=$($target.targetCluster) refs=$($providedRefCount.value)/$($requiredRefCount.value) failures=$($failureCount.value) planned=$($plannedCount.value) checkCount=$($checks.Count)"
+    }
+}
 function Test-EnterpriseAuthEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -2418,6 +2648,11 @@ function Test-EnterpriseAuthEvidenceJson([string] $Path) {
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -2633,6 +2868,155 @@ function Test-EnterpriseAuthEvidenceJson([string] $Path) {
     }
 }
 
+function Test-EnterpriseAuthJitRollbackEvidenceJson([string] $Path) {
+    try {
+        $raw = Read-Utf8Text $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{ passed = $false; detail = "invalid JSON: $($_.Exception.Message)" }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.enterprise-auth-jit-rollback-evidence.v1") {
+        return [pscustomobject]@{ passed = $false; detail = "formatVersion=$formatVersion expected=osmu.enterprise-auth-jit-rollback-evidence.v1" }
+    }
+
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "generatedAt=$generatedAt expected ISO timestamp" }
+    }
+
+    foreach ($field in @("decisionRule", "scopePolicy", "secretPolicy", "environmentName", "targetCluster", "operatorName", "evidenceRef")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{ passed = $false; detail = "$field missing" }
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(password|passwd|secret|token|credential|clientSecret|client_secret|ldapPassword|ldap_password|oidcCode|oidc_code|oidcState|oidc_state|rawClaim|rawClaims|claimPayload|claimJson|claimsJson|idToken|id_token|accessToken|access_token|refreshToken|refresh_token)"\s*:\s*"[^"]+"',
+        '(?i)"(rawClaim|rawClaims|claimPayload|claimJson|claimsJson|idToken|id_token|accessToken|access_token|refreshToken|refresh_token)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|client[_-]?secret|ldap[_-]?password|oidc[_-]?code|oidc[_-]?state|private[_-]?key)\s*[=:]\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{ passed = $false; detail = "enterprise auth JIT rollback evidence contains raw claim, token, or credential-shaped content" }
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{ passed = $false; detail = "result=$result expected=passed" }
+    }
+
+    $reviewWindow = Get-JsonProperty $json "reviewWindow"
+    $startedAt = [string] (Get-JsonProperty $reviewWindow "startedAt")
+    $completedAt = [string] (Get-JsonProperty $reviewWindow "completedAt")
+    $parsedStartedAt = [DateTimeOffset]::MinValue
+    $parsedCompletedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($startedAt) -or -not [DateTimeOffset]::TryParse($startedAt, [ref] $parsedStartedAt) -or [string]::IsNullOrWhiteSpace($completedAt) -or -not [DateTimeOffset]::TryParse($completedAt, [ref] $parsedCompletedAt) -or $parsedCompletedAt -lt $parsedStartedAt) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow startedAt=$startedAt completedAt=$completedAt expected ordered ISO timestamps" }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $checkCount = Get-RequiredJsonInt $summary "checkCount"
+    if (-not $failureCount.valid -or $failureCount.value -ne 0 -or -not $checkCount.valid -or $checkCount.value -le 0) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.failureCount=$($failureCount.raw)(valid=$($failureCount.valid)) summary.checkCount=$($checkCount.raw)(valid=$($checkCount.valid)) expected failures=0 and checkCount>0" }
+    }
+
+    $checksObject = Get-JsonProperty $json "checks"
+    [object[]] $checks = if ($null -eq $checksObject) { @() } else { @($checksObject | ForEach-Object { $_ }) }
+    if ($checks.Count -le 0 -or $checks.Count -ne $checkCount.value) {
+        return [pscustomobject]@{ passed = $false; detail = "checks count=$($checks.Count) expected summary.checkCount=$($checkCount.value)" }
+    }
+    foreach ($check in $checks) {
+        if ([string] (Get-JsonProperty $check "status") -ne "PASS") {
+            return [pscustomobject]@{ passed = $false; detail = "check $([string] (Get-JsonProperty $check "id")) status=$([string] (Get-JsonProperty $check "status")) expected PASS" }
+        }
+    }
+
+    $requiredChecks = @(
+        "enterprise-auth-smoke-snapshot-accepted",
+        "jit-provision-evidence-ref",
+        "jit-rollback-runbook-ref",
+        "user-disable-rollback-evidence-ref",
+        "role-mapping-rollback-evidence-ref",
+        "local-login-fallback-evidence-ref",
+        "audit-review-evidence-ref",
+        "admin-approval-required-confirmed",
+        "callback-auto-jit-disabled-confirmed",
+        "jit-user-disable-or-lock-rollback-confirmed",
+        "role-org-team-rollback-confirmed",
+        "local-login-fallback-confirmed",
+        "audit-events-reviewed-confirmed",
+        "no-raw-claims-confirmed",
+        "no-secret-values-confirmed"
+    )
+    foreach ($requiredCheck in $requiredChecks) {
+        [object[]] $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheck -and [string] (Get-JsonProperty $_ "status") -eq "PASS" })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{ passed = $false; detail = "checks.$requiredCheck missing PASS" }
+        }
+    }
+
+    $refs = Get-JsonProperty $json "evidenceRefs"
+    foreach ($field in @("changeApproval", "jitProvision", "jitRollbackRunbook", "userDisableRollback", "roleMappingRollback", "localLoginFallback", "auditReview")) {
+        $value = [string] (Get-JsonProperty $refs $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{ passed = $false; detail = "evidenceRefs.$field missing" }
+        }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    foreach ($field in @("adminApprovalRequired", "callbackAutoJitDisabled", "jitUserDisableOrLockRollbackReviewed", "roleOrgTeamRollbackReviewed", "localPasswordFallbackValidated", "auditEventsReviewed", "noRawClaims", "noSecretValues")) {
+        $value = Get-RequiredJsonBool $confirmations $field
+        if (-not $value.valid -or -not $value.value) {
+            return [pscustomobject]@{ passed = $false; detail = "confirmations.$field=$($value.raw)(valid=$($value.valid)) expected true" }
+        }
+    }
+
+    $smoke = Get-JsonProperty $json "enterpriseAuthSmokeSnapshot"
+    $smokeProvided = Get-RequiredJsonBool $smoke "provided"
+    $smokeParsed = Get-RequiredJsonBool $smoke "parsed"
+    $smokeFormatVersion = [string] (Get-JsonProperty $smoke "formatVersion")
+    $smokeResult = [string] (Get-JsonProperty $smoke "result")
+    if (-not $smokeProvided.valid -or -not $smokeProvided.value -or -not $smokeParsed.valid -or -not $smokeParsed.value -or $smokeFormatVersion -ne "osmu.enterprise-auth-smoke.v1") {
+        return [pscustomobject]@{ passed = $false; detail = "enterpriseAuthSmokeSnapshot provided=$($smokeProvided.raw)(valid=$($smokeProvided.valid)) parsed=$($smokeParsed.raw)(valid=$($smokeParsed.valid)) formatVersion=$smokeFormatVersion expected accepted smoke snapshot" }
+    }
+    if ($smokeResult -eq "passed") {
+        $passCount = Get-RequiredJsonInt $smoke "passCount"
+        $failCount = Get-RequiredJsonInt $smoke "failCount"
+        $blockedCount = Get-RequiredJsonInt $smoke "blockedCount"
+        $plannedCount = Get-RequiredJsonInt $smoke "plannedCount"
+        if (-not $passCount.valid -or $passCount.value -le 0 -or -not $failCount.valid -or $failCount.value -ne 0 -or -not $blockedCount.valid -or $blockedCount.value -ne 0 -or -not $plannedCount.valid -or $plannedCount.value -ne 0) {
+            return [pscustomobject]@{ passed = $false; detail = "enterpriseAuthSmokeSnapshot result=passed pass=$($passCount.raw) fail=$($failCount.raw) blocked=$($blockedCount.raw) planned=$($plannedCount.raw) expected pass>0 and fail/block/planned=0" }
+        }
+    }
+    elseif ($smokeResult -eq "scope-out") {
+        $scopeOutAccepted = Get-RequiredJsonBool $smoke "scopeOutAccepted"
+        if (-not $scopeOutAccepted.valid -or -not $scopeOutAccepted.value) {
+            return [pscustomobject]@{ passed = $false; detail = "enterpriseAuthSmokeSnapshot scopeOutAccepted=$($scopeOutAccepted.raw)(valid=$($scopeOutAccepted.valid)) expected true" }
+        }
+    }
+    else {
+        return [pscustomobject]@{ passed = $false; detail = "enterpriseAuthSmokeSnapshot.result=$smokeResult expected passed|scope-out" }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=passed environmentName=$([string] (Get-JsonProperty $json "environmentName")) targetCluster=$([string] (Get-JsonProperty $json "targetCluster")) smokeResult=$smokeResult failures=$($failureCount.value) checkCount=$($checkCount.value)"
+    }
+}
 function Test-OperationsHandoffPackageSnapshots([object] $Json) {
     $operationsSnapshots = Get-JsonProperty $Json "operationsSnapshots"
     if ($null -eq $operationsSnapshots) {
@@ -2769,6 +3153,89 @@ function Test-HandoffSnapshotBase([object] $Snapshot, [string] $Label, [string[]
     }
 }
 
+function Get-FirstJsonPropertyText([object] $Object, [string[]] $Names) {
+    foreach ($name in $Names) {
+        $value = [string] (Get-JsonProperty $Object $name)
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            return $value
+        }
+    }
+    return ""
+}
+
+function Get-HandoffPackageIdentityText([object] $Json, [string] $FieldName) {
+    $target = Get-JsonProperty $Json "target"
+    switch ($FieldName) {
+        "environmentName" {
+            $value = Get-FirstJsonPropertyText $Json @("environmentName")
+            if ([string]::IsNullOrWhiteSpace($value)) { $value = Get-FirstJsonPropertyText $target @("environmentName") }
+            return $value
+        }
+        "targetCluster" {
+            $value = Get-FirstJsonPropertyText $Json @("targetCluster", "cluster")
+            if ([string]::IsNullOrWhiteSpace($value)) { $value = Get-FirstJsonPropertyText $target @("targetCluster", "cluster") }
+            return $value
+        }
+        "operatorName" {
+            $value = Get-FirstJsonPropertyText $Json @("operatorName", "operator")
+            if ([string]::IsNullOrWhiteSpace($value)) { $value = Get-FirstJsonPropertyText $target @("operatorName", "operator") }
+            return $value
+        }
+        default { return Get-FirstJsonPropertyText $Json @($FieldName) }
+    }
+}
+
+function Get-HandoffSnapshotIdentityText([object] $Snapshot, [string] $FieldName) {
+    switch ($FieldName) {
+        "environmentName" { return Get-FirstJsonPropertyText $Snapshot @("environmentName") }
+        "targetCluster" { return Get-FirstJsonPropertyText $Snapshot @("targetCluster", "cluster") }
+        "operatorName" { return Get-FirstJsonPropertyText $Snapshot @("operatorName", "operator") }
+        default { return Get-FirstJsonPropertyText $Snapshot @($FieldName) }
+    }
+}
+
+function Test-HandoffTargetIdentityField([object] $Snapshot, [string] $Label, [string] $FieldName, [string] $ExpectedValue) {
+    $actualValue = Get-HandoffSnapshotIdentityText $Snapshot $FieldName
+    if ([string]::IsNullOrWhiteSpace($ExpectedValue)) {
+        return "$Label.$FieldName cannot be checked because handoff $FieldName is missing"
+    }
+    if ([string]::IsNullOrWhiteSpace($actualValue)) {
+        return "$Label.$FieldName missing; expected=$ExpectedValue"
+    }
+    if (-not $ExpectedValue.Equals($actualValue, [System.StringComparison]::Ordinal)) {
+        return "$Label.$FieldName=$actualValue expected=$ExpectedValue"
+    }
+    return ""
+}
+
+function Test-OperationsHandoffPackageTargetIdentity([object] $Json, [object[]] $Entries) {
+    $expectedEnvironmentName = Get-HandoffPackageIdentityText $Json "environmentName"
+    $expectedTargetCluster = Get-HandoffPackageIdentityText $Json "targetCluster"
+    $expectedOperatorName = Get-HandoffPackageIdentityText $Json "operatorName"
+    $checked = 0
+    foreach ($entry in $Entries) {
+        if (-not [bool] $entry.required) {
+            continue
+        }
+        $checked += 1
+        $snapshot = $entry.snapshot
+        foreach ($field in @(
+            @("environmentName", $expectedEnvironmentName),
+            @("targetCluster", $expectedTargetCluster),
+            @("operatorName", $expectedOperatorName)
+        )) {
+            $failure = Test-HandoffTargetIdentityField $snapshot ([string] $entry.label) ([string] $field[0]) ([string] $field[1])
+            if (-not [string]::IsNullOrWhiteSpace($failure)) {
+                return [pscustomobject]@{ passed = $false; detail = $failure }
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "targetIdentity=$checked/$checked environmentName=$expectedEnvironmentName targetCluster=$expectedTargetCluster operatorName=$expectedOperatorName"
+    }
+}
 function Test-OperationsHandoffPackageEvidenceRefs([object] $Json) {
     $evidenceRefs = Get-JsonProperty $Json "evidenceRefs"
     if ($null -eq $evidenceRefs) {
@@ -2784,14 +3251,18 @@ function Test-OperationsHandoffPackageEvidenceRefs([object] $Json) {
         "operationsReadiness",
         "operationsConvergence",
         "dataFlowStoragePlan",
+        "dataFlowQueryRetentionBudget",
         "dataFlowStorageTransitionRunbook",
         "secretRotation",
         "commercialIntegration",
         "commercialApproval",
+        "chargebackCloseout",
         "enterpriseAuth",
         "backupRestore",
         "haDr",
         "monitoring",
+        "clusterNetworkAccessReview",
+        "helmValuesHardening",
         "security",
         "iamRbac",
         "runbookReview",
@@ -2824,6 +3295,7 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
             detail = "targetEvidenceSnapshots expected"
         }
     }
+    $validatedSnapshotCount = 11
 
     $plan = Get-JsonProperty $targetSnapshots "dataFlowStoragePlan"
     $base = Test-HandoffSnapshotBase $plan "targetEvidenceSnapshots.dataFlowStoragePlan" @("passed") $true
@@ -2843,6 +3315,32 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
     $validation = Test-HandoffRequiredIntEquals $plan "pendingCount" 0 "targetEvidenceSnapshots.dataFlowStoragePlan"
     if (-not $validation.passed) { return $validation }
 
+    $queryRetentionBudget = Get-JsonProperty $targetSnapshots "dataFlowQueryRetentionBudget"
+    $base = Test-HandoffSnapshotBase $queryRetentionBudget "targetEvidenceSnapshots.dataFlowQueryRetentionBudget" @("passed") $true
+    if (-not $base.passed) { return $base }
+    foreach ($field in @("queryLatencyWithinBudget", "retentionJobsWithinBudget", "confirmationsValid")) {
+        $validation = Test-HandoffRequiredBoolTrue $queryRetentionBudget $field "targetEvidenceSnapshots.dataFlowQueryRetentionBudget"
+        if (-not $validation.passed) { return $validation }
+    }
+    $targetP95 = Get-RequiredJsonInt $queryRetentionBudget "targetP95QueryLatencyMs"
+    $observedP95 = Get-RequiredJsonInt $queryRetentionBudget "observedP95QueryLatencyMs"
+    $observedP99 = Get-RequiredJsonInt $queryRetentionBudget "observedP99QueryLatencyMs"
+    $sampleCount = Get-RequiredJsonInt $queryRetentionBudget "querySampleCount"
+    $windowDays = Get-RequiredJsonInt $queryRetentionBudget "observedQueryWindowDays"
+    if (-not $targetP95.valid -or -not $observedP95.valid -or -not $observedP99.valid -or -not $sampleCount.valid -or -not $windowDays.valid -or [int64] $targetP95.value -le 0 -or [int64] $observedP95.value -gt [int64] $targetP95.value -or [int64] $observedP99.value -lt [int64] $observedP95.value -or [int64] $sampleCount.value -le 0 -or [int64] $windowDays.value -le 0) {
+        return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.dataFlowQueryRetentionBudget query metrics invalid targetP95=$($targetP95.raw) observedP95=$($observedP95.raw) observedP99=$($observedP99.raw) sampleCount=$($sampleCount.raw) windowDays=$($windowDays.raw)" }
+    }
+    $budgetSeconds = Get-RequiredJsonInt $queryRetentionBudget "retentionJobBudgetSeconds"
+    $detailedSeconds = Get-RequiredJsonInt $queryRetentionBudget "detailedRetentionObservedSeconds"
+    $dailySeconds = Get-RequiredJsonInt $queryRetentionBudget "dailyRollupRetentionObservedSeconds"
+    $monthlySeconds = Get-RequiredJsonInt $queryRetentionBudget "monthlyRollupRetentionObservedSeconds"
+    if (-not $budgetSeconds.valid -or -not $detailedSeconds.valid -or -not $dailySeconds.valid -or -not $monthlySeconds.valid -or [int64] $budgetSeconds.value -le 0 -or [int64] $detailedSeconds.value -gt [int64] $budgetSeconds.value -or [int64] $dailySeconds.value -gt [int64] $budgetSeconds.value -or [int64] $monthlySeconds.value -gt [int64] $budgetSeconds.value) {
+        return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.dataFlowQueryRetentionBudget retention metrics invalid budget=$($budgetSeconds.raw) detailed=$($detailedSeconds.raw) daily=$($dailySeconds.raw) monthly=$($monthlySeconds.raw)" }
+    }
+    $validation = Test-HandoffRequiredIntEquals $queryRetentionBudget "failureCount" 0 "targetEvidenceSnapshots.dataFlowQueryRetentionBudget"
+    if (-not $validation.passed) { return $validation }
+    $validation = Test-HandoffRequiredIntAtLeast $queryRetentionBudget "checkCount" 1 "targetEvidenceSnapshots.dataFlowQueryRetentionBudget"
+    if (-not $validation.passed) { return $validation }
     $runbook = Get-JsonProperty $targetSnapshots "dataFlowStorageTransitionRunbook"
     $base = Test-HandoffSnapshotBase $runbook "targetEvidenceSnapshots.dataFlowStorageTransitionRunbook" @("passed") $true
     if (-not $base.passed) { return $base }
@@ -2905,6 +3403,34 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
     $validation = Test-HandoffRequiredIntEquals $commercialApproval "failureCount" 0 "targetEvidenceSnapshots.commercialApproval"
     if (-not $validation.passed) { return $validation }
 
+    $chargebackCloseout = Get-JsonProperty $targetSnapshots "chargebackCloseout"
+    $base = Test-HandoffSnapshotBase $chargebackCloseout "targetEvidenceSnapshots.chargebackCloseout" @("passed") $true
+    if (-not $base.passed) { return $base }
+    foreach ($field in @("summaryValid", "confirmationsValid", "closeoutCountsValid", "rawDataFlagsValid", "noRawDataStored")) {
+        $validation = Test-HandoffRequiredBoolTrue $chargebackCloseout $field "targetEvidenceSnapshots.chargebackCloseout"
+        if (-not $validation.passed) { return $validation }
+    }
+    foreach ($field in @("failureCount", "plannedCount", "reconciliationDifferenceMinorUnits")) {
+        $validation = Test-HandoffRequiredIntEquals $chargebackCloseout $field 0 "targetEvidenceSnapshots.chargebackCloseout"
+        if (-not $validation.passed) { return $validation }
+    }
+    foreach ($field in @("checkCount", "passCount")) {
+        $validation = Test-HandoffRequiredIntAtLeast $chargebackCloseout $field 1 "targetEvidenceSnapshots.chargebackCloseout"
+        if (-not $validation.passed) { return $validation }
+    }
+    $closeoutSnapshot = Get-JsonProperty $chargebackCloseout "chargebackCloseoutSnapshot"
+    foreach ($field in @("valid", "statusClosed", "billingPeriodMatches", "failureCountZero", "noRawDataStored")) {
+        $validation = Test-HandoffRequiredBoolTrue $closeoutSnapshot $field "targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot"
+        if (-not $validation.passed) { return $validation }
+    }
+    $rawFlags = Get-JsonProperty $closeoutSnapshot "rawDataFlags"
+    foreach ($field in @("rawCustomerPaymentDataStored", "rawProviderResponseStored", "rawSecretValuesStored")) {
+        $flag = Get-RequiredJsonBool $rawFlags $field
+        if (-not $flag.valid -or $flag.value) {
+            return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot.rawDataFlags.$field=$($flag.raw) expected boolean false" }
+        }
+    }
+
     $enterpriseAuth = Get-JsonProperty $targetSnapshots "enterpriseAuthSmoke"
     $base = Test-HandoffSnapshotBase $enterpriseAuth "targetEvidenceSnapshots.enterpriseAuthSmoke" @("passed", "scope-out") $false
     if (-not $base.passed) { return $base }
@@ -2928,11 +3454,39 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
         }
     }
 
+    $enterpriseAuthJitRollback = Get-JsonProperty $targetSnapshots "enterpriseAuthJitRollback"
+    $enterpriseAuthJitRollbackProvided = $false
+    if ($null -ne $enterpriseAuthJitRollback) {
+        $jitProvided = Get-RequiredJsonBool $enterpriseAuthJitRollback "provided"
+        $jitResult = [string] (Get-JsonProperty $enterpriseAuthJitRollback "result")
+        $enterpriseAuthJitRollbackProvided = ($jitProvided.valid -and $jitProvided.value) -or -not [string]::IsNullOrWhiteSpace($jitResult)
+    }
+    if ($enterpriseAuthJitRollbackProvided) {
+        $validatedSnapshotCount = 12
+        $base = Test-HandoffSnapshotBase $enterpriseAuthJitRollback "targetEvidenceSnapshots.enterpriseAuthJitRollback" @("passed") $true
+        if (-not $base.passed) { return $base }
+        $validation = Test-HandoffRequiredBoolTrue $enterpriseAuthJitRollback "confirmationsValid" "targetEvidenceSnapshots.enterpriseAuthJitRollback"
+        if (-not $validation.passed) { return $validation }
+        $validation = Test-HandoffRequiredIntEquals $enterpriseAuthJitRollback "failureCount" 0 "targetEvidenceSnapshots.enterpriseAuthJitRollback"
+        if (-not $validation.passed) { return $validation }
+        $validation = Test-HandoffRequiredIntAtLeast $enterpriseAuthJitRollback "checkCount" 1 "targetEvidenceSnapshots.enterpriseAuthJitRollback"
+        if (-not $validation.passed) { return $validation }
+        $jitSmoke = Get-JsonProperty $enterpriseAuthJitRollback "enterpriseAuthSmokeSnapshot"
+        $jitSmokeResult = [string] (Get-JsonProperty $jitSmoke "result")
+        if ([string]::IsNullOrWhiteSpace($jitSmokeResult)) {
+            return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.enterpriseAuthJitRollback.enterpriseAuthSmokeSnapshot.result expected" }
+        }
+    }
+
     $monitoring = Get-JsonProperty $targetSnapshots "monitoringThreshold"
     $base = Test-HandoffSnapshotBase $monitoring "targetEvidenceSnapshots.monitoringThreshold" @("passed") $true
     if (-not $base.passed) { return $base }
     $validation = Test-HandoffRequiredBoolTrue $monitoring "complete" "targetEvidenceSnapshots.monitoringThreshold"
     if (-not $validation.passed) { return $validation }
+    foreach ($field in @("alertTargetCoverageComplete", "routeCoverageComplete", "grafanaPanelCoverageComplete", "tuningEvidenceCoverageComplete", "thresholdMappingComplete")) {
+        $validation = Test-HandoffRequiredBoolTrue $monitoring $field "targetEvidenceSnapshots.monitoringThreshold"
+        if (-not $validation.passed) { return $validation }
+    }
     $requiredAlertCount = Get-RequiredJsonInt $monitoring "requiredAlertCount"
     $mappedAlertCount = Get-RequiredJsonInt $monitoring "mappedAlertCount"
     $grafanaPanelCount = Get-RequiredJsonInt $monitoring "grafanaPanelCount"
@@ -2945,12 +3499,55 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
         if (-not $validation.passed) { return $validation }
     }
 
+    $clusterNetworkAccessReview = Get-JsonProperty $targetSnapshots "clusterNetworkAccessReview"
+    $base = Test-HandoffSnapshotBase $clusterNetworkAccessReview "targetEvidenceSnapshots.clusterNetworkAccessReview" @("passed") $true
+    if (-not $base.passed) { return $base }
+    foreach ($field in @("staticControlsValid", "confirmationsValid")) {
+        $validation = Test-HandoffRequiredBoolTrue $clusterNetworkAccessReview $field "targetEvidenceSnapshots.clusterNetworkAccessReview"
+        if (-not $validation.passed) { return $validation }
+    }
+    $validation = Test-HandoffRequiredIntEquals $clusterNetworkAccessReview "failureCount" 0 "targetEvidenceSnapshots.clusterNetworkAccessReview"
+    if (-not $validation.passed) { return $validation }
+    $validation = Test-HandoffRequiredIntAtLeast $clusterNetworkAccessReview "totalCount" 1 "targetEvidenceSnapshots.clusterNetworkAccessReview"
+    if (-not $validation.passed) { return $validation }
+
+    $helmValuesHardening = Get-JsonProperty $targetSnapshots "helmValuesHardening"
+    $base = Test-HandoffSnapshotBase $helmValuesHardening "targetEvidenceSnapshots.helmValuesHardening" @("passed") $true
+    if (-not $base.passed) { return $base }
+    foreach ($field in @("staticHardeningValid", "confirmationsValid")) {
+        $validation = Test-HandoffRequiredBoolTrue $helmValuesHardening $field "targetEvidenceSnapshots.helmValuesHardening"
+        if (-not $validation.passed) { return $validation }
+    }
+    $validation = Test-HandoffRequiredIntEquals $helmValuesHardening "failureCount" 0 "targetEvidenceSnapshots.helmValuesHardening"
+    if (-not $validation.passed) { return $validation }
+    foreach ($field in @("totalCount", "chartFileCount")) {
+        $validation = Test-HandoffRequiredIntAtLeast $helmValuesHardening $field 1 "targetEvidenceSnapshots.helmValuesHardening"
+        if (-not $validation.passed) { return $validation }
+    }
+
+    $identityValidation = Test-OperationsHandoffPackageTargetIdentity $Json @(
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.dataFlowStoragePlan"; snapshot = $plan; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.dataFlowQueryRetentionBudget"; snapshot = $queryRetentionBudget; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.dataFlowStorageTransitionRunbook"; snapshot = $runbook; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.secretRotation"; snapshot = $secretRotation; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.commercialIntegration"; snapshot = $commercialIntegration; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.commercialApproval"; snapshot = $commercialApproval; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.chargebackCloseout"; snapshot = $chargebackCloseout; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.enterpriseAuthSmoke"; snapshot = $enterpriseAuth; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.enterpriseAuthJitRollback"; snapshot = $enterpriseAuthJitRollback; required = $enterpriseAuthJitRollbackProvided },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.monitoringThreshold"; snapshot = $monitoring; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.clusterNetworkAccessReview"; snapshot = $clusterNetworkAccessReview; required = $true },
+        [pscustomobject]@{ label = "targetEvidenceSnapshots.helmValuesHardening"; snapshot = $helmValuesHardening; required = $true }
+    )
+    if (-not $identityValidation.passed) {
+        return $identityValidation
+    }
+
     return [pscustomobject]@{
         passed = $true
-        detail = "targetSnapshots=7/7"
+        detail = "targetSnapshots=$validatedSnapshotCount/$validatedSnapshotCount; $($identityValidation.detail)"
     }
 }
-
 function Test-OperationsHandoffPackageSummary([object] $Json) {
     $summary = Get-JsonProperty $Json "summary"
     if ($null -eq $summary) {
@@ -2992,11 +3589,15 @@ function Test-OperationsHandoffPackageSummary([object] $Json) {
 
     foreach ($field in @(
         "dataFlowStoragePlanSnapshotResult",
+        "dataFlowQueryRetentionBudgetSnapshotResult",
         "dataFlowStorageTransitionRunbookSnapshotResult",
         "secretRotationSnapshotResult",
         "commercialIntegrationSnapshotResult",
         "commercialApprovalSnapshotResult",
-        "monitoringThresholdSnapshotResult"
+        "chargebackCloseoutSnapshotResult",
+        "monitoringThresholdSnapshotResult",
+        "clusterNetworkAccessReviewSnapshotResult",
+        "helmValuesHardeningSnapshotResult"
     )) {
         $value = [string] (Get-JsonProperty $summary $field)
         if (-not "passed".Equals($value, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -3007,6 +3608,21 @@ function Test-OperationsHandoffPackageSummary([object] $Json) {
     $enterpriseAuthResult = [string] (Get-JsonProperty $summary "enterpriseAuthSmokeSnapshotResult")
     if (-not ("passed".Equals($enterpriseAuthResult, [System.StringComparison]::OrdinalIgnoreCase) -or "scope-out".Equals($enterpriseAuthResult, [System.StringComparison]::OrdinalIgnoreCase))) {
         return [pscustomobject]@{ passed = $false; detail = "summary.enterpriseAuthSmokeSnapshotResult=$enterpriseAuthResult expected=passed|scope-out" }
+    }
+    $targetSnapshots = Get-JsonProperty $Json "targetEvidenceSnapshots"
+    $jitSnapshot = Get-JsonProperty $targetSnapshots "enterpriseAuthJitRollback"
+    $jitProvided = $false
+    if ($null -ne $jitSnapshot) {
+        $jitProvidedResult = Get-RequiredJsonBool $jitSnapshot "provided"
+        $jitSnapshotResult = [string] (Get-JsonProperty $jitSnapshot "result")
+        $jitProvided = ($jitProvidedResult.valid -and $jitProvidedResult.value) -or -not [string]::IsNullOrWhiteSpace($jitSnapshotResult)
+    }
+    $jitSummaryResult = [string] (Get-JsonProperty $summary "enterpriseAuthJitRollbackSnapshotResult")
+    if ($jitProvided -and -not "passed".Equals($jitSummaryResult, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.enterpriseAuthJitRollbackSnapshotResult=$jitSummaryResult expected=passed" }
+    }
+    if (-not $jitProvided -and -not [string]::IsNullOrWhiteSpace($jitSummaryResult) -and -not "passed".Equals($jitSummaryResult, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.enterpriseAuthJitRollbackSnapshotResult=$jitSummaryResult expected=passed or blank" }
     }
 
     return [pscustomobject]@{
@@ -3079,6 +3695,9 @@ function Test-OperationsHandoffPackageChecks([object] $Json) {
         "data-flow-storage-plan-evidence",
         "data-flow-storage-plan-snapshot-passed",
         "data-flow-storage-plan-reviewed",
+        "data-flow-query-retention-budget-evidence",
+        "data-flow-query-retention-budget-snapshot-passed",
+        "data-flow-query-retention-budget-reviewed",
         "data-flow-storage-transition-runbook-evidence",
         "data-flow-storage-transition-runbook-snapshot-passed",
         "data-flow-storage-transition-runbook-reviewed",
@@ -3099,6 +3718,14 @@ function Test-OperationsHandoffPackageChecks([object] $Json) {
         "monitoring-evidence",
         "monitoring-threshold-snapshot-passed",
         "monitoring-threshold-reviewed",
+        "cluster-network-access-review-evidence",
+        "cluster-network-access-review-snapshot-parsed",
+        "cluster-network-access-review-snapshot-passed",
+        "cluster-network-access-review-reviewed",
+        "helm-values-hardening-evidence",
+        "helm-values-hardening-snapshot-parsed",
+        "helm-values-hardening-snapshot-passed",
+        "helm-values-hardening-reviewed",
         "security-evidence",
         "iam-rbac-evidence"
     )
@@ -3149,13 +3776,18 @@ function Test-SanitizedQueryPlanEvidenceSummary([object] $QueryPlanEvidence) {
 
 function Test-DataFlowStoragePlanEvidenceJson([string] $Path, [bool] $RequirePassed = $false) {
     try {
-        $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+        $json = Read-Utf8Text $Path | ConvertFrom-Json
     }
     catch {
         return [pscustomobject]@{
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -3237,9 +3869,107 @@ function Test-DataFlowStoragePlanEvidenceJson([string] $Path, [bool] $RequirePas
     }
 }
 
+function Test-DataFlowQueryRetentionBudgetEvidenceJson([string] $Path, [bool] $RequirePassed = $false) {
+    try {
+        $raw = Read-Utf8Text $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{ passed = $false; detail = "invalid JSON: $($_.Exception.Message)" }
+    }
+
+    $patterns = @(
+        '(?i)"(sql|rawSql|raw_sql|queryText|query_text|explain|explainJson|explain_json|rawExplain|raw_explain|rawEventMessage|raw_event_message|objectKey|object_key|password|passwd|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
+        '(?i)\b(password|passwd|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b',
+        '(?i)\bEXPLAIN\b[\s\S]{0,200}\bFORMAT\b'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{ passed = $false; detail = "query/retention budget evidence contains raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content" }
+        }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.data-flow-query-retention-budget-evidence.v1") {
+        return [pscustomobject]@{ passed = $false; detail = "formatVersion=$formatVersion expected=osmu.data-flow-query-retention-budget-evidence.v1" }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($RequirePassed -and $result -ne "passed") {
+        return [pscustomobject]@{ passed = $false; detail = "result=$result expected=passed" }
+    }
+
+    $planSnapshot = Get-JsonProperty $json "dataFlowStoragePlanSnapshot"
+    $planResult = [string] (Get-JsonProperty $planSnapshot "result")
+    $planPending = Get-RequiredJsonInt $planSnapshot "pendingCount"
+    if ($RequirePassed -and ($planResult -ne "passed" -or -not $planPending.valid -or [int64] $planPending.value -ne 0)) {
+        return [pscustomobject]@{ passed = $false; detail = "dataFlowStoragePlanSnapshot.result=$planResult pendingCount=$($planPending.raw)(valid=$($planPending.valid)) expected passed/0" }
+    }
+
+    $queryLatencyBudget = Get-JsonProperty $json "queryLatencyBudget"
+    $targetP95 = Get-RequiredJsonInt $queryLatencyBudget "targetP95QueryLatencyMs"
+    $observedP95 = Get-RequiredJsonInt $queryLatencyBudget "observedP95QueryLatencyMs"
+    $observedP99 = Get-RequiredJsonInt $queryLatencyBudget "observedP99QueryLatencyMs"
+    $sampleCount = Get-RequiredJsonInt $queryLatencyBudget "querySampleCount"
+    $windowDays = Get-RequiredJsonInt $queryLatencyBudget "observedQueryWindowDays"
+    $queryWithin = Get-RequiredJsonBool $queryLatencyBudget "withinBudget"
+    $queryCountsValid = $targetP95.valid -and $observedP95.valid -and $observedP99.valid -and $sampleCount.valid -and $windowDays.valid
+    if (-not $queryCountsValid -or [int64] $targetP95.value -le 0 -or [int64] $observedP99.value -lt [int64] $observedP95.value -or [int64] $sampleCount.value -le 0 -or [int64] $windowDays.value -le 0) {
+        return [pscustomobject]@{ passed = $false; detail = "queryLatencyBudget metrics invalid targetP95=$($targetP95.raw) observedP95=$($observedP95.raw) observedP99=$($observedP99.raw) sampleCount=$($sampleCount.raw) windowDays=$($windowDays.raw)" }
+    }
+    if ($RequirePassed -and (-not $queryWithin.valid -or -not $queryWithin.value -or [int64] $observedP95.value -gt [int64] $targetP95.value)) {
+        return [pscustomobject]@{ passed = $false; detail = "queryLatencyBudget withinBudget=$($queryWithin.raw)(valid=$($queryWithin.valid)) observedP95=$($observedP95.raw) targetP95=$($targetP95.raw) expected within budget" }
+    }
+
+    $retentionBudget = Get-JsonProperty $json "retentionBudget"
+    $budgetSeconds = Get-RequiredJsonInt $retentionBudget "budgetSeconds"
+    $detailedSeconds = Get-RequiredJsonInt $retentionBudget "detailedRetentionObservedSeconds"
+    $dailySeconds = Get-RequiredJsonInt $retentionBudget "dailyRollupRetentionObservedSeconds"
+    $monthlySeconds = Get-RequiredJsonInt $retentionBudget "monthlyRollupRetentionObservedSeconds"
+    $detailedDeletedRows = Get-RequiredJsonInt $retentionBudget "detailedRetentionDeletedRows"
+    $dailyDeletedRows = Get-RequiredJsonInt $retentionBudget "dailyRollupRetentionDeletedRows"
+    $monthlyDeletedRows = Get-RequiredJsonInt $retentionBudget "monthlyRollupRetentionDeletedRows"
+    $retentionWithin = Get-RequiredJsonBool $retentionBudget "withinBudget"
+    $retentionCountsValid = $budgetSeconds.valid -and $detailedSeconds.valid -and $dailySeconds.valid -and $monthlySeconds.valid -and $detailedDeletedRows.valid -and $dailyDeletedRows.valid -and $monthlyDeletedRows.valid
+    if (-not $retentionCountsValid -or [int64] $budgetSeconds.value -le 0 -or [int64] $detailedDeletedRows.value -lt 0 -or [int64] $dailyDeletedRows.value -lt 0 -or [int64] $monthlyDeletedRows.value -lt 0) {
+        return [pscustomobject]@{ passed = $false; detail = "retentionBudget metrics invalid budget=$($budgetSeconds.raw) detailedSeconds=$($detailedSeconds.raw) dailySeconds=$($dailySeconds.raw) monthlySeconds=$($monthlySeconds.raw)" }
+    }
+    if ($RequirePassed -and (-not $retentionWithin.valid -or -not $retentionWithin.value -or [int64] $detailedSeconds.value -gt [int64] $budgetSeconds.value -or [int64] $dailySeconds.value -gt [int64] $budgetSeconds.value -or [int64] $monthlySeconds.value -gt [int64] $budgetSeconds.value)) {
+        return [pscustomobject]@{ passed = $false; detail = "retentionBudget withinBudget=$($retentionWithin.raw)(valid=$($retentionWithin.valid)) budget=$($budgetSeconds.raw) detailed=$($detailedSeconds.raw) daily=$($dailySeconds.raw) monthly=$($monthlySeconds.raw) expected within budget" }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $checkCount = Get-RequiredJsonInt $summary "checkCount"
+    if (-not $failureCount.valid -or -not $checkCount.valid -or [int64] $checkCount.value -le 0) {
+        return [pscustomobject]@{ passed = $false; detail = "summary failureCount=$($failureCount.raw)(valid=$($failureCount.valid)) checkCount=$($checkCount.raw)(valid=$($checkCount.valid)) expected typed checkCount>0" }
+    }
+    if ($RequirePassed -and [int64] $failureCount.value -ne 0) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.failureCount=$($failureCount.raw) expected 0" }
+    }
+
+    if ($RequirePassed) {
+        $confirmations = Get-JsonProperty $json "confirmations"
+        foreach ($confirmationName in @("queryLatencyReviewed", "retentionJobsWithinBudget", "noObjectKeysInEvidence", "noRawSqlOrExplain", "noSecretValues")) {
+            $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+            if (-not $confirmation.valid -or -not $confirmation.value) {
+                return [pscustomobject]@{ passed = $false; detail = "confirmations.$confirmationName=$($confirmation.raw) expected boolean true" }
+            }
+        }
+    }
+
+    return [pscustomobject]@{ passed = $true; detail = "formatVersion=$formatVersion result=$result p95=$($observedP95.raw)/$($targetP95.raw) retentionBudget=$($budgetSeconds.raw) failureCount=$($failureCount.raw)" }
+}
 function Test-DataFlowStorageTransitionRunbookEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -3247,6 +3977,11 @@ function Test-DataFlowStorageTransitionRunbookEvidenceJson([string] $Path) {
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -3480,7 +4215,7 @@ function Test-DataFlowStorageTransitionRunbookEvidenceJson([string] $Path) {
 
 function Test-KubernetesOperationsReportSyncEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -3488,6 +4223,11 @@ function Test-KubernetesOperationsReportSyncEvidenceJson([string] $Path) {
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -3569,7 +4309,7 @@ function Test-KubernetesOperationsReportSyncEvidenceJson([string] $Path) {
 
 function Test-MinioBucketCorsVerificationJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -3735,7 +4475,7 @@ function Test-MinioBucketCorsVerificationJson([string] $Path) {
 
 function Test-MinioBucketCorsVerificationMarkdown([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
     }
     catch {
         return [pscustomobject]@{
@@ -3769,7 +4509,7 @@ function Test-MinioBucketCorsVerificationMarkdown([string] $Path) {
 
 function Test-MonitoringThresholdEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -3777,6 +4517,11 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -3817,6 +4562,11 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
     $routeCountResult = Get-RequiredJsonInt $summary "routeCount"
     $grafanaPanelCountResult = Get-RequiredJsonInt $summary "grafanaPanelCount"
     $tuningEvidenceCountResult = Get-RequiredJsonInt $summary "tuningEvidenceCount"
+    $alertTargetCoverageCompleteResult = Get-RequiredJsonBool $summary "alertTargetCoverageComplete"
+    $routeCoverageCompleteResult = Get-RequiredJsonBool $summary "routeCoverageComplete"
+    $grafanaPanelCoverageCompleteResult = Get-RequiredJsonBool $summary "grafanaPanelCoverageComplete"
+    $tuningEvidenceCoverageCompleteResult = Get-RequiredJsonBool $summary "tuningEvidenceCoverageComplete"
+    $thresholdMappingCompleteResult = Get-RequiredJsonBool $summary "thresholdMappingComplete"
     $failureCountResult = Get-RequiredJsonInt $reportSummary "failureCount"
     $checkCountResult = Get-RequiredJsonInt $reportSummary "checkCount"
     foreach ($countResult in @(
@@ -3834,6 +4584,23 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
             return [pscustomobject]@{
                 passed = $false
                 detail = "$name=$($value.raw)(valid=False) expected integer"
+            }
+        }
+    }
+
+    foreach ($boolResult in @(
+        @{ name = "alertTargetCoverageComplete"; value = $alertTargetCoverageCompleteResult },
+        @{ name = "routeCoverageComplete"; value = $routeCoverageCompleteResult },
+        @{ name = "grafanaPanelCoverageComplete"; value = $grafanaPanelCoverageCompleteResult },
+        @{ name = "tuningEvidenceCoverageComplete"; value = $tuningEvidenceCoverageCompleteResult },
+        @{ name = "thresholdMappingComplete"; value = $thresholdMappingCompleteResult }
+    )) {
+        $name = [string] $boolResult["name"]
+        $value = $boolResult["value"]
+        if (-not $value.valid -or -not $value.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw)(valid=$($value.valid)) expected boolean true"
             }
         }
     }
@@ -3982,13 +4749,13 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result environmentName=$($json.environmentName) targetCluster=$($json.targetCluster) requiredAlerts=$requiredAlertCount mappedAlerts=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount failures=$failureCount checkRows=$($checks.Count)"
+        detail = "formatVersion=$formatVersion result=$result environmentName=$($json.environmentName) targetCluster=$($json.targetCluster) requiredAlerts=$requiredAlertCount mappedAlerts=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount mappingComplete=$($thresholdMappingCompleteResult.value) failures=$failureCount checkRows=$($checks.Count)"
     }
 }
 
 function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
     try {
-        $raw = Get-Content -Raw -LiteralPath $Path
+        $raw = Read-Utf8Text $Path
         $json = $raw | ConvertFrom-Json
     }
     catch {
@@ -3996,6 +4763,11 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
             passed = $false
             detail = "invalid JSON: $($_.Exception.Message)"
         }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) {
+        return $selfTestTarget
     }
 
     $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
@@ -4024,15 +4796,29 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
         "operationsReadinessSnapshotReviewed",
         "operationsConvergenceSnapshotReviewed",
         "dataFlowStoragePlanReviewed",
+        "dataFlowQueryRetentionBudgetReviewed",
         "dataFlowStorageTransitionRunbookReviewed",
         "secretRotationSnapshotReviewed",
         "commercialIntegrationSnapshotReviewed",
         "commercialApprovalSnapshotReviewed",
+        "chargebackCloseoutSnapshotReviewed",
         "enterpriseAuthSmokeSnapshotReviewed",
         "monitoringThresholdReviewed",
+        "clusterNetworkAccessReviewReviewed",
+        "helmValuesHardeningReviewed",
         "requireProductionEvidence",
         "requireOperationsSnapshotEvidence"
     )
+    $targetSnapshots = Get-JsonProperty $json "targetEvidenceSnapshots"
+    $jitSnapshot = Get-JsonProperty $targetSnapshots "enterpriseAuthJitRollback"
+    if ($null -ne $jitSnapshot) {
+        $jitProvided = Get-RequiredJsonBool $jitSnapshot "provided"
+        $jitResult = [string] (Get-JsonProperty $jitSnapshot "result")
+        if (($jitProvided.valid -and $jitProvided.value) -or -not [string]::IsNullOrWhiteSpace($jitResult)) {
+            $requiredConfirmations += "enterpriseAuthJitRollbackSnapshotReviewed"
+        }
+    }
+
     $confirmations = Get-JsonProperty $json "confirmations"
     foreach ($confirmationName in $requiredConfirmations) {
         $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
@@ -4070,7 +4856,7 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
     }
 
     $patterns = @(
-        '(?i)"(rawClaimJson|raw_claim_json|idToken|id_token|accessToken|access_token|refreshToken|refresh_token|authorizationCode|authorization_code|oidcCode|oidc_code|oidcState|oidc_state|ldapPassword|ldap_password|adminPassword|admin_password|clientSecret|client_secret)"\s*:',
+        '(?i)"(rawClaimJson|raw_claim_json|idToken|id_token|accessToken|access_token|refreshToken|refresh_token|authorizationCode|authorization_code|oidcCode|oidc_code|oidcState|oidc_state|ldapPassword|ldap_password|adminPassword|admin_password|clientSecret|client_secret|rawCustomerPaymentData|raw_customer_payment_data|rawProviderResponse|raw_provider_response|rawInvoice|raw_invoice|paymentReference|payment_reference|paymentTarget|payment_target|providerPayload|provider_payload|endpointUrl|endpoint_url)"\s*:',
         '(?i)\b(password|passwd|credential|api[_-]?key|private[_-]?key|client[_-]?secret|ldap[_-]?password|admin[_-]?password)\s*=\s*\S+',
         '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
         '-----BEGIN [A-Z ]*PRIVATE KEY-----'
@@ -4090,6 +4876,287 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
     }
 }
 
+function Test-ClusterNetworkAccessReviewEvidenceJson([string] $Path) {
+    try {
+        $raw = Read-Utf8Text $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{ passed = $false; detail = "invalid JSON: $($_.Exception.Message)" }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) { return $selfTestTarget }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "cluster network access review"
+    if (-not $rawValidation.passed) { return $rawValidation }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.cluster-network-access-review-evidence.v1") {
+        return [pscustomobject]@{ passed = $false; detail = "formatVersion=$formatVersion expected=osmu.cluster-network-access-review-evidence.v1" }
+    }
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") { return [pscustomobject]@{ passed = $false; detail = "result=$result expected=passed" } }
+
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "generatedAt=$generatedAt expected ISO timestamp" }
+    }
+
+    foreach ($field in @("environmentName", "targetCluster", "operator", "decisionRule", "scopePolicy", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) { return [pscustomobject]@{ passed = $false; detail = "$field missing" } }
+    }
+
+    $reviewWindow = Get-JsonProperty $json "reviewWindow"
+    $startedAt = [string] (Get-JsonProperty $reviewWindow "startedAt")
+    $completedAt = [string] (Get-JsonProperty $reviewWindow "completedAt")
+    $parsedStartedAt = [DateTimeOffset]::MinValue
+    $parsedCompletedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($startedAt) -or -not [DateTimeOffset]::TryParse($startedAt, [ref] $parsedStartedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow.startedAt=$startedAt expected ISO timestamp" }
+    }
+    if ([string]::IsNullOrWhiteSpace($completedAt) -or -not [DateTimeOffset]::TryParse($completedAt, [ref] $parsedCompletedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow.completedAt=$completedAt expected ISO timestamp" }
+    }
+    if ($parsedCompletedAt -lt $parsedStartedAt) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow completedAt must be same as or later than startedAt" }
+    }
+    $ordered = Get-RequiredJsonBool $reviewWindow "ordered"
+    if (-not $ordered.valid -or -not $ordered.value) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow.ordered=$($ordered.raw) expected boolean true" }
+    }
+
+    $evidence = Get-JsonProperty $json "evidence"
+    foreach ($refName in @("changeApprovalRef", "dnsEgressReviewRef", "mariaDbAccessReviewRef", "minioAccessReviewRef", "backupAccessReviewRef", "publicIngressReviewRef", "defaultDenyReviewRef", "observabilityScrapeReviewRef", "k8sVerifierEvidenceRef", "helmVerifierEvidenceRef", "evidenceRef")) {
+        $refValue = [string] (Get-JsonProperty $evidence $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) { return [pscustomobject]@{ passed = $false; detail = "evidence.$refName missing" } }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $totalCount = Get-RequiredJsonInt $summary "totalCount"
+    if (-not $failureCount.valid -or [int64] $failureCount.value -ne 0 -or -not $totalCount.valid -or [int64] $totalCount.value -le 0) {
+        return [pscustomobject]@{ passed = $false; detail = "summary failureCount=$($failureCount.raw) totalCount=$($totalCount.raw) expected integer 0 and positive integer" }
+    }
+
+    $snapshot = Get-JsonProperty $json "staticControlSnapshot"
+    foreach ($shaField in @("networkPolicyManifestSha256", "helmValuesSha256", "helmNetworkPolicyTemplateSha256")) {
+        $sha = [string] (Get-JsonProperty $snapshot $shaField)
+        if (-not (Test-Sha256 $sha)) { return [pscustomobject]@{ passed = $false; detail = "staticControlSnapshot.$shaField=$sha expected nonzero sha256" } }
+    }
+    foreach ($flagName in @("requiredPolicyNamesPresent", "backendEgressScoped", "backupEgressScoped", "dnsEgressScoped", "mariaDbIngressScoped", "minioIngressScoped", "noBroadCidr", "helmNetworkPolicyEnabled")) {
+        $flag = Get-RequiredJsonBool $snapshot $flagName
+        if (-not $flag.valid -or -not $flag.value) { return [pscustomobject]@{ passed = $false; detail = "staticControlSnapshot.$flagName=$($flag.raw) expected boolean true" } }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    foreach ($confirmationName in @("backendOnlyMariaDb", "backendOnlyMinio", "backupOnlyMariaDbMinio", "dnsEgressScoped", "mariaDbIngressBackendBackupOnly", "minioIngressBackendBackupOnly", "publicIngressLimited", "namespaceDefaultDenyReviewed", "observabilityScrapeReviewed", "helmNetworkPolicyEnabled", "noCredentialValues")) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) { return [pscustomobject]@{ passed = $false; detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true" } }
+    }
+
+    $checks = @((Get-JsonProperty $json "checks"))
+    if ($checks.Count -le 0) { return [pscustomobject]@{ passed = $false; detail = "checks missing" } }
+    foreach ($check in $checks) {
+        $passed = Get-RequiredJsonBool $check "passed"
+        if (-not $passed.valid -or -not $passed.value) { return [pscustomobject]@{ passed = $false; detail = "check $([string](Get-JsonProperty $check "id")) passed=$($passed.raw) expected boolean true" } }
+    }
+
+    return [pscustomobject]@{ passed = $true; detail = "formatVersion=$formatVersion result=$result failures=$($failureCount.value) checks=$($totalCount.value)" }
+}
+
+function Test-HelmValuesHardeningEvidenceJson([string] $Path) {
+    try {
+        $raw = Read-Utf8Text $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{ passed = $false; detail = "invalid JSON: $($_.Exception.Message)" }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) { return $selfTestTarget }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "Helm values hardening"
+    if (-not $rawValidation.passed) { return $rawValidation }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.helm-values-hardening-evidence.v1") {
+        return [pscustomobject]@{ passed = $false; detail = "formatVersion=$formatVersion expected=osmu.helm-values-hardening-evidence.v1" }
+    }
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") { return [pscustomobject]@{ passed = $false; detail = "result=$result expected=passed" } }
+
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "generatedAt=$generatedAt expected ISO timestamp" }
+    }
+
+    foreach ($field in @("environmentName", "targetCluster", "operator", "decisionRule", "scopePolicy", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) { return [pscustomobject]@{ passed = $false; detail = "$field missing" } }
+    }
+
+    $reviewWindow = Get-JsonProperty $json "reviewWindow"
+    $startedAt = [string] (Get-JsonProperty $reviewWindow "startedAt")
+    $completedAt = [string] (Get-JsonProperty $reviewWindow "completedAt")
+    $parsedStartedAt = [DateTimeOffset]::MinValue
+    $parsedCompletedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($startedAt) -or -not [DateTimeOffset]::TryParse($startedAt, [ref] $parsedStartedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow.startedAt=$startedAt expected ISO timestamp" }
+    }
+    if ([string]::IsNullOrWhiteSpace($completedAt) -or -not [DateTimeOffset]::TryParse($completedAt, [ref] $parsedCompletedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow.completedAt=$completedAt expected ISO timestamp" }
+    }
+    if ($parsedCompletedAt -lt $parsedStartedAt) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow completedAt must be same as or later than startedAt" }
+    }
+    $ordered = Get-RequiredJsonBool $reviewWindow "ordered"
+    if (-not $ordered.valid -or -not $ordered.value) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow.ordered=$($ordered.raw) expected boolean true" }
+    }
+
+    $evidence = Get-JsonProperty $json "evidence"
+    foreach ($refName in @("changeApprovalRef", "helmVerifierEvidenceRef", "kubernetesVerifierEvidenceRef", "containerHardeningEvidenceRef", "clusterNetworkAccessReviewEvidenceRef", "evidenceRef")) {
+        $refValue = [string] (Get-JsonProperty $evidence $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) { return [pscustomobject]@{ passed = $false; detail = "evidence.$refName missing" } }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $totalCount = Get-RequiredJsonInt $summary "totalCount"
+    if (-not $failureCount.valid -or [int64] $failureCount.value -ne 0 -or -not $totalCount.valid -or [int64] $totalCount.value -le 0) {
+        return [pscustomobject]@{ passed = $false; detail = "summary failureCount=$($failureCount.raw) totalCount=$($totalCount.raw) expected integer 0 and positive integer" }
+    }
+
+    $chartSnapshot = Get-JsonProperty $json "chartSnapshot"
+    $files = @((Get-JsonProperty $chartSnapshot "files"))
+    if ($files.Count -le 0) { return [pscustomobject]@{ passed = $false; detail = "chartSnapshot.files missing" } }
+    foreach ($file in $files) {
+        $sha = [string] (Get-JsonProperty $file "sha256")
+        if (-not (Test-Sha256 $sha)) { return [pscustomobject]@{ passed = $false; detail = "chartSnapshot.files sha256=$sha expected nonzero sha256" } }
+    }
+
+    $snapshot = Get-JsonProperty $json "staticHardeningSnapshot"
+    foreach ($flagName in @("secretsExternalized", "defaultSecretPlaceholdersPresent", "haReplicas", "resourceBounds", "securityContexts", "serviceAccountTokensDisabled", "networkPolicyEnabled", "tlsIngress", "operationsReportsReadOnly", "storageExpansionRbacDisabled")) {
+        $flag = Get-RequiredJsonBool $snapshot $flagName
+        if (-not $flag.valid -or -not $flag.value) { return [pscustomobject]@{ passed = $false; detail = "staticHardeningSnapshot.$flagName=$($flag.raw) expected boolean true" } }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    foreach ($confirmationName in @("secretsExternalized", "defaultSecretPlaceholdersNotUsed", "haReplicasReviewed", "resourcesBounded", "securityContextsReviewed", "networkPolicyEnabled", "tlsIngressReviewed", "operationsReportsReadOnly", "storageExpansionRbacDisabledByDefault", "noCredentialValues")) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) { return [pscustomobject]@{ passed = $false; detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true" } }
+    }
+
+    $checks = @((Get-JsonProperty $json "checks"))
+    if ($checks.Count -le 0) { return [pscustomobject]@{ passed = $false; detail = "checks missing" } }
+    foreach ($check in $checks) {
+        $passed = Get-RequiredJsonBool $check "passed"
+        if (-not $passed.valid -or -not $passed.value) { return [pscustomobject]@{ passed = $false; detail = "check $([string](Get-JsonProperty $check "id")) passed=$($passed.raw) expected boolean true" } }
+    }
+
+    return [pscustomobject]@{ passed = $true; detail = "formatVersion=$formatVersion result=$result failures=$($failureCount.value) checks=$($totalCount.value) chartFiles=$($files.Count)" }
+}
+
+function Test-SupportEscalationHandoffEvidenceJson([string] $Path) {
+    try {
+        $raw = Read-Utf8Text $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{ passed = $false; detail = "invalid JSON: $($_.Exception.Message)" }
+    }
+
+    $selfTestTarget = Test-SelfTestTargetEvidenceJson $json
+    if (-not $selfTestTarget.passed) { return $selfTestTarget }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "support escalation handoff"
+    if (-not $rawValidation.passed) { return $rawValidation }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.support-escalation-handoff-evidence.v1") {
+        return [pscustomobject]@{ passed = $false; detail = "formatVersion=$formatVersion expected=osmu.support-escalation-handoff-evidence.v1" }
+    }
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") { return [pscustomobject]@{ passed = $false; detail = "result=$result expected=passed" } }
+
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "generatedAt=$generatedAt expected ISO timestamp" }
+    }
+
+    foreach ($field in @("environmentName", "targetCluster", "operator", "decisionRule", "scopePolicy", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) { return [pscustomobject]@{ passed = $false; detail = "$field missing" } }
+    }
+
+    $reviewWindow = Get-JsonProperty $json "reviewWindow"
+    $startedAt = [string] (Get-JsonProperty $reviewWindow "startedAt")
+    $completedAt = [string] (Get-JsonProperty $reviewWindow "completedAt")
+    $parsedStartedAt = [DateTimeOffset]::MinValue
+    $parsedCompletedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($startedAt) -or -not [DateTimeOffset]::TryParse($startedAt, [ref] $parsedStartedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow.startedAt=$startedAt expected ISO timestamp" }
+    }
+    if ([string]::IsNullOrWhiteSpace($completedAt) -or -not [DateTimeOffset]::TryParse($completedAt, [ref] $parsedCompletedAt)) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow.completedAt=$completedAt expected ISO timestamp" }
+    }
+    if ($parsedCompletedAt -lt $parsedStartedAt) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow completedAt must be same as or later than startedAt" }
+    }
+    $ordered = Get-RequiredJsonBool $reviewWindow "ordered"
+    if (-not $ordered.valid -or -not $ordered.value) {
+        return [pscustomobject]@{ passed = $false; detail = "reviewWindow.ordered=$($ordered.raw) expected boolean true" }
+    }
+
+    $evidence = Get-JsonProperty $json "evidence"
+    foreach ($refName in @("changeApprovalRef", "operationsHandoffPackageRef", "runbookReviewRef", "troubleshootingReviewRef", "rollbackReviewRef", "supportEscalationRef", "supportSlaRef", "knownGapsRef", "evidenceRef")) {
+        $refValue = [string] (Get-JsonProperty $evidence $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) { return [pscustomobject]@{ passed = $false; detail = "evidence.$refName missing" } }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $passCount = Get-RequiredJsonInt $summary "passCount"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $totalCount = Get-RequiredJsonInt $summary "totalCount"
+    if (-not $passCount.valid -or -not $failureCount.valid -or -not $totalCount.valid -or [int64] $failureCount.value -ne 0 -or [int64] $totalCount.value -le 0 -or [int64] $passCount.value -ne [int64] $totalCount.value) {
+        return [pscustomobject]@{ passed = $false; detail = "summary passCount=$($passCount.raw) failureCount=$($failureCount.raw) totalCount=$($totalCount.raw) expected pass=total>0 and failure=0" }
+    }
+
+    $documentSnapshot = Get-JsonProperty $json "documentSnapshot"
+    foreach ($flagName in @("runbookCoverage", "troubleshootingCoverage", "rollbackCoverage", "supportEscalationCoverage", "supportSlaCoverage", "knownGapsCoverage", "handoffPackageCoverage")) {
+        $flag = Get-RequiredJsonBool $documentSnapshot $flagName
+        if (-not $flag.valid -or -not $flag.value) { return [pscustomobject]@{ passed = $false; detail = "documentSnapshot.$flagName=$($flag.raw) expected boolean true" } }
+    }
+    $files = @((Get-JsonProperty $documentSnapshot "files"))
+    if ($files.Count -le 0) { return [pscustomobject]@{ passed = $false; detail = "documentSnapshot.files missing" } }
+    foreach ($file in $files) {
+        $exists = Get-RequiredJsonBool $file "exists"
+        if (-not $exists.valid -or -not $exists.value) { return [pscustomobject]@{ passed = $false; detail = "documentSnapshot.files exists=$($exists.raw) expected boolean true" } }
+        $sha = [string] (Get-JsonProperty $file "sha256")
+        if (-not (Test-Sha256 $sha)) { return [pscustomobject]@{ passed = $false; detail = "documentSnapshot.files sha256=$sha expected nonzero sha256" } }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    foreach ($confirmationName in @("runbookReviewed", "troubleshootingReviewed", "rollbackPathReviewed", "supportEscalationReviewed", "supportSlaReviewed", "knownGapsAccepted", "operationsHandoffReferenceReady", "noCredentialValues")) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) { return [pscustomobject]@{ passed = $false; detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true" } }
+    }
+
+    $checks = @((Get-JsonProperty $json "checks"))
+    if ($checks.Count -le 0) { return [pscustomobject]@{ passed = $false; detail = "checks missing" } }
+    foreach ($check in $checks) {
+        $passed = Get-RequiredJsonBool $check "passed"
+        if (-not $passed.valid -or -not $passed.value) { return [pscustomobject]@{ passed = $false; detail = "check $([string](Get-JsonProperty $check "id")) passed=$($passed.raw) expected boolean true" } }
+    }
+
+    return [pscustomobject]@{ passed = $true; detail = "formatVersion=$formatVersion result=$result failures=$($failureCount.value) checks=$($totalCount.value) documentFiles=$($files.Count)" }
+}
 function Import-EvidenceFile(
     [string] $Group,
     [string] $SourceRoot,
@@ -4189,6 +5256,22 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "data-flow-query-retention-budget") {
+        $validation = Test-DataFlowQueryRetentionBudgetEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "data-flow-query-retention-budget-passed") {
+        $validation = Test-DataFlowQueryRetentionBudgetEvidenceJson $sourcePath $true
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "data-flow-storage-transition-runbook") {
         $validation = Test-DataFlowStorageTransitionRunbookEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -4245,6 +5328,30 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "cluster-network-access-review") {
+        $validation = Test-ClusterNetworkAccessReviewEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "helm-values-hardening") {
+        $validation = Test-HelmValuesHardeningEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "support-escalation-handoff") {
+        $validation = Test-SupportEscalationHandoffEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "commercial-integration") {
         $validation = Test-CommercialIntegrationEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -4261,8 +5368,24 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "chargeback-closeout") {
+        $validation = Test-ChargebackCloseoutEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "enterprise-auth") {
         $validation = Test-EnterpriseAuthEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "enterprise-auth-jit-rollback") {
+        $validation = Test-EnterpriseAuthJitRollbackEvidenceJson $sourcePath
         if (-not $validation.passed) {
             Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
             return
@@ -4347,14 +5470,29 @@ Import-EvidenceFile "monitoring-threshold" $MonitoringThresholdArtifactPath "lat
 Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.json" $true "" "" "secret-rotation"
 Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.md" $false
 
+Import-EvidenceFile "cluster-network-access-review" $ClusterNetworkAccessReviewArtifactPath "latest-cluster-network-access-review-evidence.json" $true "" "" "cluster-network-access-review"
+Import-EvidenceFile "cluster-network-access-review" $ClusterNetworkAccessReviewArtifactPath "latest-cluster-network-access-review-evidence.md" $false
+
+Import-EvidenceFile "helm-values-hardening" $HelmValuesHardeningArtifactPath "latest-helm-values-hardening-evidence.json" $true "" "" "helm-values-hardening"
+Import-EvidenceFile "helm-values-hardening" $HelmValuesHardeningArtifactPath "latest-helm-values-hardening-evidence.md" $false
+
+Import-EvidenceFile "support-escalation-handoff" $SupportEscalationHandoffArtifactPath "latest-support-escalation-handoff-evidence.json" $true "" "" "support-escalation-handoff"
+Import-EvidenceFile "support-escalation-handoff" $SupportEscalationHandoffArtifactPath "latest-support-escalation-handoff-evidence.md" $false
+
 Import-EvidenceFile "commercial-integration" $CommercialIntegrationArtifactPath "latest-commercial-integration-evidence.json" $true "" "" "commercial-integration"
 Import-EvidenceFile "commercial-integration" $CommercialIntegrationArtifactPath "latest-commercial-integration-evidence.md" $false
 
 Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.json" $true "" "" "commercial-approval"
 Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.md" $false
 
+Import-EvidenceFile "chargeback-closeout" $ChargebackCloseoutArtifactPath "latest-chargeback-closeout-evidence.json" $true "" "" "chargeback-closeout"
+Import-EvidenceFile "chargeback-closeout" $ChargebackCloseoutArtifactPath "latest-chargeback-closeout-evidence.md" $false
+
 Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.json" $true "" "" "enterprise-auth"
 Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.md" $false
+
+Import-EvidenceFile "enterprise-auth-jit-rollback" $EnterpriseAuthJitRollbackArtifactPath "latest-enterprise-auth-jit-rollback-evidence.json" $true "" "" "enterprise-auth-jit-rollback"
+Import-EvidenceFile "enterprise-auth-jit-rollback" $EnterpriseAuthJitRollbackArtifactPath "latest-enterprise-auth-jit-rollback-evidence.md" $false
 
 Import-EvidenceFile "operations-handoff-package" $OperationsHandoffPackageArtifactPath "latest-operations-handoff-package.json" $true "" "" "operations-handoff-package"
 Import-EvidenceFile "operations-handoff-package" $OperationsHandoffPackageArtifactPath "latest-operations-handoff-package.md" $false
@@ -4363,9 +5501,12 @@ Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsRep
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-plan.json" $false
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-server-dry-run.json" $false
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-plan.json" $false "" "" "data-flow-storage-plan"
+Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-query-retention-budget-evidence.json" $false "" "" "data-flow-query-retention-budget"
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-transition-runbook-evidence.json" $false "" "" "data-flow-storage-transition-runbook"
 
 Import-EvidenceFile "data-flow-storage-plan" $DataFlowStoragePlanArtifactPath "latest-data-flow-storage-plan.json" $true "" "" "data-flow-storage-plan-passed"
+Import-EvidenceFile "data-flow-query-retention-budget" $DataFlowQueryRetentionBudgetArtifactPath "latest-data-flow-query-retention-budget-evidence.json" $true "" "" "data-flow-query-retention-budget-passed"
+Import-EvidenceFile "data-flow-query-retention-budget" $DataFlowQueryRetentionBudgetArtifactPath "latest-data-flow-query-retention-budget-evidence.md" $false
 Import-EvidenceFile "data-flow-storage-transition-runbook" $DataFlowStorageTransitionRunbookArtifactPath "latest-data-flow-storage-transition-runbook-evidence.json" $true "" "" "data-flow-storage-transition-runbook"
 Import-EvidenceFile "data-flow-storage-transition-runbook" $DataFlowStorageTransitionRunbookArtifactPath "latest-data-flow-storage-transition-runbook-evidence.md" $false
 
@@ -4381,12 +5522,18 @@ $selectedGroupCandidates = @(
     [pscustomobject]@{ group = "minio-bucket-cors"; path = $MinioBucketCorsArtifactPath },
     [pscustomobject]@{ group = "monitoring-threshold"; path = $MonitoringThresholdArtifactPath },
     [pscustomobject]@{ group = "secret-rotation"; path = $SecretRotationArtifactPath },
+    [pscustomobject]@{ group = "cluster-network-access-review"; path = $ClusterNetworkAccessReviewArtifactPath },
+    [pscustomobject]@{ group = "helm-values-hardening"; path = $HelmValuesHardeningArtifactPath },
+    [pscustomobject]@{ group = "support-escalation-handoff"; path = $SupportEscalationHandoffArtifactPath },
     [pscustomobject]@{ group = "commercial-integration"; path = $CommercialIntegrationArtifactPath },
     [pscustomobject]@{ group = "commercial-approval"; path = $CommercialApprovalArtifactPath },
+    [pscustomobject]@{ group = "chargeback-closeout"; path = $ChargebackCloseoutArtifactPath },
     [pscustomobject]@{ group = "enterprise-auth"; path = $EnterpriseAuthArtifactPath },
+    [pscustomobject]@{ group = "enterprise-auth-jit-rollback"; path = $EnterpriseAuthJitRollbackArtifactPath },
     [pscustomobject]@{ group = "operations-handoff-package"; path = $OperationsHandoffPackageArtifactPath },
     [pscustomobject]@{ group = "kubernetes-operations-report-sync"; path = $KubernetesOperationsReportSyncArtifactPath },
     [pscustomobject]@{ group = "data-flow-storage-plan"; path = $DataFlowStoragePlanArtifactPath },
+    [pscustomobject]@{ group = "data-flow-query-retention-budget"; path = $DataFlowQueryRetentionBudgetArtifactPath },
     [pscustomobject]@{ group = "data-flow-storage-transition-runbook"; path = $DataFlowStorageTransitionRunbookArtifactPath }
 )
 $selectedGroups = @($selectedGroupCandidates | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_.path) })

@@ -15,6 +15,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Normalize-Sql([string] $sql) {
     $value = $sql -replace "`r", " "
     $value = $value -replace "`n", " "
@@ -76,7 +80,7 @@ if ($migrationFiles.Count -eq 0) {
     throw "No migration files found: $resolvedMigrationDir"
 }
 
-$migrationSql = ($migrationFiles | ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
+$migrationSql = ($migrationFiles | ForEach-Object { Read-Utf8Text $_.FullName }) -join "`n"
 $normalizedSql = Normalize-Sql $migrationSql
 
 $requirements = @(

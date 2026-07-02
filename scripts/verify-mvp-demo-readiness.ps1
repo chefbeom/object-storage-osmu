@@ -37,6 +37,10 @@ function Resolve-ProjectPath($path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Step($message) {
     Write-Host ""
@@ -326,7 +330,7 @@ function Invoke-DurableDemoPreflight([string] $SelectedS3Client) {
         throw "Durable preflight report was not written: $resolvedPreflightReportPath"
     }
 
-    $preflightReport = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedPreflightReportPath | ConvertFrom-Json
+    $preflightReport = Read-Utf8Text $resolvedPreflightReportPath | ConvertFrom-Json
     $requiredFailures = @($preflightReport.requiredFailures | ForEach-Object { [string] $_ })
     return [pscustomobject]@{
         result = [string] $preflightReport.result

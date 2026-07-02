@@ -12,6 +12,10 @@ function Resolve-ProjectPath($path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -25,7 +29,7 @@ function Assert-Contains([string] $content, [string] $expected, [string] $fileNa
 function Read-ChartFile([string] $relativePath) {
     $path = Join-Path $resolvedChartDirectory $relativePath
     Assert-True (Test-Path -LiteralPath $path) "Helm chart file missing: $relativePath"
-    $content = Get-Content -Raw -LiteralPath $path
+    $content = Read-Utf8Text $path
     Assert-True (-not $content.Contains("`t")) "Tabs are not allowed in Helm chart file: $relativePath"
     return $content
 }
@@ -87,6 +91,7 @@ Assert-Contains $values "s3Region: us-east-1" "values.yaml"
 Assert-Contains $values "operationsReadinessConvergenceReportPath: .osmu-run/latest-operations-readiness-convergence.json" "values.yaml"
 Assert-Contains $values "kubernetesOperationsReportSyncReportPath: .osmu-run/latest-kubernetes-operations-report-sync.json" "values.yaml"
 Assert-Contains $values "dataFlowStoragePlanReportPath: .osmu-run/latest-data-flow-storage-plan.json" "values.yaml"
+Assert-Contains $values "dataFlowQueryRetentionBudgetReportPath: .osmu-run/latest-data-flow-query-retention-budget-evidence.json" "values.yaml"
 Assert-Contains $values "metrics:" "values.yaml"
 Assert-Contains $values "path: /actuator/prometheus" "values.yaml"
 Assert-Contains $values "operationsReports:" "values.yaml"
@@ -115,6 +120,7 @@ Assert-Contains $values "topologySpread:" "values.yaml"
 Assert-Contains $values "topologyKey: kubernetes.io/hostname" "values.yaml"
 Assert-Contains $values "whenUnsatisfiable: ScheduleAnyway" "values.yaml"
 Assert-Contains $values "dataFlowStoragePlanReportPath: .osmu-run/latest-data-flow-storage-plan.json" "values.yaml"
+Assert-Contains $values "dataFlowQueryRetentionBudgetReportPath: .osmu-run/latest-data-flow-query-retention-budget-evidence.json" "values.yaml"
 Assert-Contains $values "dataFlowStorageTransitionRunbookReportPath: .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json" "values.yaml"
 
 $helpers = Read-ChartFile "templates\_helpers.tpl"
@@ -157,6 +163,7 @@ Assert-Contains $configMap "OSMU_S3_REGION" "configmap.yaml"
 Assert-Contains $configMap "OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH" "configmap.yaml"
 Assert-Contains $configMap "OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH" "configmap.yaml"
 Assert-Contains $configMap "OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH" "configmap.yaml"
+Assert-Contains $configMap "OSMU_OPERATIONS_READINESS_DATA_FLOW_QUERY_RETENTION_BUDGET_REPORT_PATH" "configmap.yaml"
 Assert-Contains $configMap "OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REPORT_PATH" "configmap.yaml"
 
 $secret = Read-ChartFile "templates\secret.yaml"
@@ -297,7 +304,7 @@ Assert-Contains $monitoringOperator "OsmuBackupCronJobStale" "monitoring-operato
 
 $templateFiles = Get-ChildItem -LiteralPath (Join-Path $resolvedChartDirectory "templates") -Filter *.yaml
 foreach ($templateFile in $templateFiles) {
-    $content = Get-Content -Raw -LiteralPath $templateFile.FullName
+    $content = Read-Utf8Text $templateFile.FullName
     Assert-True ($content.Contains("apiVersion:")) "$($templateFile.Name) is missing apiVersion."
     Assert-True ($content.Contains("kind:")) "$($templateFile.Name) is missing kind."
 }
@@ -305,4 +312,3 @@ foreach ($templateFile in $templateFiles) {
 Write-Host "Helm chart draft verified."
 Write-Host "Chart directory: $resolvedChartDirectory"
 Write-Host "Files checked: $($requiredFiles.Count)"
-

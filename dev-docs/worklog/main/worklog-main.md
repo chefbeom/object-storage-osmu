@@ -15207,7 +15207,6 @@ feat/bucket-management
 - ì¶”ê°€ì ìœ¼ë¡œ ì‚¬ìš©ëœ skillì´ë‚˜ plugin:
   - ë³„ë„ skill ì—†ìŒ.
   - PowerShell verifierì™€ GitHub Actions workflow draft ì‚¬ìš©.
-  - PowerShell verifier?Â€ GitHub Actions workflow draft ?ÑŠìŠœ.
 
 ### 2026-06-16 - Kubernetes HA/DR Readiness CI Workflow ì¶”ê°€
 
@@ -17954,12 +17953,12 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.billing.ChargebackPreviewServiceTest --tests com.example.osmu.billing.AdminBillingControllerTest --tests com.example.osmu.auth.AdminRbacPolicyTest`: í†µê³¼.
 - í›„ì†: invoice/export, threshold alert, time-series/partition ê¸°ë°˜ ìž¥ê¸° analyticsëŠ” ì•„ì§ ë‚¨ì•„ ìžˆë‹¤.
 ### 2026-06-20 - Chargeback preview CSV export
-- ÀÛ¾÷ ÇØ¼®: AWS S3 ¼¼ºÎ parity°¡ ¾Æ´Ï¶ó OSMU ¿î¿µÀÚ°¡ ³»ºÎ ºñ¿ë ¸ðµ¨À» ³»·Á¹Þ¾Æ °ËÅäÇÒ ¼ö ÀÖ´Â billing/chargeback ¸®Æ÷Æ® export slice·Î ÁøÇàÇß´Ù.
-- Backend: `GET /api/admin/billing/chargeback-preview/export.csv`¸¦ Ãß°¡Çß´Ù. `ChargebackPreviewService.exportCsv`´Â JSON preview¿Í °°Àº request, pricing policy, visibility scope¸¦ Àç»ç¿ëÇÏ°í `TOTAL` row¿Í organization row¸¦ RFC4180-style escaped CSV·Î ¸¸µç´Ù.
-- RBAC: `ORG_ADMIN`µµ exportÇÒ ¼ö ÀÖÁö¸¸ `GET /api/admin/billing/chargeback-preview`¿Í µ¿ÀÏÇÏ°Ô ÀÚ±â Á¶Á÷¸¸ Æ÷ÇÔÇÑ´Ù. `AUDITOR`¿Í ÀÏ¹Ý »ç¿ëÀÚ´Â Â÷´ÜÇÑ´Ù.
-- Frontend/mock: `downloadChargebackPreviewCsv` wrapper¿Í Admin billing panel `chargeback-export-button`À» Ãß°¡Çß´Ù. mock API/self-testµµ `osmu-chargeback-preview.csv` export¿Í KRW policy ¹Ý¿µÀ» È®ÀÎÇÑ´Ù.
-- ¹®¼­/verifier: README, API spec, OpenAPI, IAM/RBAC matrix, security/frontend/commercial docs, feature inventory, test cases, openapi/IAM/commercial verifier¸¦ °»½ÅÇß´Ù.
-- ÈÄ¼Ó: finalized invoice export, threshold alert, time-series/partition ±â¹Ý Àå±â analytics´Â ¾ÆÁ÷ ³²¾Æ ÀÖ´Ù.
+- Task interpretation: continued as an OSMU billing/chargeback operational export slice, not AWS S3 storage parity work.
+- Backend: added `GET /api/admin/billing/chargeback-preview/export.csv`. `ChargebackPreviewService.exportCsv` reuses the JSON preview request, pricing policy, and visibility scope, then emits `TOTAL` and organization rows as RFC4180-style escaped CSV.
+- RBAC: `ORG_ADMIN` can export only the same scoped chargeback preview data available through `GET /api/admin/billing/chargeback-preview`; `AUDITOR` and regular users are rejected.
+- Frontend/mock: added the `downloadChargebackPreviewCsv` wrapper and Admin billing panel `chargeback-export-button`. The mock API/self-test verifies `osmu-chargeback-preview.csv` export and KRW policy handling.
+- Docs/verifier: updated README, API spec, OpenAPI, IAM/RBAC matrix, security/frontend/commercial docs, feature inventory, test cases, and the OpenAPI/IAM/commercial verifiers.
+- Follow-up: finalized invoice export, threshold alerting, and time-series/partition analytics remain.
 
 ### 2026-06-20 - Chargeback threshold alert pre-model
 - ìž‘ì—… í•´ì„: AWS S3 í˜¸í™˜ì„± í™•ìž¥ì´ ì•„ë‹ˆë¼ OSMU ìš´ì˜ìžê°€ tenant ë¹„ìš© ê¸‰ì¦ì„ ë¯¸ë¦¬ ë³¼ ìˆ˜ ìžˆëŠ” billing/chargeback ìš´ì˜ ê¸°ëŠ¥ìœ¼ë¡œ ì§„í–‰í–ˆë‹¤.
@@ -18060,3 +18059,919 @@ feat/bucket-management
 - Docs/verifiers: updated README, API/OpenAPI, backend/frontend/database/operation/IAM/test/MVP docs, Prometheus/Grafana artifacts, and verifier scripts for monthly rollup retention.
 - Verification: pending local checks before commit.
 - Verification final: git diff --check, node --check mock API, OpenAPI/IAM/RBAC/commercial/migration/monitoring/k8s/Prometheus Operator verifiers, mock API self-test, frontend unit tests, and focused offline backend Gradle tests passed. Initial sandboxed Gradle wrapper attempt tried to fetch its distribution and was stopped before any download completed.
+
+### 2026-06-27 - Durable browser multipart evidence path
+
+- Scope: continued dev-docs-driven MVP closure by wiring the real MinIO browser multipart pause/resume evidence into the durable gate/finalize/CI path, without expanding AWS S3 parity scope.
+- Scripts/CI: `verify-durable-demo-gate.ps1` now accepts `-EnableRealMultipartEvidence`, passes the real multipart fixture through to Browser E2E without narrowing the suite, requires `.osmu-run/latest-browser-multipart-resume-evidence.*`, and records evidence paths. `finalize-durable-mvp-demo.ps1` passes the option through and records requested evidence paths. Durable Docker CI now runs finalize with the option and uploads the evidence JSON/Markdown.
+- Docs/verifiers: README, local dev guide, document index, test cases, MVP release checklist, and CI verifier assertions now describe the durable evidence path while keeping latest durable gate execution evidence pending until an actual Docker/GitHub-hosted run records it.
+- Verification: PowerShell parser checks for the touched scripts passed, `verify-ci-workflow.ps1` passed, `finalize-durable-mvp-demo.ps1 -S3Client docker-mc -EnableRealMultipartEvidence -PlanOnly` passed, and `git diff --check` passed with line-ending warnings only. Full Docker durable run was not executed in this pass.
+
+### 2026-06-27 - Durable preflight evidence follow-up commands
+
+- Scope: followed the durable browser multipart evidence path after local preflight showed Docker Desktop is not running, so the full durable gate could not execute on this machine yet.
+- Script/docs: `verify-durable-demo-preflight.ps1` now includes both standard and `-EnableRealMultipartEvidence` durable gate/finalize commands in `nextCommands`, and `verify-ci-workflow.ps1` asserts that the preflight script keeps those evidence-producing follow-ups. Document index, roadmap, and MVP checklist were updated to match.
+- Verification: parser checks for `verify-durable-demo-preflight.ps1` and `verify-ci-workflow.ps1` passed, `verify-ci-workflow.ps1` passed, and `verify-durable-demo-preflight.ps1 -S3Client docker-mc -AllowNotReady -NoReport` passed with expected pending result because Docker daemon and selected `docker-mc` path are unavailable. The preflight summary now lists the evidence-producing next commands.
+
+### 2026-06-27 - Durable finalize plan-only evidence hygiene
+
+- Scope: fixed a local evidence hygiene issue discovered while continuing the dev-docs audit. `finalize-durable-mvp-demo.ps1 -PlanOnly` had been writing to `.osmu-run/latest-durable-mvp-finalize.*`, which can overwrite the latest ready finalizer evidence with a `planned` report.
+- Scripts/docs: Plan-only runs now default to `.osmu-run/latest-durable-mvp-finalize-plan.json` and `.md` unless `-ReportPath` or `-SummaryPath` is explicitly supplied. Local dev docs, document index, test cases, and CI verifier expectations were updated. The MVP release checklist duplicate commercial approval item was corrected into a chargeback closeout target evidence item, and `verify-mvp-completion.ps1` now checks commercial approval and chargeback closeout checklist uniqueness.
+- Verification: parser checks for `finalize-durable-mvp-demo.ps1`, `verify-ci-workflow.ps1`, and `verify-mvp-completion.ps1` passed. `finalize-durable-mvp-demo.ps1 -S3Client docker-mc -EnableRealMultipartEvidence -PlanOnly` wrote the plan report to the new plan path and did not change the existing latest finalizer file timestamp. `verify-ci-workflow.ps1`, `verify-development-roadmap.ps1`, `verify-commercial-readiness.ps1`, and `verify-mvp-completion.ps1 -NoWrite` passed their command execution; MVP completion correctly remains pending in this workspace until full Docker finalize refreshes `.osmu-run/latest-durable-mvp-finalize.json` back to `result=ready`.
+
+### 2026-06-27 - Durable finalizer pending diagnostic
+
+- Scope: tightened the local MVP completion handoff after a previous plan-only run left `.osmu-run/latest-durable-mvp-finalize.json` in `result=planned`, making the remaining blocker look less actionable than it should.
+- Scripts/verifiers: `finalize-durable-mvp-demo.ps1` now records whether plan-only default output preserved the latest ready finalizer evidence and prints a Plan-only Evidence Hygiene section with the full Docker refresh command. `verify-mvp-completion.ps1` now explains a planned latest finalizer report as plan-only evidence and names the refresh command or alternate ready report path. `verify-ci-workflow.ps1` asserts the new finalizer diagnostic strings.
+- Verification: parser checks for `finalize-durable-mvp-demo.ps1`, `verify-mvp-completion.ps1`, and `verify-ci-workflow.ps1` passed. `verify-ci-workflow.ps1` passed. `finalize-durable-mvp-demo.ps1 -S3Client docker-mc -EnableRealMultipartEvidence -PlanOnly` wrote the plan report to `.osmu-run/latest-durable-mvp-finalize-plan.*` and left `.osmu-run/latest-durable-mvp-finalize.json` untouched. `verify-mvp-completion.ps1` refreshed `.osmu-run/latest-mvp-completion.*` to pending as expected, now with a plan-only finalizer remediation detail.
+
+2026-06-27 - Operations hardening evidence workflow artifact chain
+- Scope: wired manual cluster network access review and manual Helm values hardening evidence into operations readiness remediation, workflow run id planning, artifact collection, artifact finalizer import, and docs.
+- Code: added manual workflow dispatch files, mapped both workflows to run id metadata, added required artifact groups and finalizer inputs, and extended strict artifact import validation plus self-test rejection for self-test target markers.
+- Docs: updated document index, MVP checklist, operation monitoring, feature inventory, test cases, and API spec so the new hardening evidence paths are visible in the production/B2B evidence chain.
+- Verification: verify-ci-workflow, verify-operations-workflow-run-id-plan, verify-operations-artifact-collection-plan, verify-operations-readiness-artifact-import, verify-operations-readiness, and verify-s3-compatibility-boundary passed. Literal escaped newline scan returned no matches.
+- Remaining: production/B2B readiness is still pending until live target evidence and GitHub-hosted/security/Kubernetes evidence runs are collected and imported.
+2026-06-27 - Support escalation handoff workflow/import wiring
+- Added manual-support-escalation-handoff-evidence workflow and wired run-id, artifact collection, finalizer, importer, and readiness file checks.
+- Added strict support handoff artifact import validation and refreshed readiness/status docs; remaining readiness blockers stay external target evidence.
+
+2026-06-27 - Durable MVP finalize PlanOnly verifier
+- Added verify-durable-mvp-finalize-plan.ps1 to prove default PlanOnly writes plan reports and preserves latest durable finalizer evidence.
+- Documented the verifier in local dev, release checklist, and document index; current MVP completion remains pending until a Docker-ready durable finalizer run produces ready evidence.
+
+2026-06-27 - MVP completion snapshot alignment
+- Aligned roadmap, prototype status, feature inventory, and MVP checklist with the current authoritative state: demo readiness and durable gate are ready, but latest MVP completion is pending because latest durable finalizer evidence is plan-only.
+- Marked release-report-backed Docker integration, Browser E2E, and durable audit checklist items complete, and made roadmap/prototype verifiers compare against the current MVP completion report instead of assuming ready-only evidence.
+- Regenerated latest MVP completion so production readiness summary is passed=82 pending=20 and the remaining local blocker points to Docker-ready finalize refresh.
+
+2026-06-27 - S3 client smoke bucket root listing coverage
+- Added explicit bucket root listing checks to host MinIO Client and Dockerized MinIO Client paths in verify-s3-client-smoke.ps1 before per-bucket object operations.
+- Extended the S3 compatibility boundary verifier to assert the real-client smoke still covers manual SigV4 tagging/range/conditional/CopyObject/multi-delete/digest probes plus mc/docker-mc bucket root listing.
+- Updated the MVP checklist, document index, and test cases to distinguish smoke script coverage from a fresh Docker-ready real-client evidence run.
+
+2026-06-27 - Browser E2E checklist evidence alignment
+- Marked the Browser/Chrome UI click-path E2E gate complete in the MVP checklist based on the latest durable gate, release report, and MVP audit evidence.
+- Added a Browser acceptance spec coverage row that points at verify-ci-workflow.ps1 coverage for login, bucket list, upload progress, confirm modal, access key, prefix/search/tag, lifecycle, bucket tags, and audit paths while keeping fresh execution rows pending.
+- Updated verify-mvp-completion.ps1 so the checklist cannot drift away from the Browser E2E evidence and coverage split.
+2026-06-27 - Operations evidence plan action summary
+- Added actionSummary counts to write-operations-evidence-plan.ps1 so pending operations evidence plans show action type, operator approval, kubeconfig-secret, placeholder, and unplanned-check totals before the full action list.
+- Exposed the summary through the admin dashboard readiness API and frontend readiness panel normalization/display.
+- Updated verifier, API/operation/test docs, and backend/frontend static checks so the summary stays part of the evidence-plan contract.
+2026-06-29 - Operations evidence handoff stale report guard
+- Added generatedAt-based stale report detection to write-operations-evidence-handoff.ps1 so an older invocation or dispatch preflight report cannot be treated as current after the operations evidence plan changes.
+- Surfaced staleReportCount through the admin dashboard readiness API and frontend readiness panel, with verifier coverage for the refresh-invocation next step.
+
+### 2026-06-29 - Dev-docs encoding hygiene repair
+
+- Scope: continued dev-docs-driven development by restoring readable documentation after mojibake replacements obscured the API spec and worklog baseline.
+- Docs: rebuilt `dev-docs/api-spec.md` from the repository baseline while preserving clean operations readiness and data-flow query/retention additions; restored `dev-docs/worklog/main/worklog-main.md` from the repository baseline plus clean appended entries.
+- Verification: API spec JSON fences parse successfully; mojibake/control scans and project verifiers are run after the repair.
+### 2026-06-29 - Dev-docs encoding hygiene verifier
+
+- Scope: added a repeatable guard after the dev-docs mojibake repair so corrupted text cannot quietly return to README/dev-docs snapshots.
+- Scripts/docs: added `verify-doc-encoding-hygiene.ps1`, wired it into `verify-development-roadmap.ps1`, and documented it in the document index.
+- Verification: `verify-doc-encoding-hygiene.ps1`, PowerShell parser check, and integrated `verify-development-roadmap.ps1` passed.
+### 2026-06-29 - Operations dashboard source encoding hygiene
+
+- Scope: continued production operations evidence-chain hardening by removing mojibake from readiness dashboard/API source strings that operators would see while resolving dispatch preflight and readiness blockers.
+- Frontend/backend: replaced corrupted separators in `DashboardPage.vue` operations evidence lists with ASCII separators, and replaced corrupted `AdminController` readiness target labels with readable ASCII labels.
+- Verifier: expanded `verify-doc-encoding-hygiene.ps1` from docs-only scanning to include frontend source, backend main source, and PowerShell scripts while keeping README/dev-docs coverage.
+- Verification: expanded encoding hygiene verifier, integrated `verify-development-roadmap.ps1`, frontend unit tests, and focused `AdminDashboardSummaryControllerTest` passed. Gradle emitted a daemon expiration warning for an old temp JDK path after the successful build.
+### 2026-06-29 - Local verifier encoding hygiene gate
+
+- Scope: made the encoding hygiene guard part of the standard local verification path instead of only a standalone/development-roadmap check.
+- Scripts/docs: added an explicit `Encoding hygiene check` step to `verify-local.ps1`, updated README and the document index so local verification now calls out docs/source/script encoding hygiene coverage.
+- Verification: `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed, including the new encoding hygiene step; the run kept the expected CRLF warnings from `git diff --check`.
+### 2026-06-29 - Encoding hygiene self-test
+
+- Scope: added failure-mode coverage for the encoding hygiene guard so the local gate proves both clean and suspicious fixture behavior.
+- Scripts/docs: added `verify-doc-encoding-hygiene-self-test.ps1`, wired it into `verify-local.ps1` after the project-wide encoding hygiene scan, and documented it in the document index.
+- Verification: encoding hygiene self-test, project-wide encoding hygiene scan, and PowerShell parser check passed.
+### 2026-06-29 - Encoding hygiene compatibility ideograph coverage
+
+- Scope: tightened the encoding hygiene guard after checking roadmap output and confirming the current files were clean but the guard could still miss CJK Compatibility Ideographs used by some mojibake sequences.
+- Scripts/docs: extended `verify-doc-encoding-hygiene.ps1` to block U+F900-U+FAFF by default, added a compatibility-ideograph fixture to `verify-doc-encoding-hygiene-self-test.ps1`, and updated the document index wording.
+- Verification: encoding hygiene self-test, project-wide encoding hygiene scan, and PowerShell parser checks passed.
+### 2026-06-29 - Operations convergence dispatch URL surfacing
+
+- Scope: continued operations readiness handoff work by turning ready-subset browser dispatch URLs from note-only guidance into structured convergence fields.
+- Scripts/API/frontend: `write-operations-readiness-convergence.ps1` now copies ready handoff dispatch URLs into `currentBottleneck.dispatchUrls` and `recommendedCommands[].dispatchUrls`; the dashboard readiness API preserves those arrays; the frontend renders convergence recommended-command `Open Dispatch` links.
+- Verification: convergence verifier, backend dashboard summary test, frontend unit/source checks, API docs, and encoding hygiene are run after the update.
+### 2026-06-29 - Durable preflight blocker next action
+
+- Scope: continued docs-driven local MVP completion work after confirming the current machine has Docker CLI but no running Docker daemon, so the full durable finalizer cannot refresh `.osmu-run/latest-durable-mvp-finalize.json` yet.
+- Scripts/docs: `verify-durable-demo-preflight.ps1` now writes structured `nextAction`, `nextActionCommand`, and `blockingActions[]` guidance so pending preflight evidence tells operators to start Docker Desktop or repair the selected S3 client before running gate/finalizer commands.
+- Local verifier: `verify-local.ps1` now checks `git diff --check` by Git exit code so benign CRLF warnings do not mask real whitespace failures.
+- Verification: durable preflight is run with `-AllowNotReady` on the current machine to confirm the Docker daemon blocker is captured; parser, roadmap, encoding, and local fast verifiers are run after the update.
+
+### 2026-06-29 - Operations dispatch preflight scope guard
+
+- Scope: continued the production operations evidence chain after refreshing readiness/plan/invocation/dispatch/handoff/convergence reports. The current local handoff is `dispatch-ready-subset-browser` for action 6 with the container security workflow dispatch URL, while production readiness remains pending on external workflow and target evidence.
+- Scripts: `write-operations-evidence-handoff.ps1` now compares the planned invocation action orders with the dispatch preflight selected action orders and routes mismatches to `refresh-dispatch-preflight` using the invocation-selected `-ActionOrder` list before browser dispatch guidance is trusted.
+- Verification: `verify-operations-evidence-handoff.ps1` adds a selected-action scope mismatch fixture; current operations handoff and convergence reports were regenerated after the guard.
+### 2026-06-29 - Operations handoff scope mismatch dashboard surfacing
+
+- Scope: carried the dispatch preflight scope guard from raw handoff JSON into the admin dashboard readiness API and frontend panel.
+- API/frontend: `operationsEvidenceHandoff` now exposes invocation-selected action orders, dispatch-preflight selected action orders, and `dispatchPreflightScopeMismatch`; the dashboard renders the selected-action comparison in the evidence handoff summary.
+- Verification: backend dashboard summary and frontend source/unit checks were updated to cover the new fields before rerunning the focused verifiers.
+### 2026-06-29 - Operations convergence stale handoff guard
+
+- Scope: closed a local operations evidence gap where a newly regenerated operations readiness report could be newer than the handoff/convergence reports without convergence selecting a refresh step first.
+- Scripts/docs: `write-operations-readiness-convergence.ps1` now compares handoff and readiness timestamps, reports `handoffStale`, and routes stale handoff states to `refresh-handoff`; the convergence verifier covers a stale handoff fixture and docs describe the guard.
+- Current evidence: refreshed `latest-operations-evidence-handoff.*` and `latest-operations-readiness-convergence.*`; current convergence is no longer stale and still points to action 6 browser dispatch for container security evidence.
+### 2026-06-29 - Operations convergence stale handoff dashboard surfacing
+
+- Scope: carried the convergence stale-handoff guard from raw convergence JSON into the admin dashboard readiness API and frontend panel.
+- API/frontend: `operationsReadinessConvergence` now exposes `handoffStale`, handoff/readiness timestamps, and timestamp sources; the dashboard renders a handoff freshness summary before Kubernetes report sync details.
+- Verification plan: backend dashboard summary and frontend source/unit checks cover the new structured freshness fields before focused verification.
+### 2026-06-29 - Support escalation handoff dashboard surfacing
+
+- Scope: continued operations readiness handoff work by carrying `.osmu-run/latest-support-escalation-handoff-evidence.json` from workflow/import evidence into the admin dashboard readiness API and frontend panel.
+- API/frontend: added `supportEscalationHandoffEvidence` plus `SUPPORT_ESCALATION_HANDOFF_EVIDENCE` remediation metadata, and rendered review-window, evidence-ref, document-coverage, confirmation, policy, and check-row summaries in the readiness panel.
+- Verification plan: backend dashboard summary and frontend source/unit checks cover the new structured support escalation handoff fields before focused verification.
+### 2026-06-29 - Cluster and Helm hardening dashboard surfacing
+
+- Scope: closed a docs/API mismatch where cluster network access review and Helm values hardening evidence were documented as dashboard-visible but lacked direct readiness response fields.
+- API/frontend: added reusable hardening evidence DTOs, `clusterNetworkAccessReviewEvidence` and `helmValuesHardeningEvidence`, warning items with remediation workflow metadata, frontend normalization, static snapshot summaries, confirmation summaries, and full check rows.
+- Verification plan: backend dashboard summary and frontend source/unit checks cover the new hardening evidence fields before focused verification.
+### 2026-06-29 - Operations handoff next-step dispatch URL surfacing
+- Scope: continued dev-docs-driven operations evidence handoff work by moving ready-subset browser dispatch URLs from note-only guidance into structured handoff next-step data.
+- Scripts/API/frontend: `write-operations-evidence-handoff.ps1` now writes `nextStep.dispatchUrls` for ready subset and browser-dispatch states; the admin dashboard readiness API preserves the array; the dashboard renders `readiness-evidence-handoff-next-dispatch-link` next to the next command.
+- Tests/docs: handoff verifier, dashboard summary test, frontend source checks, API spec, frontend design, and operations monitoring docs cover the structured next-step dispatch links.
+
+### 2026-06-29 - Operations downstream handoff scope freshness
+- Scripts: `write-operations-workflow-run-id-plan.ps1` and `write-operations-artifact-collection-plan.ps1` now emit top-level `sourceActionCount`/`sourceActionOrders`; `write-operations-evidence-handoff.ps1` compares those orders to the current invocation, records run-id/artifact stale and scope-mismatch flags, and routes stale downstream reports to refresh commands when they become the bottleneck.
+- API/frontend: dashboard readiness now preserves run-id/artifact action order arrays and freshness booleans in `operationsEvidenceHandoff`; the readiness panel scope summary includes invocation, dispatch preflight, run-id, and artifact scopes.
+- Evidence: regenerated the current run-id and artifact plans for action 6 only, reducing the handoff downstream counts to `missingRuns=1` and `missingArtifacts=0` while keeping the next step on browser dispatch for `container-security-ci.yml`.
+### 2026-06-29 - Operations downstream handoff mismatch self-tests
+
+- Scope: tightened local evidence-chain coverage after adding downstream handoff scope freshness. The handoff verifier now covers workflow run-id plan action-order mismatch and artifact collection action-order mismatch directly, proves the `refresh-run-id-plan` and `refresh-artifact-collection-plan` next-step routes instead of only the dispatch-preflight mismatch route, and prints all three scope-mismatch fixture report paths in the final verifier summary.
+- Docs: updated the script index, MVP release checklist, and test-case description so the handoff writer/verifier descriptions mention workflow-run-id/artifact selected-action scope mismatch and downstream action-order freshness.
+- Remaining: production/B2B readiness still depends on external target/GitHub evidence; this change only hardens local routing coverage.
+### 2026-06-29 - Feature inventory handoff freshness alignment
+
+- Scope: kept the feature inventory aligned with the latest operations evidence handoff behavior after downstream run-id/artifact scope freshness was added.
+- Docs: updated the full B2B product estimate and test automation row to mention selected-action scope freshness across dispatch preflight, workflow run id, and artifact collection, plus the corresponding scope-mismatch verifier fixtures.
+- Remaining: production/B2B readiness still depends on external target/GitHub evidence; the current local bottleneck remains browser dispatch for `container-security-ci.yml`.
+### 2026-06-29 - Operations workflow coverage docs alignment
+
+- Scope: aligned dev-docs test coverage descriptions with the current operations workflow run-id and artifact collection verifier fixtures.
+- Docs: expanded `test-cases.md` to list data-flow storage plan/query-retention/runbook, monitoring threshold, cluster network access review, Helm values hardening, chargeback closeout, enterprise auth smoke/JIT rollback, support escalation handoff, and operations handoff package coverage for workflow run-id, artifact collection, artifact import, dashboard visibility, and handoff package snapshots.
+- Inventory: updated the feature inventory automation row so the artifact collection verifier summary names the same expanded target evidence workflow set.
+### 2026-06-29 - Operations handoff package hardening snapshot surfacing
+
+- Scope: closed the local gap where `write-operations-handoff-package.ps1` produced cluster network access review and Helm values hardening target snapshots, but the dashboard handoff package response only surfaced them as standalone evidence reports.
+- API/frontend: `operationsHandoffPackage` now exposes `clusterNetworkAccessReviewSnapshot` and `helmValuesHardeningSnapshot`; the dashboard readiness panel renders compact snapshot summaries alongside the existing data-flow, secret rotation, commercial, chargeback, enterprise auth, and monitoring snapshots.
+- Tests/docs: backend dashboard summary and frontend source checks were extended, and the test cases, MVP release checklist, document index, and commercial readiness docs now describe the package-level hardening snapshot visibility.
+### 2026-06-29 - Readiness dashboard separator hygiene
+
+- Scope: fixed mojibake-like separators in operations readiness dashboard rows so handoff stages, invocation unblock actions, workflow run-id rows, dispatch workflow rows, and artifact collection rows render with a stable ASCII separator.
+- Frontend: replaced the corrupted row separators with ` - ` in `DashboardPage.vue` and added a source regression assertion in `HomeView.test.js` using a Unicode escape so the broken character is not reintroduced literally.
+- Verification: frontend unit tests, frontend source search for broken separators, doc encoding hygiene, and `git diff --check` passed. Current production readiness remains pending on external action 6 browser dispatch and target evidence.
+### 2026-06-29 - Readiness dashboard full row rendering
+
+- Scope: aligned the frontend readiness panel with the dev-docs test-case contract that operators can inspect full operations evidence rows instead of only a short preview.
+- Frontend: removed render-time truncation from operations evidence plan actions, invocation actions, invocation unblock actions, dispatch preflight checks/inputs/workflow files, workflow run-id rows, and readiness finalizer command/step rows; normalized the invocation action status separator to ` - `.
+- Tests: extended `HomeView.test.js` source assertions to guard against reintroducing those `.slice(0, ...)` limits on required readiness row lists.
+- Verification: frontend unit tests passed before this worklog entry; encoding hygiene, whitespace, and local wrapper checks are run afterward.
+### 2026-06-29 - Storage and RBAC readiness full row rendering
+
+- Scope: continued aligning the dashboard readiness panel with dev-docs visibility requirements for Storage/HA/DR and IAM/RBAC evidence rows.
+- Frontend: removed render-time truncation from storage expansion finalizer steps, Kubernetes HA/DR checks, Kubernetes DR finalizer steps, and IAM/RBAC evidence steps while leaving explicitly summarized/top-check sections such as security finalizer and MinIO CORS unchanged.
+- Tests: extended `HomeView.test.js` source assertions so those evidence row lists cannot regress to `.slice(0, ...)` previews.
+- Verification: frontend unit tests passed before this worklog entry; encoding hygiene, whitespace, and local wrapper checks are run afterward.
+### 2026-06-29 - Readiness warning list full rendering
+
+- Scope: continued aligning the dashboard readiness panel with the dev-docs expectation that pending readiness checks and remediation metadata remain directly inspectable from the panel.
+- Frontend: removed the six-item render limit from `visibleReadinessItems` and restored the Korean empty-state and fallback action labels, so the readiness warning list does not hide pending operations checks or show mojibake labels.
+- Tests: extended `HomeView.test.js` source assertions to prevent reintroducing `visibleReadinessItems.slice(0, 6)` and to pin the recovered labels.
+- Verification: frontend unit tests passed before this worklog entry; encoding hygiene, whitespace, and local wrapper checks are run afterward.
+### 2026-06-29 - Handoff dispatch workflow full rendering
+
+- Scope: aligned the operations evidence handoff dashboard rows with the documented ready/blocked workflow lineage and per-workflow dispatch URL visibility.
+- Frontend: removed the six-row render limit from `operationsEvidenceHandoffDispatchWorkflows` so all ready and blocked handoff dispatch workflow rows remain visible in the readiness panel; intentionally summarized MinIO CORS and security top-check rows remain capped.
+- Tests: extended `HomeView.test.js` source assertions to prevent reintroducing `operationsEvidenceHandoffDispatchWorkflows.slice(0, 6)`.
+- Verification: frontend unit tests passed before this worklog entry; encoding hygiene, whitespace, and local wrapper checks are run afterward.
+### 2026-06-29 - Dev-docs file reference verifier
+
+- Scope: added a local guard so dev-docs references to committed scripts and GitHub workflows cannot drift silently while the operations evidence surface keeps expanding.
+- Scripts/docs: added `verify-dev-doc-file-references.ps1`, wired it into `verify-local.ps1` after the encoding hygiene self-test, and documented the verifier in the document index.
+- Verification: the new verifier scanned dev-docs Markdown and confirmed all referenced `scripts/*.ps1` and `.github/workflows/*.yml|yaml` files currently resolve.
+### 2026-06-29 - Data-flow storage candidate decision snapshot
+
+- Scope: tightened the dev-docs data-flow storage transition contract so MariaDB partition, dual-write, and external time-series candidates carry an explicit evidence decision rather than only a candidate store string.
+- Scripts/API: `write-data-flow-storage-plan.ps1` now emits `candidateDecision` with required evidence flags, pass/confirmation booleans, safe-data policy, and next action; the handoff package snapshot and Markdown output preserve that decision for final operations handoff review.
+- Dashboard/docs: readiness API and frontend now surface `dataFlowStoragePlan.candidateDecision`; the operations handoff package data-flow snapshot also preserves and displays the same candidate decision, and api/frontend/monitoring/test docs describe the candidate decision plus sanitized query-plan summary contract.
+- Verification: split the oversized readiness `MockMvc` assertion chain before rerunning the focused backend dashboard readiness test; `verify-data-flow-storage-plan.ps1`, `verify-operations-handoff-package.ps1`, frontend unit tests, doc encoding hygiene, dev-doc file reference check, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed.
+### 2026-06-29 - Commercial handoff candidate decision docs
+
+- Scope: aligned commercial readiness and MVP release checklist docs with the structured data-flow storage `candidateDecision` handoff contract so target operations packages preserve the evidence model, required-evidence flags, query-plan state, and dashboard visibility expectations.
+- Docs/verifiers: `commercial-readiness.md` now names candidate-decision summary fields in handoff package promotion and MariaDB/dual-write requirements; `mvp-release-checklist.md` now lists `dataFlowStoragePlan.candidateDecision` and the frontend handoff package candidate-decision summary line; `verify-commercial-readiness.ps1` and `verify-mvp-completion.ps1` pin those strings.
+- Verification: `verify-commercial-readiness.ps1`, `verify-mvp-completion.ps1 -NoWrite`, and `verify-development-roadmap.ps1` passed.
+### 2026-06-29 - Prototype status verification snapshot
+
+- Scope: made the prototype status source-of-truth check leave a reduced machine-readable evidence trail instead of console-only verification.
+- Scripts/docs: `verify-prototype-status.ps1` now writes `.osmu-run/latest-prototype-status.json` with `formatVersion=osmu.prototype-status-verification.v1`, current demo status, MVP completion classification, operations readiness counts, expected snapshot lines, and next-best-work labels; `prototype-status.md`, `document-index.md`, and `test-cases.md` describe the JSON output and current `passed=82 pending=20 total=102` snapshot.
+- Verification: `verify-prototype-status.ps1 -RequireEvidenceReports`, parser check, `verify-development-roadmap.ps1`, `verify-mvp-completion.ps1 -NoWrite`, and `verify-dev-doc-file-references.ps1` passed.
+### 2026-06-29 - Test-case status snapshot freshness
+
+- Scope: removed stale test-case expectations that still described MVP completion as `local-durable-mvp-ready` and the development roadmap as a 2026-06-23 readiness snapshot, even though the authoritative latest evidence is `local-durable-mvp-pending` with operations readiness `passed=82 pending=20 total=102` until Docker-ready durable finalizer evidence is refreshed.
+- Docs/verifiers: `test-cases.md` now describes the current plan-only durable finalizer behavior for `TC-DEMO-008` and the 2026-06-27 roadmap snapshot; `verify-mvp-completion.ps1` pins the MVP completion test-case pending contract, and `verify-development-roadmap.ps1` rejects stale `2026-06-23 snapshot` wording in test cases.
+- Verification: parser checks, `verify-mvp-completion.ps1 -NoWrite`, `verify-development-roadmap.ps1`, and `verify-prototype-status.ps1 -RequireEvidenceReports` passed.
+### 2026-06-29 - MVP completion hard gate split
+
+- Scope: clarified that the latest MVP completion check is a status report while the current durable finalizer path is plan-only, and that `-FailIfLocalMvpNotReady` is a post-Docker-ready finalizer hard gate.
+- Docs/verifiers: `mvp-release-checklist.md` now separates the default `verify-mvp-completion.ps1` command from the hard gate command, updates the durable pilot Go/No-Go rule, and `document-index.md` documents the switch usage; `verify-mvp-completion.ps1` pins the status/hard-gate split and rejects the stale durable pilot pending rule.
+- Verification: parser check and `verify-mvp-completion.ps1 -NoWrite` passed; full doc and local wrapper checks are run afterward.
+### 2026-06-29 - API spec readiness fixture label
+
+- Scope: clarified that the dashboard readiness JSON in `api-spec.md` is a synthetic field-shape fixture, so its `passed=36 pending=6` sample does not compete with the current operations readiness snapshot `passed=82 pending=20 total=102` tracked by status docs and latest evidence JSON.
+- Docs/verifiers: added a fixture label before the dashboard readiness response example and made `verify-prototype-status.ps1` assert the note while still cross-checking current MVP completion and operations readiness reports.
+- Verification: parser check passed before this entry; prototype status, doc hygiene, and local wrapper checks are run afterward.
+### 2026-06-29 - Project doc reference verifier scope
+
+- Scope: widened the Markdown script/workflow reference guard from `dev-docs` only to root `README.md` plus `dev-docs`, so README runbook commands cannot drift away from committed `scripts/*.ps1` and `.github/workflows/*.yml|yaml` files.
+- Scripts/docs: `verify-dev-doc-file-references.ps1` now accepts multiple Markdown paths by default, reports project-doc scan counts, `verify-local.ps1` uses the broader step label, and README/document-index describe the root README/dev-doc reference guard.
+- Verification: the broadened verifier passed with 33 Markdown files and 3027 checked references; parser, doc hygiene, and local wrapper checks are run afterward.
+### 2026-06-29 - Infra README reference guard scope
+
+- Scope: widened the project documentation reference guard again to include `infra` Markdown runbooks, so Kubernetes, Helm, local demo, monitoring, and dev-overlay README commands are checked alongside root README and dev-docs references.
+- Scripts/docs: `verify-dev-doc-file-references.ps1` now scans `README.md`, `dev-docs`, and `infra` by default; README and the document index describe the root README/dev-doc/infra script/workflow reference guard.
+- Verification: the widened verifier passed with 38 Markdown files and 3113 checked script/workflow references; parser, doc hygiene, and local wrapper checks are run afterward.
+### 2026-06-29 - Operations readiness pending category guard
+
+- Scope: made the development roadmap show the current operations readiness pending evidence distribution instead of only the total `passed=82 pending=20 total=102` snapshot.
+- Docs/verifiers: `development-roadmap.md` now lists pending categories from the latest readiness report, and `verify-development-roadmap.ps1` derives the same category summary from `.osmu-run/latest-operations-readiness.json` so roadmap drift is caught automatically.
+- Verification: parser check, `verify-development-roadmap.ps1 -RequireEvidenceReports`, doc encoding hygiene, project doc reference check, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed.
+### 2026-06-29 - Prototype status pending category evidence
+
+- Scope: extended the prototype status source-of-truth evidence so the operations readiness pending distribution is preserved in the generated JSON, not only in the roadmap text.
+- Scripts/docs: `verify-prototype-status.ps1` now derives `pendingCategorySummary` and structured `pendingCategoryCounts` from `.osmu-run/latest-operations-readiness.json`, asserts the matching `prototype-status.md` line, and writes the expected line into `.osmu-run/latest-prototype-status.json`; `prototype-status.md`, `document-index.md`, and `test-cases.md` describe the pending category summary contract.
+- Verification: parser check, `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, project doc reference check, doc encoding hygiene, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed.
+### 2026-06-29 - Operations evidence plan pending category surface
+
+- Scope: carried the operations readiness pending category distribution from the latest readiness report into the generated evidence plan, backend dashboard readiness API, and frontend readiness panel so the remaining work is visible by category without reopening raw JSON.
+- Scripts/API/frontend: `write-operations-evidence-plan.ps1` now emits `pendingCategorySummary` and structured `pendingCategoryCounts`; `verify-operations-evidence-plan.ps1` pins the JSON/Markdown contract; `AdminController` maps the new fields through `operationsEvidencePlan`; `HomeView.vue` preserves the fields and related evidence snapshots; `DashboardPage.vue` renders action summary and pending category summary lines.
+- Docs: `api-spec.md`, `document-index.md`, and `test-cases.md` describe the pending category summary/counts surfaced by the evidence plan and dashboard readiness flow.
+- Verification: PowerShell parser check, `verify-operations-evidence-plan.ps1`, focused backend dashboard readiness test, frontend unit tests, `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, project doc reference check, doc encoding hygiene, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed.
+### 2026-06-30 - Operations readiness total count contract
+
+- Scope: made the production/B2B operations readiness report carry its authoritative total check count directly instead of requiring every consumer to recalculate it from the `checks` array.
+- Scripts/docs: `write-operations-readiness.ps1` now emits top-level `totalCount` and `checkCount`, and the Markdown report shows `Total checks: 102`; `verify-operations-readiness.ps1`, `verify-development-roadmap.ps1`, and `verify-prototype-status.ps1` assert those fields match the check array and passed/pending counts. `prototype-status.md`, `document-index.md`, and `test-cases.md` describe the total/check count snapshot contract.
+- Verification: PowerShell parser check, `verify-operations-readiness.ps1`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, `verify-prototype-status.ps1 -RequireEvidenceReports`, project doc reference check, doc encoding hygiene, and targeted `git diff --check` passed.
+### 2026-06-30 - Operations evidence plan source count surface
+
+- Scope: carried the authoritative operations readiness source count context into the evidence plan and dashboard handoff path so the remaining 20 actions stay tied to the 102-check readiness snapshot.
+- Scripts/API/frontend: `write-operations-evidence-plan.ps1` now emits `sourcePassedCount`, `sourcePendingCount`, `sourceTotalCount`, and `sourceCheckCount`; the self-test pins the JSON/Markdown line; the dashboard API maps the fields; the frontend normalizer and readiness panel render a source readiness count line.
+- Docs: `api-spec.md`, `document-index.md`, and `test-cases.md` describe the source readiness count context alongside action summary and pending category summaries.
+- Verification: PowerShell parser check, `verify-operations-evidence-plan.ps1`, regenerated `.osmu-run/latest-operations-evidence-plan.*`, focused backend dashboard readiness test, frontend unit tests, doc encoding hygiene, project doc reference check, `verify-development-roadmap.ps1 -RequireEvidenceReports`, `verify-prototype-status.ps1 -RequireEvidenceReports`, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed.
+### 2026-06-30 - Operations invocation source count handoff
+
+- Scope: carried the authoritative operations readiness source count context beyond the evidence plan into guarded invocation and invocation-unblock reports, keeping the current `passed=82 pending=20 total=102` snapshot visible through the dispatch-prep handoff.
+- Scripts/API/frontend: `invoke-operations-evidence-plan.ps1` and `write-operations-invocation-unblock-plan.ps1` now emit source passed/pending/total/check counts; their self-tests pin JSON and Markdown output; the dashboard API maps the fields through `operationsEvidenceInvocation` and `operationsInvocationUnblockPlan`; the frontend normalizer and readiness panel render invocation and unblock source count lines.
+- Docs/evidence: `api-spec.md`, `operation-monitoring.md`, `document-index.md`, and `test-cases.md` describe the invocation/unblock source count contract, and latest `.osmu-run` invocation/unblock reports were regenerated for action 6 with source counts.
+- Verification: PowerShell parser check, `verify-operations-evidence-plan-invocation.ps1`, `verify-operations-invocation-unblock-plan.ps1`, focused backend dashboard readiness test, and frontend unit tests passed before this entry; doc hygiene, project doc reference, whitespace, and local wrapper checks are run afterward.
+
+### 2026-06-30 - Operations dispatch preflight source count handoff
+
+- Scope: carried the operations readiness source count context through dispatch preflight so the ready action 6 browser/CLI handoff still shows the current `passed=82 pending=20 total=102` source snapshot.
+- Scripts/API/frontend: `write-operations-dispatch-preflight.ps1` now emits source passed/pending/total/check counts from the invocation unblock plan; `verify-operations-dispatch-preflight.ps1` pins JSON and Markdown output; the dashboard API maps the fields through `operationsDispatchPreflight`; the frontend normalizer preserves source counts and GitHub repository, and the readiness panel includes the counts in the dispatch preflight source summary.
+- Docs/evidence: `api-spec.md`, `operation-monitoring.md`, `document-index.md`, and `test-cases.md` describe the dispatch preflight source count contract, and latest `.osmu-run/latest-operations-dispatch-preflight.*` was regenerated for action 6 with source counts.
+- Verification: PowerShell parser check, `verify-operations-dispatch-preflight.ps1`, focused backend dashboard readiness test, and frontend unit tests passed before this entry; doc hygiene, project doc reference, whitespace, and local wrapper checks are run afterward.
+
+### 2026-06-30 - Operations workflow/artifact source count handoff
+
+- Scope: carried the operations readiness source count context through workflow run id planning and artifact collection planning so downstream run-id/artifact handoff stays tied to the current readiness snapshot.
+- Scripts/API/frontend: `write-operations-workflow-run-id-plan.ps1` and `write-operations-artifact-collection-plan.ps1` now emit source summary plus passed/pending/total/check counts; their self-tests pin JSON and Markdown output; the dashboard API maps the fields through `operationsWorkflowRunIdPlan` and `operationsArtifactCollectionPlan`; the frontend normalizer and readiness panel render source count summary lines for both stages.
+- Docs/evidence: `api-spec.md`, `operation-monitoring.md`, `document-index.md`, and `test-cases.md` describe the workflow run id/artifact collection source count contract; latest `.osmu-run` reports are regenerated after validation.
+- Verification: PowerShell parser check, `verify-operations-workflow-run-id-plan.ps1`, `verify-operations-artifact-collection-plan.ps1`, focused backend dashboard readiness test, frontend unit tests, doc encoding hygiene, project doc reference check, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed.
+
+### 2026-06-30 - Operations handoff/convergence readiness count surface
+
+- Scope: carried the authoritative operations readiness summary and passed/pending/total/check counts into the final evidence handoff and readiness convergence reports so the current readiness denominator remains visible after workflow run-id and artifact collection planning.
+- Scripts/API/frontend: `write-operations-evidence-handoff.ps1` and `write-operations-readiness-convergence.ps1` now emit readiness count fields and Markdown lines; their self-tests pin the fields; the dashboard API maps them through `operationsEvidenceHandoff` and `operationsReadinessConvergence`; the frontend normalizers and readiness panel render handoff/convergence readiness count summaries.
+- Docs/evidence: `api-spec.md`, `operation-monitoring.md`, `document-index.md`, and `test-cases.md` describe the handoff/convergence readiness count contract; latest `.osmu-run` reports are regenerated after validation.
+- Verification: PowerShell parser check, `verify-operations-evidence-handoff.ps1`, `verify-operations-readiness-convergence.ps1`, focused backend dashboard readiness test, frontend unit tests, doc encoding hygiene, project doc reference check, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed; the backend run still prints the existing stale Gradle daemon Java-home warning after `BUILD SUCCESSFUL`.
+### 2026-06-30 - Operations convergence sync freshness guard
+
+- Scope: added a Kubernetes operations report sync freshness guard to the readiness convergence stage so `applied` sync evidence is not treated as ready when it is older than the latest handoff/readiness/finalizer input.
+- Scripts/API/frontend: `write-operations-readiness-convergence.ps1` now emits sync stale/timestamp/freshness reason fields and blocks `kubernetesReportSyncReady` when stale; the self-test pins an applied-but-stale fixture; the dashboard API maps the fields; the frontend normalizer and readiness panel show sync stale/fresh state, timestamp, and freshness reason.
+- Docs/evidence: `api-spec.md`, `operation-monitoring.md`, `document-index.md`, `frontend-design.md`, and `test-cases.md` describe the sync freshness/stale contract; latest `.osmu-run/latest-operations-readiness-convergence.*` is regenerated after validation.
+- Verification: PowerShell parser check, convergence self-test, focused backend dashboard readiness test, frontend unit tests, doc encoding hygiene, project doc reference check, `git diff --check`, and local wrapper checks are run afterward.
+### 2026-06-30 - Operations handoff artifact command fallback
+
+- Scope: kept the final operations evidence handoff actionable when the artifact collection plan has no readiness artifacts yet but does carry a security evidence finalizer command from image signing/container security handoff data.
+- Scripts/docs/evidence: `write-operations-evidence-handoff.ps1` now selects the artifact-collection stage command from operations artifact finalizer, local import, then security evidence finalizer; the handoff verifier covers a security-only artifact collection fixture; `operation-monitoring.md` and `test-cases.md` describe the fallback; latest handoff/convergence reports were regenerated.
+- Current evidence: readiness remains `passed=82 pending=20 total=102`; convergence remains `action-required` with bottleneck `dispatch-ready-subset-browser`, `handoffStale=false`, and `kubernetesReportSyncStale=true`; the convergence recommended artifact-collection command now surfaces `security-evidence-finalizer-ci.yml` instead of a blank command.
+- Verification: PowerShell parser check, `verify-operations-evidence-handoff.ps1`, and `verify-operations-readiness-convergence.ps1` passed before this entry; doc hygiene, project doc reference, whitespace, and local wrapper checks are run afterward.
+
+### 2026-06-30 - Operations artifact security source readiness surface
+
+- Scope: made security evidence source artifact readiness visible even when the artifact collection plan has no required readiness artifacts, preventing container scan/SBOM or image signing handoff from looking complete solely because `missingRequiredArtifactCount=0`.
+- Scripts/API/frontend: `write-operations-artifact-collection-plan.ps1` now emits security source artifact total/ready/missing counts and `securityEvidenceFinalizerReady`; the self-test pins missing, direct-manual, and ready cases; the handoff stage summary includes security source counts; the dashboard API and frontend normalize/render the new fields and readiness item message includes missing security sources.
+- Docs/evidence: `api-spec.md`, `operation-monitoring.md`, and `test-cases.md` describe the security source readiness contract; latest artifact collection, handoff, and convergence reports are regenerated after validation.
+- Verification: parser checks, artifact collection/handoff/convergence verifiers, focused backend dashboard readiness test, frontend unit tests, doc hygiene, project doc reference, whitespace, and local wrapper checks are run afterward.
+### 2026-06-30 - Operations readiness source pending category summary
+
+- Scope: moved the remaining-work category breakdown into the source operations readiness artifact so the current `passed=82 pending=20 total=102` gate now carries its own pending category summary/counts.
+- Scripts/docs/evidence: `write-operations-readiness.ps1` now emits `pendingCategorySummary` and structured `pendingCategoryCounts`; `verify-operations-readiness.ps1` checks the JSON fields and Markdown line; `api-spec.md`, `prototype-status.md`, `document-index.md`, and `test-cases.md` document the source readiness contract; latest readiness, evidence plan, invocation, dispatch preflight, workflow-run-id, artifact collection, handoff, and convergence reports were regenerated for action 6.
+- Current evidence: readiness remains `pending` with `chargeback-closeout=1, commercial-approval=1, commercial-integration=1, data-flow=3, enterprise-auth=2, ha-dr=2, monitoring=1, operations-handoff-package=1, security-hardening=6, storage-backend=1, storage-expansion=1`; convergence remains `action-required` with bottleneck `dispatch-ready-subset-browser`.
+- Verification: parser check and `verify-operations-readiness.ps1` passed before this entry; downstream evidence/document verifiers are run afterward.
+### 2026-06-30 - Operations readiness source summary dashboard surface
+
+- Scope: exposed the authoritative source operations readiness summary directly through the admin dashboard so operators do not need the downstream evidence plan to inspect the current readiness denominator or pending category distribution.
+- API/frontend: `GET /api/admin/dashboard/readiness` now returns `operationsReadinessSummary` with result, summary, report path, generated timestamp, passed/pending/total/check counts, pending category summary/counts, and decision rule; `HomeView.vue` normalizes the object and `DashboardPage.vue` renders `readiness-source-summary` plus `readiness-source-pending-categories` before evidence-plan details.
+- Docs/tests: `api-spec.md`, `operation-monitoring.md`, `frontend-design.md`, and `test-cases.md` describe the source summary object and dashboard selectors; the focused backend dashboard readiness test and frontend selector/unit coverage pin the contract.
+- Verification: focused `AdminDashboardSummaryControllerTest` and frontend `npm run test:unit` passed before this entry; doc hygiene, project reference, whitespace, and local wrapper checks are run afterward.
+### 2026-06-30 - Operations workflow/artifact selected action scope surface
+
+- Scope: exposed the selected action order scope directly on workflow run-id and artifact collection planning reports so the action 6 ready-subset handoff remains visible without reading nested workflow/artifact rows.
+- Scripts/API/frontend: `write-operations-workflow-run-id-plan.ps1` and `write-operations-artifact-collection-plan.ps1` now emit top-level `selectedActionOrders`; their verifiers pin JSON and Markdown output; `write-operations-evidence-handoff.ps1` prefers those top-level selected orders; the admin dashboard API maps them through `operationsWorkflowRunIdPlan` and `operationsArtifactCollectionPlan`; the frontend normalizers and readiness panel render selected action order summaries for both stages.
+- Docs/evidence: `api-spec.md`, `operation-monitoring.md`, `frontend-design.md`, and `test-cases.md` describe the selected action scope contract; latest workflow run-id, artifact collection, handoff, and convergence reports were regenerated for action 6.
+- Current evidence: readiness remains `pending` with `passed=82 pending=20 total=102`; workflow run-id planning is `query-required`; artifact collection is `no-readiness-artifacts`; convergence remains `action-required` with bottleneck `dispatch-ready-subset-browser`, `handoffStale=false`, and `kubernetesReportSyncStale=true`.
+- Verification: parser checks, workflow run-id/artifact collection/handoff/convergence verifiers, focused backend dashboard readiness test, frontend unit tests, doc encoding hygiene, project doc reference check, and `git diff --check` passed. `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` was attempted but timed out after about 184 seconds during the long script sweep, so it is not counted as passed in this entry.
+### 2026-06-30 - Verify-local operations evidence freshness refresh
+
+- Scope: prevented `verify-local.ps1` from leaving latest operations handoff/convergence stale after evidence-writing self-tests refresh `.osmu-run/latest-operations-readiness.json`.
+- Script/docs: `verify-local.ps1` now reads existing latest operation selected action orders plus run-id context, then refreshes latest operations readiness, evidence plan, invocation, invocation unblock plan, dispatch preflight, workflow run-id plan, artifact collection plan, evidence handoff, and readiness convergence before optional Docker/frontend/backend gates. `README.md`, `document-index.md`, and `test-cases.md` document the final latest operations evidence refresh contract.
+- Current evidence: the refreshed reports now line up as readiness `2026-06-30T11:55:15.2333429+09:00`, handoff `2026-06-30T11:55:18.6217273+09:00`, and convergence `2026-06-30T11:55:19.0768976+09:00`; readiness remains `pending` with `passed=82 pending=20 total=102`, handoff `staleReportCount=0`, convergence `handoffStale=false`, bottleneck `dispatch-ready-subset-browser`, and Kubernetes report sync still stale.
+- Verification: parser check for `verify-local.ps1`, `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17`, doc encoding hygiene, dev-doc file reference check, and `git diff --check` passed. The local wrapper log ends with `==> Done`.
+### 2026-06-30 - Verify-local selected action scope assertion
+
+- Scope: closed the local verification gap where the latest operations chain could refresh successfully but lose the selected action-order scope at the first invocation report.
+- Scripts/API/frontend/docs: `invoke-operations-evidence-plan.ps1` now emits top-level `selectedActionOrders`; `verify-operations-evidence-plan-invocation.ps1` pins JSON and Markdown output; `verify-local.ps1` asserts post-refresh report ordering, `staleReportCount=0`, `handoffStale=false`, readiness count consistency, and selected action scope through invocation, dispatch preflight, workflow run-id, artifact collection, and handoff reports. The admin dashboard API maps `operationsEvidenceInvocation.selectedActionOrders`, the frontend normalizes/renders the invocation action-order summary, and README/document-index/test cases/API spec document the contract.
+- Current evidence: refreshed reports line up as readiness `2026-06-30T12:21:29.3058071+09:00`, invocation `2026-06-30T12:21:30.2355342+09:00`, handoff `2026-06-30T12:21:32.5559773+09:00`, and convergence `2026-06-30T12:21:32.9918323+09:00`; readiness remains `pending` with `passed=82 pending=20 total=102`, selected action scope is `[6]`, handoff `staleReportCount=0`, convergence `handoffStale=false`, `kubernetesReportSyncStale=true`, and the remaining bottleneck is still `dispatch-ready-subset-browser` with one missing workflow run.
+- Verification: PowerShell parser check, `verify-operations-evidence-plan-invocation.ps1`, `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17`, focused `AdminDashboardSummaryControllerTest`, frontend `npm run test:unit`, `verify-openapi-contract.ps1`, doc encoding hygiene, project doc reference check, and `git diff --check` passed. The backend test still prints the existing stale Gradle daemon Java-home warning after `BUILD SUCCESSFUL`.
+### 2026-06-30 - Operations handoff current bottleneck surface
+
+- Scope: closed the handoff reporting gap where convergence had a structured `currentBottleneck` but `.osmu-run/latest-operations-evidence-handoff.json` and the dashboard API only exposed `nextStep`, forcing operators to infer the active blocker indirectly.
+- Scripts/API/frontend/docs: `write-operations-evidence-handoff.ps1` now emits `currentBottleneck` with the same code/title/command/reason/note/dispatch URL shape as `nextStep`; `verify-operations-evidence-handoff.ps1` and `verify-local.ps1` assert it is present and aligned after refresh. The admin dashboard API maps `operationsEvidenceHandoff.currentBottleneck`, the frontend normalizes and renders a compact bottleneck line, and `api-spec.md`, `operation-monitoring.md`, and `test-cases.md` document the structured field.
+- Current evidence: latest reports line up as handoff `2026-06-30T12:48:10.6661472+09:00` and convergence `2026-06-30T12:48:11.1058503+09:00`; readiness remains `pending` with `passed=82 pending=20 total=102`, selected action scope is `[6]`, handoff `staleReportCount=0`, `currentBottleneck=dispatch-ready-subset-browser`, convergence `handoffStale=false`, and `kubernetesReportSyncStale=true`.
+- Verification: PowerShell parser check, `verify-operations-evidence-handoff.ps1`, focused `AdminDashboardSummaryControllerTest`, frontend `npm run test:unit`, `verify-openapi-contract.ps1`, `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17`, doc encoding hygiene, project doc reference check, and `git diff --check` passed. The backend focused test still prints the existing stale Gradle daemon Java-home warning after `BUILD SUCCESSFUL`.
+### 2026-06-30 - Frontend mock operations readiness action 6 fixture
+
+- Scope: aligned the Java/Docker-free frontend mock API readiness fixture with the current operations evidence chain instead of the older `resolve-invocation-blockers`/`passed=36 pending=6` mock state.
+- Frontend/mock: `osmu-frontend/mock-api/server.mjs` now exposes `operationsReadinessSummary`, evidence plan/invocation/unblock/dispatch preflight/workflow run-id/artifact collection, evidence handoff, and convergence mock objects with source `passed=82 pending=20`, selected action order `[6]`, handoff/convergence `currentBottleneck=dispatch-ready-subset-browser`, browser dispatch URL for `container-security-ci.yml`, `handoffStale=false`, and stale Kubernetes operations report sync guidance.
+- Docs/tests: `document-index.md`, `frontend-design.md`, and `test-cases.md` document that `npm run mock:api:self-test` pins the current mock operations chain so demo dashboards do not drift back to stale blocker names or counts.
+- Verification: `node --check osmu-frontend\mock-api\server.mjs`, `npm run mock:api:self-test`, and frontend `npm run test:unit` passed. Doc hygiene, project doc reference check, and `git diff --check` are run afterward.
+### 2026-06-30 - Browser E2E operations convergence action 6 fixture
+
+- Scope: aligned the Browser E2E convergence fixtures with the current operations evidence chain instead of the older `resolve-invocation-blockers` fixture state.
+- Scripts/frontend: `verify-browser-e2e-prototype.ps1` and `verify-browser-e2e-local-demo.ps1` now seed convergence with source `passed=82 pending=20`, `handoffResult=action-required`, `currentBottleneck=dispatch-ready-subset-browser`, selected action 6 browser dispatch guidance, one missing workflow run, `handoffStale=false`, and stale Kubernetes report sync guidance. `lightweight-demo.spec.js` now expects the action 6 browser-dispatch command and `container-security-ci.yml` dispatch link.
+- Docs/tests: `document-index.md` and `test-cases.md` record that mock/prototype/local Browser E2E convergence fixtures use the same action 6 handoff as the current operations chain.
+- Verification: PowerShell parser checks for both Browser E2E scripts and `node --check osmu-frontend\e2e\lightweight-demo.spec.js` passed. Frontend unit, doc hygiene, doc reference, and whitespace checks are run afterward.
+### 2026-06-30 - Backend dashboard operations action 6 fixture
+
+- Scope: aligned `AdminDashboardSummaryControllerTest` with the current operations evidence chain so backend dashboard readiness assertions no longer pin the older multi-action blocker fixture.
+- Backend test: the operations readiness source fixture now uses `passed=82 pending=20 total=102`, current pending category counts, action 6 selected invocation/unblock/dispatch/workflow/artifact reports, `dispatch-ready-subset-browser` handoff/convergence, one missing container-security workflow run, no blocked dispatch templates, and no finalizer gaps.
+- Verification: focused `AdminDashboardSummaryControllerTest` passed after the fixture update; Gradle still prints the existing stale daemon Java-home warning after `BUILD SUCCESSFUL`.
+### 2026-06-30 - Frontend design dispatch preflight doc dedupe
+
+- Scope: removed the older duplicate dispatch preflight visibility line from `frontend-design.md` so the frontend design doc keeps the current per-workflow web dispatch link behavior as the single source of truth.
+- Verification: doc encoding hygiene, project doc reference check, dispatch preflight line search, and `git diff --check` are run afterward.
+### 2026-06-30 - Roadmap/prototype snapshot date refresh
+
+- Scope: aligned `development-roadmap.md` and `prototype-status.md` snapshot-date wording plus their verifiers/test-case references with the current 2026-06-30 evidence snapshot while preserving the pending MVP completion and operations readiness counts.
+- Verification: `verify-development-roadmap.ps1`, `verify-prototype-status.ps1`, doc encoding hygiene, project doc reference check, and `git diff --check` passed.
+### 2026-06-30 - MVP completion durable preflight handoff
+
+- Scope: connected `verify-mvp-completion.ps1` to the latest durable demo preflight report so the local MVP pending report now carries Docker/S3-client blocker guidance instead of only saying the finalizer is plan-only.
+- Scripts/docs: `latest-mvp-completion.json` now includes `durablePreflightResult`, `durablePreflightNextActionCommand`, and `durablePreflightBlockingActions`; the Markdown report adds a durable preflight handoff section, and `test-cases.md` plus `document-index.md` document the contract.
+- Verification: PowerShell parser check and `verify-mvp-completion.ps1` passed with `local-durable-mvp-pending`, latest durable preflight `result=pending`, and blockers `Docker daemon` plus `Selected real S3 client path`.
+### 2026-06-30 - Operations browser dispatch post-dispatch handoff
+
+- Scope: made the action 6 browser-dispatch bottleneck more actionable after the web dispatch step by adding structured post-dispatch run-id collection commands to the operations evidence handoff report.
+- Scripts/docs: `write-operations-evidence-handoff.ps1` now emits `postDispatchCommands[]` whenever ready browser dispatch URLs exist, including a saved run-list JSON path for machines without GitHub CLI and the existing GitHub CLI `-Execute` path. `verify-operations-evidence-handoff.ps1`, `document-index.md`, `operation-monitoring.md`, and `test-cases.md` document and verify the contract.
+- Verification: PowerShell parser checks, `verify-operations-evidence-handoff.ps1`, latest handoff regeneration, and latest convergence regeneration passed; latest convergence remains `action-required` with `handoffStale=false` and current bottleneck `dispatch-ready-subset-browser`.
+### 2026-06-30 - Dashboard handoff post-dispatch commands
+
+- Scope: surfaced operations evidence handoff `postDispatchCommands[]` through the backend readiness API and frontend dashboard so browser-dispatch operators can copy the run-id collection command after action 6 dispatch.
+- Backend/frontend: added the post-dispatch command response shape, mapped the handoff JSON array in `AdminController`, rendered copyable post-dispatch commands in the dashboard handoff panel, and aligned backend/frontend/mock fixtures.
+- Verification: `node --check osmu-frontend\mock-api\server.mjs`, `npm run mock:api:self-test`, frontend `npm run test:unit`, focused `AdminDashboardSummaryControllerTest`, `verify-openapi-contract.ps1`, doc encoding hygiene, project doc reference check, and `git diff --check` passed. The backend focused test still prints the existing stale Gradle daemon Java-home warning after `BUILD SUCCESSFUL`.
+### 2026-06-30 - Workflow run-id saved JSON handoff
+
+- Scope: made the post-dispatch run-id collection path concrete for machines without local GitHub CLI by adding saved run-list JSON directory and per-workflow file hints to the workflow run-id plan.
+- Scripts/API/frontend: `write-operations-workflow-run-id-plan.ps1` now emits `runListJsonDirectoryCommand`, file pattern, handoff note, and per-workflow saved JSON file/path/existence fields; the admin readiness API maps them through `operationsWorkflowRunIdPlan`; the dashboard renders the directory hint and per-workflow JSON path with copy controls.
+- Evidence/docs: regenerated latest workflow run-id, artifact collection, handoff, and convergence reports; `api-spec.md`, `operation-monitoring.md`, `frontend-design.md`, `test-cases.md`, and `document-index.md` document the saved JSON handoff.
+- Verification: `verify-operations-workflow-run-id-plan.ps1`, `verify-operations-evidence-handoff.ps1`, `verify-operations-readiness-convergence.ps1`, `node --check osmu-frontend\mock-api\server.mjs`, `npm run mock:api:self-test`, frontend `npm run test:unit`, focused `AdminDashboardSummaryControllerTest`, `verify-openapi-contract.ps1`, doc encoding hygiene, project doc reference check, and `git diff --check` passed. The backend focused test still prints the existing stale Gradle daemon Java-home warning after `BUILD SUCCESSFUL`.
+### 2026-06-30 - Evidence verifier output isolation
+
+- Scope: stopped negative verifier fixtures from writing failed reports to the default latest evidence paths for cluster network access review, Helm values hardening, and support escalation handoff.
+- Scripts: `verify-cluster-network-access-review-evidence.ps1`, `verify-helm-values-hardening-evidence.ps1`, and `verify-support-escalation-handoff-evidence.ps1` now route missing-confirmation, invalid-window, tampered-values, and tampered-docs runs to self-test JSON/Markdown files and assert those files exist. `verify-operations-readiness.ps1` now expects the chargeback closeout no-target state to remain `result=planned` instead of pinning an old invalid-window self-test failure.
+- Evidence: refreshed the no-input data-flow query/retention, chargeback closeout, cluster network access review, Helm values hardening, and support escalation handoff snapshots as planned evidence, then regenerated the action 6 operations readiness/evidence chain.
+- Current evidence: readiness remains `pending` with `passed=82 pending=20 total=102`; handoff remains `action-required` with `staleReportCount=0`, `missingWorkflowRunCount=1`, and `currentBottleneck=dispatch-ready-subset-browser`; convergence remains `action-required` with `handoffStale=false` and `kubernetesReportSyncStale=true`.
+- Verification: parser checks, focused evidence verifiers, operations readiness/handoff/convergence verifiers, doc encoding hygiene, project doc reference check, and `git diff --check` passed.
+### 2026-06-30 - Direct upload metadata failure compensation
+
+- Scope: closed the backend-design transaction TODO for direct object upload by adding best-effort cleanup when storage PUT succeeds but metadata persistence fails.
+- Backend: `ObjectService.upload` now tracks whether the active object was written and whether bucket usage/object-count was applied. On later failure it reverses the bucket delta and deletes the newly written active object, or restores the previous snapshot for overwrites, while preserving the original failure for the caller.
+- Docs/tests: `backend-design.md` now describes the path-specific MinIO/MariaDB compensation contract, `test-cases.md` adds `TC-S3-OBJECT-001D`, and `ObjectServiceMultipartRefreshTest.uploadMetadataFailureDeletesStoredObjectAndRevertsQuota` pins the new rollback behavior.
+- Verification: focused `ObjectServiceMultipartRefreshTest.uploadMetadataFailureDeletesStoredObjectAndRevertsQuota` and the full `ObjectServiceMultipartRefreshTest` class passed; doc encoding hygiene, project doc reference check, and `git diff --check` passed.
+### 2026-06-30 - Configurable native payment provider bridge
+
+- Scope: reduced the billing/chargeback native provider gap by adding a built-in configurable CARD/BANK/TAX/ERP native API bridge behind the existing `ChargebackNativePaymentProviderAdapter` SPI and composite dispatch path.
+- Backend/frontend: added `ConfigurableChargebackNativePaymentProviderAdapter` plus CARD/BANK/TAX/ERP Spring beans with per-profile `native-api-url` and `native-api-auth-header-value` settings, shared timeout/payload/private-network policy, and optional HMAC signature headers. Payment-provider readiness now reports native bridge support by default and `NATIVE_API_CONFIGURATION_REQUIRED` until endpoint/auth settings are present; the Admin billing panel and mock API label that state as native API configuration required instead of not implemented.
+- Docs/tests: README, backend design, API spec, commercial readiness, feature inventory, frontend design, and test cases now describe the native bridge and keep only vendor-specific fixed SDK/schema adapters plus target evidence as remaining scope.
+- Verification: `ConfigurableChargebackNativePaymentProviderAdapterTest`, focused billing controller/service tests, mock API syntax/self-test, frontend unit tests, OpenAPI contract, doc encoding hygiene, project doc reference check, and `git diff --check` passed.
+### 2026-06-30 - Native bridge evidence scope alignment
+
+- Scope: aligned commercial integration, chargeback closeout, operations readiness, artifact import, and handoff package evidence language with the configurable native payment-provider bridge implementation.
+- Scripts/docs: evidence writers, self-test fixtures, dashboard summary fixture, `commercial-readiness.md`, `development-roadmap.md`, and `operation-monitoring.md` now distinguish sanitized native bridge readiness from vendor-specific fixed SDK/schema processor implementation and raw provider response handling.
+- Verification: PowerShell parser checks, `verify-commercial-integration-evidence.ps1`, `verify-chargeback-closeout-evidence.ps1`, `verify-commercial-readiness.ps1`, `verify-operations-handoff-package.ps1`, `verify-operations-readiness-artifact-import.ps1`, `verify-operations-readiness.ps1`, focused `AdminDashboardSummaryControllerTest`, doc encoding hygiene, project doc reference check, and `git diff --check` passed. Latest operations readiness remains `pending` with `passed=82 pending=20 total=102`.
+- Current evidence: refreshed the action 6 operations evidence chain after the latest readiness regeneration; handoff/convergence remain action-required with currentBottleneck=dispatch-ready-subset-browser, staleReportCount=0, missingWorkflowRunCount=1, handoffStale=false, and kubernetesReportSyncStale=true.
+### 2026-06-30 - Prototype native bridge scope wording
+
+- Scope: aligned prototype status and document index wording with the configurable native payment-provider bridge so current status no longer implies all native provider API paths are absent.
+- Docs/verifier: `prototype-status.md` now keeps only vendor-specific fixed SDK/schema provider adapters and raw provider response storage out of scope while naming implemented configurable native API bridge readiness; `document-index.md` uses the same commercial integration evidence boundary, and `verify-prototype-status.ps1` guards against the stale wording returning.
+- Verification: `verify-prototype-status.ps1`, doc encoding hygiene, project doc reference check, and `git diff --check` passed.
+### 2026-06-30 - Native bridge inventory/security wording alignment
+
+- Scope: continued aligning remaining dev-docs status surfaces with the configurable native payment-provider bridge so inventory, IAM/RBAC, and security docs no longer describe payment handoff as webhook-only or native-pending.
+- Docs/verifiers: `feature-inventory.md` now states that payment handoff attempts CARD/BANK/TAX/ERP native bridge delivery before provider-specific/generic webhook fallback and that readiness reports native bridge support/configuration-required/ready states. `iam-rbac-matrix.md` and `security-design.md` now include native bridge fallback/auth-header/no-raw-provider-response and native bridge HMAC signing scope; `verify-iam-rbac-matrix.ps1` guards the updated wording.
+- Verification: `verify-iam-rbac-matrix.ps1`, `verify-mvp-completion.ps1`, `verify-secret-rotation-policy.ps1`, doc encoding hygiene, project doc reference check, and `git diff --check` passed.
+### 2026-06-30 - Native bridge API/test docs drift cleanup
+
+- Scope: removed the remaining webhook-only payment provider wording from API/test/status docs after the configurable CARD/BANK/TAX/ERP native API bridge became the first dispatch path.
+- Docs/verifiers: `api-spec.md`, README, commercial readiness, database design, frontend design, feature inventory, and test cases now describe payment handoff as native-bridge-first with provider-specific/generic webhook fallback. `verify-iam-rbac-matrix.ps1` and `verify-commercial-readiness.ps1` now guard the native bridge wording and reject the older generic/CARD/BANK/TAX/ERP webhook-profile-only handoff wording.
+- Verification: `verify-commercial-readiness.ps1`, `verify-iam-rbac-matrix.ps1`, `verify-mvp-completion.ps1`, `verify-prototype-status.ps1`, `verify-s3-compatibility-boundary.ps1`, and `git diff --check` passed. MVP completion remains `local-durable-mvp-pending`, and production readiness remains `pending` with `passed=82 pending=20`.
+### 2026-06-30 - Native bridge readiness secret policy
+
+- Scope: tightened the payment-provider adapter readiness boundary so the API, mock API, API spec, and backend design explicitly include native bridge endpoint URLs and auth-header values in the non-disclosure policy.
+- Backend/frontend/docs: `ChargebackPreviewService` and the frontend mock API now return a readiness `secretPolicy` that names webhook/native endpoint URLs, secret/auth header values, signing secrets, provider credentials, raw provider responses, and customer payment data as never returned. The service-level no-config error, OpenAPI summary, backend/API/security docs now describe payment handoff as adapter/native-bridge-or-webhook rather than webhook-only and document the same readiness secret boundary.
+- Tests/verification: backend billing controller/service tests now assert the native endpoint/auth-header secret policy, `verify-iam-rbac-matrix.ps1` guards the API spec wording, and focused backend billing tests, mock API self-test, commercial/IAM readiness verifiers, and `git diff --check` passed.
+### 2026-06-30 - Native bridge private-network guard wording
+
+- Scope: closed the remaining security-doc drift for the configurable native payment-provider bridge private-network policy.
+- Docs/verifier: `security-design.md` now names webhook, native bridge, and EMAIL SMTP relay endpoint rejection together and includes `osmu.billing.payment-provider.native-api.allow-private-network=true` alongside the existing notification/email/payment webhook opt-in settings. `verify-iam-rbac-matrix.ps1` now guards the native API private-network setting in both the security design and API spec.
+- Verification: `verify-iam-rbac-matrix.ps1`, doc encoding hygiene, project doc reference check, and `git diff --check` passed.
+### 2026-06-30 - Roadmap priority and test-count drift cleanup
+
+- Scope: tightened current-state docs after the latest local evidence review.
+- Docs/verifiers: `development-roadmap.md` and `prototype-status.md` now use sequential priority numbering instead of `0.` entries, and their verifiers reject that stale numbering. `feature-inventory.md` now matches the latest frontend unit log with `115 passed`, and `verify-mvp-completion.ps1` guards against the older `95 passed` count returning.
+- Verification: `verify-development-roadmap.ps1`, `verify-prototype-status.ps1`, and `verify-mvp-completion.ps1` passed; MVP completion remains `local-durable-mvp-pending` until Docker-ready durable finalizer evidence is refreshed.
+### 2026-06-30 - Operations evidence plan current detail surface
+
+- Scope: preserved the operations evidence plan per-action `currentDetail` from the source report through the dashboard API and frontend readiness panel.
+- Backend/frontend/docs: `DashboardOperationsEvidenceActionResponse` and `AdminController` now expose `currentDetail`; the dashboard action meta line includes it, the mock API/self-test fixture checks it, and API/frontend/test docs describe the field so operators can see why each evidence action is still needed without opening the JSON report. The frontend build check also caught and fixed a corrupted retention-policy `<dd>` closing tag in `DashboardPage.vue`.
+- Verification: focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `npm run mock:api:self-test`, `npm run test:unit`, `npm run build`, `verify-openapi-contract.ps1`, doc encoding hygiene, and project doc reference check passed.
+### 2026-06-30 - Operations evidence plan command fixture alignment
+
+- Scope: aligned the frontend mock operations evidence plan action fixture with the dashboard copy-command contract.
+- Frontend/docs: the mock action now exposes `workflowCommand` and `recommendedCommand` in addition to the legacy `command`, the mock self-test verifies the recommended command, `DashboardPage` keeps a legacy `command` fallback for resilience, and frontend/test docs describe the command-copy surface.
+- Verification: `npm run mock:api:self-test`, `npm run test:unit`, `npm run build`, and doc encoding hygiene passed.
+
+### 2026-06-30 - Operations evidence plan contract guard
+
+- Scope: pinned the operations evidence plan per-action detail/command contract so the dashboard API and docs cannot drift from the current action list surface.
+- Backend/verifier: `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings` asserts action `currentDetail` and `recommendedCommand`; `verify-openapi-contract.ps1` now reads `api-spec.md` and checks the `currentDetail` and `recommendedCommand` operationsEvidencePlan docs/example.
+- Verification: focused backend test, `verify-openapi-contract.ps1`, doc encoding hygiene, project doc reference check, and `git diff --check` passed. The focused Gradle run still prints the existing stale daemon Java-home warning after `BUILD SUCCESSFUL`.
+
+### 2026-06-30 - Operations evidence plan CLI handoff detail
+
+- Scope: made the operations evidence plan Markdown handoff match the dashboard/API action surface so operators can see why an action is needed and which command is recommended without opening JSON.
+- Scripts/docs: `write-operations-evidence-plan.ps1` now prints per-action `Current detail` and `Recommended command` lines, `verify-operations-evidence-plan.ps1` pins the JSON and Markdown contract, and operation monitoring, document index, and test-case docs describe the same CLI handoff surface.
+- Verification: `verify-operations-evidence-plan.ps1`, doc encoding hygiene, project doc reference check, and `git diff --check` passed; `git diff --check` still reports only the existing CRLF normalization warnings.
+
+### 2026-06-30 - Operations evidence plan verifier index guard
+
+- Scope: closed a dev-docs index drift where `verify-local.ps1` already ran the operations evidence plan verifier but `document-index.md` did not list the verifier entry.
+- Docs/verifier: added `verify-operations-evidence-plan.ps1` to the document index, expanded operation monitoring verifier wording to include current-detail/recommended-command handoff coverage, and added a `verify-dev-doc-file-references.ps1` guard so the index cannot silently drop that verifier reference again.
+- Verification: `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, `verify-operations-evidence-plan.ps1`, and `git diff --check` passed; `git diff --check` still reports only existing CRLF normalization warnings.
+
+### 2026-06-30 - verify-local document index coverage guard
+
+- Scope: closed broader dev-docs drift by comparing the scripts executed by `verify-local.ps1` against `document-index.md`.
+- Docs/verifier: added the 17 missing verify-local script entries to the document index and generalized `verify-dev-doc-file-references.ps1` to fail when any verify-local script is not indexed.
+- Verification: `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, and `git diff --check` passed.
+
+### 2026-06-30 - Operations workflow run-id top-level handoff
+
+- Scope: made the workflow run-id plan easier to consume after browser workflow dispatch by exposing browser runs URLs, run-id input hints, and recommended follow-up commands at the top level.
+- Backend/frontend/scripts: `write-operations-workflow-run-id-plan.ps1` now emits `browserWorkflowRunsUrls`, `workflowRunIdInputs`, and `recommendedCommands`; the dashboard API maps those fields, HomeView preserves run-id plan repository/run-list/top-level handoff fields, and the mock API self-test pins the action 6 browser-dispatch path.
+- Docs/evidence: API, frontend, operation monitoring, test-case, and document-index docs describe the top-level handoff, the OpenAPI verifier guards the API spec example, and latest workflow-run-id/artifact-collection/handoff/convergence reports were regenerated with `staleReportCount=0`.
+- Verification: `verify-operations-workflow-run-id-plan.ps1`, `verify-openapi-contract.ps1`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `npm run mock:api:self-test`, `npm run test:unit`, `verify-operations-artifact-collection-plan.ps1`, `verify-operations-evidence-handoff.ps1`, `verify-operations-readiness-convergence.ps1`, `verify-dev-doc-file-references.ps1`, and `git diff --check` passed.
+### 2026-06-30 - Operations handoff artifact-collection follow-up
+
+- Scope: tightened the browser-dispatch handoff so operators can move from web-dispatched workflow runs into artifact collection without reconstructing the next plan command from another report.
+- Scripts/backend/frontend/docs: `write-operations-evidence-handoff.ps1` now adds a third `postDispatchCommands[]` entry for regenerating `write-operations-artifact-collection-plan.ps1` after run-id collection; the handoff verifier, dashboard fixture/assertions, mock API self-test, API spec, and test-case docs pin the run-id/artifact-collection post-dispatch contract.
+- Evidence: refreshed `.osmu-run/latest-operations-evidence-handoff.*` and `.osmu-run/latest-operations-readiness-convergence.*`; the current bottleneck remains `dispatch-ready-subset-browser`, with `staleReportCount=0`, `missingWorkflowRunCount=1`, and a three-command post-dispatch chain.
+- Verification: PowerShell parser checks for the handoff writer/verifier, `verify-operations-evidence-handoff.ps1`, `verify-operations-readiness-convergence.ps1`, `verify-openapi-contract.ps1`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `npm run mock:api:self-test`, and `npm run test:unit` passed.
+### 2026-06-30 - Operations convergence post-dispatch handoff
+
+- Scope: surfaced handoff post-dispatch run-id/artifact collection commands through the convergence report and dashboard so operators can continue from the final bottleneck view without opening the handoff JSON.
+- Scripts/backend/frontend/docs: `write-operations-readiness-convergence.ps1` now carries `handoffPostDispatchCommands` into JSON/Markdown; the convergence verifier, dashboard API response, HomeView normalization, DashboardPage command list, mock API self-test, API spec, operation monitoring, and test cases guard the field.
+- Evidence: refreshed `.osmu-run/latest-operations-readiness-convergence.*`; current bottleneck remains `dispatch-ready-subset-browser`, with `handoffPostDispatchCommands` carrying the run-list JSON, GitHub CLI, and artifact collection regeneration commands.
+- Verification: parser checks for convergence/OpenAPI scripts, `verify-operations-readiness-convergence.ps1`, `verify-openapi-contract.ps1`, `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `npm run mock:api:self-test`, and `npm run test:unit` passed.
+### 2026-06-30 - Operations handoff package convergence post-dispatch snapshot
+
+- Scope: preserved the convergence post-dispatch run-id/artifact collection chain inside operations handoff package convergence snapshots so final handoff and dashboard summaries do not drop the browser-dispatch continuation path.
+- Scripts/backend/frontend/docs: `write-operations-handoff-package.ps1` now stores `handoffPostDispatchCommandCount` and `handoffPostDispatchCommands`; the handoff package verifier, dashboard API record/controller mapping, focused dashboard fixture/assertions, DashboardPage summary, HomeView source guard, API spec, operation monitoring, test cases, and MVP checklist pin the field.
+- Verification: parser checks for the handoff package writer/verifier, `verify-operations-handoff-package.ps1`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `npm run test:unit`, `npm run mock:api:self-test`, `verify-openapi-contract.ps1`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, and `git diff --check` passed. The focused Gradle run still prints the existing stale daemon Java-home warning after `BUILD SUCCESSFUL`.
+
+### 2026-06-30 - Kubernetes operations sync freshness skip path
+
+- Scope: refreshed the latest Kubernetes operations report sync evidence from the current convergence report without publishing a still-planned query/retention budget snapshot, clearing `kubernetesReportSyncStale` while keeping the real bottleneck on browser dispatch/run-id collection.
+- Scripts/docs/evidence: `verify-kubernetes-operations-report-sync.ps1` now pins `-SkipDataFlowQueryRetentionBudgetConfigMapPublish`; operation monitoring, MVP checklist, and test cases document the safe skip path for optional query/retention budget evidence that is present but not yet publishable. Refreshed `.osmu-run/latest-kubernetes-operations-report-sync.json` and `.osmu-run/latest-operations-readiness-convergence.*`; convergence remains `action-required` with bottleneck `dispatch-ready-subset-browser`, but sync freshness is no longer stale.
+- Verification: parser check for the sync verifier, `verify-kubernetes-operations-report-sync.ps1`, `verify-operations-readiness-convergence.ps1`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, and `git diff --check` passed.
+
+### 2026-06-30 - Operations convergence query-retention sync workflow handoff
+
+- Scope: aligned the operations readiness convergence Kubernetes sync workflow handoff with the sync workflow's optional data-flow query/retention budget input so browser/Actions operators do not lose that target evidence path between convergence and ConfigMap sync.
+- Scripts/backend/frontend/docs/evidence: `write-operations-readiness-convergence.ps1` now emits `data_flow_query_retention_budget_json_base64` beside the data-flow storage plan and transition runbook workflow inputs, and the workflow note includes the query/retention `result=passed` plus no raw SQL/EXPLAIN/object key/event/credential policy. The convergence verifier, backend dashboard fixture/assertions, frontend mock API fixture, operation monitoring docs, document index, and test cases pin the same contract. Refreshed `.osmu-run/latest-operations-readiness-convergence.*`; the current bottleneck remains `dispatch-ready-subset-browser`, with sync stale still false.
+- Verification: `verify-operations-readiness-convergence.ps1`, `verify-ci-workflow.ps1`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `npm run mock:api:self-test`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, `verify-openapi-contract.ps1`, and `git diff --check` passed.
+### 2026-06-30 - Kubernetes live sync query-retention dashboard guard
+
+- Scope: closed the live dashboard verifier drift after the Kubernetes sync workflow and ConfigMap path began carrying optional data-flow query/retention budget evidence.
+- Scripts/docs: `verify-kubernetes-operations-report-sync-live.ps1` now forwards `-DataFlowQueryRetentionBudgetPath`, validates the local query/retention budget evidence contract, polls dashboard `dataFlowQueryRetentionBudget` reduced fields, records result/storage-plan/candidate/latency/retention/failure/check counts plus readiness-item state, and keeps credentials out of evidence. The self-test fixture covers applied sync with data-flow storage plan/query-plan, query/retention budget, transition runbook, plan-only, stale dashboard failure, and an explicit success exit code. Document index, operation monitoring, and TC-INFRA-014 describe the same live/mount/workflow contract.
+- Verification: PowerShell parser checks for the live verifier and self-test plus `verify-kubernetes-operations-report-sync-live-self-test.ps1` passed; doc reference, encoding hygiene, and diff whitespace checks were rerun after the doc update.
+### 2026-06-30 - Kubernetes sync verifier success exit code
+
+- Scope: fixed a false-negative automation signal in the Kubernetes operations report sync self-test after unsafe query/retention budget rejection coverage.
+- Script: `verify-kubernetes-operations-report-sync.ps1` now exits `0` explicitly after all positive and expected-negative sync checks pass, so the final intentional unsafe input rejection does not leak its non-zero child `$LASTEXITCODE` to callers.
+- Verification: parser check for `verify-kubernetes-operations-report-sync.ps1` and `verify-kubernetes-operations-report-sync.ps1` both passed with process exit code `0`; mount self-test and CI workflow verification also passed.
+### 2026-06-30 - Data-flow evidence verifier success exit codes
+
+- Scope: fixed the same expected-negative child exit-code leak in the data-flow target evidence self-tests so local verification does not report false failures after rejection checks pass.
+- Scripts: `verify-data-flow-query-retention-budget-evidence.ps1` and `verify-data-flow-storage-transition-runbook-evidence.ps1` now exit `0` explicitly after planned/passed evidence generation plus over-budget, reversed-window, unsafe raw SQL, and secret-like reference rejection checks complete successfully.
+- Verification: parser checks for both scripts, `verify-data-flow-query-retention-budget-evidence.ps1`, and `verify-data-flow-storage-transition-runbook-evidence.ps1` passed with process exit code `0`.
+
+### 2026-06-30 - Operations target evidence verifier success exit codes
+
+- Scope: fixed additional expected-negative child exit-code leaks in target evidence self-tests so successful verifier runs do not inherit the final intentional rejection command's non-zero `$LASTEXITCODE`.
+- Scripts: `verify-cluster-network-access-review-evidence.ps1`, `verify-helm-values-hardening-evidence.ps1`, `verify-secret-rotation-evidence.ps1`, `verify-monitoring-threshold-evidence.ps1`, `verify-storage-backend-telemetry-evidence.ps1`, `verify-support-escalation-handoff-evidence.ps1`, `verify-commercial-integration-evidence.ps1`, `verify-commercial-approval-evidence.ps1`, `verify-enterprise-auth-smoke-plan.ps1`, `verify-enterprise-auth-jit-rollback-evidence.ps1`, and `verify-operations-handoff-package.ps1` now exit `0` explicitly after all positive and expected-negative checks pass.
+- Verification: parser checks and focused verifier reruns for all eleven scripts passed with process exit code `0`; `verify-chargeback-closeout-evidence.ps1` already returned `0` and did not need a script change.
+
+### 2026-06-30 - Local verifier and Kubernetes sync freshness follow-up
+
+- Scope: reran the lightweight local verification path after the target evidence verifier exit-code fixes and refreshed the Kubernetes operations report sync/convergence evidence generation order.
+- Evidence: `sync-kubernetes-operations-reports.ps1 -SkipDataFlowQueryRetentionBudgetConfigMapPublish` regenerated `latest-kubernetes-operations-report-sync.json`, then `write-operations-readiness-convergence.ps1` regenerated convergence with `kubernetesReportSyncStale=false`; the remaining bottleneck stays on browser dispatch/run-id collection for action 6.
+- Verification: `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed, and the refreshed convergence report remained `action-required` with `missingWorkflowRunCount=1`.
+
+### 2026-06-30 - Browser workflow run-id artifact handoff shortcut
+
+- Scope: shortened the action 6 browser-dispatch follow-up path by exposing a direct artifact collection command for run ids copied from GitHub workflow run pages.
+- Scripts/backend/frontend/docs: `write-operations-workflow-run-id-plan.ps1` now emits `manualArtifactCollectionPlanCommand` and a recommended command named `Write artifact collection plan with browser run ids`; `write-operations-evidence-handoff.ps1` carries the same direct browser run-id command in `postDispatchCommands[]` before the saved-JSON/gh-derived artifact command. The backend dashboard fixture/assertions, frontend mock, API spec, operation monitoring docs, document index, and test cases describe the four-command post-dispatch chain.
+- Evidence: refreshed `.osmu-run/latest-operations-workflow-run-ids.*`, `.osmu-run/latest-operations-evidence-handoff.*`, and `.osmu-run/latest-operations-readiness-convergence.*`; the current bottleneck remains `dispatch-ready-subset-browser`, but operators can now continue from a browser run URL by replacing `<ContainerSecurityRunId>` directly.
+- Verification: parser checks, `verify-operations-workflow-run-id-plan.ps1`, `verify-operations-evidence-handoff.ps1`, `verify-operations-readiness-convergence.ps1`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `npm run mock:api:self-test`, `npm run test:unit`, `verify-openapi-contract.ps1`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, and `git diff --check` passed; `git diff --check` still reports only existing CRLF normalization warnings.
+### 2026-06-30 - Browser workflow run URL artifact handoff normalization
+
+- Scope: made the browser-dispatch artifact collection shortcut accept either a numeric GitHub Actions run id or the full workflow run URL copied from `/actions/runs/<id>`.
+- Scripts/backend/frontend/docs: `write-operations-artifact-collection-plan.ps1` now normalizes run URL inputs to numeric run ids and rejects non-placeholder, non-numeric, non-run-URL values before marking artifacts ready; workflow run-id and evidence handoff notes now tell operators they can paste run ids or full run URLs. The artifact collection verifier, workflow run-id verifier, handoff verifier, backend dashboard fixture, frontend mock API, API spec, operation monitoring docs, document index, and test cases pin the run-id/run-URL contract.
+- Evidence: regenerated `.osmu-run/latest-operations-artifact-collection-plan.*`, `.osmu-run/latest-operations-workflow-run-ids.*`, `.osmu-run/latest-operations-evidence-handoff.*`, and `.osmu-run/latest-operations-readiness-convergence.*`; the current bottleneck remains `dispatch-ready-subset-browser` with `missingWorkflowRunCount=1`. Re-running `sync-kubernetes-operations-reports.ps1` to clear the refreshed convergence sync timestamp was not performed because the escalation request was rejected as potentially affecting shared cluster/report state.
+- Verification: PowerShell parser checks, `verify-operations-artifact-collection-plan.ps1`, `verify-operations-workflow-run-id-plan.ps1`, `verify-operations-evidence-handoff.ps1`, `verify-operations-readiness-convergence.ps1`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `npm run mock:api:self-test`, `npm run test:unit`, `verify-openapi-contract.ps1`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, and `git diff --check` passed; `git diff --check` still reports only existing CRLF normalization warnings.
+
+### 2026-06-30 - Security finalizer run-id readiness gate
+
+- Scope: fixed a false-ready artifact collection edge case where a security-only selection could look finalizer-ready after only the container security run id was known.
+- Scripts/backend/frontend/docs: `write-operations-artifact-collection-plan.ps1` now requires concrete numeric `ImageSigningRunId` and `ContainerSecurityRunId` before `securityEvidenceFinalizerReady=true`, emits `securityEvidenceFinalizerMissingRunIdInputs`, and keeps the missing-input list empty when no security finalizer command exists. The verifier covers missing, direct manual, container-only run URL, and fully ready cases. The dashboard API, frontend normalization/panel, mock API, API spec, operation monitoring, document index, and test cases now expose and guard the missing-input contract.
+- Evidence: regenerated `.osmu-run/latest-operations-workflow-run-ids.*`, `.osmu-run/latest-operations-artifact-collection-plan.*`, `.osmu-run/latest-operations-evidence-handoff.*`, and `.osmu-run/latest-operations-readiness-convergence.*`; the current bottleneck remains `dispatch-ready-subset-browser` with `missingWorkflowRunCount=1`, while `securityEvidenceFinalizerMissingRunIdInputs=ImageSigningRunId,ContainerSecurityRunId`. Kubernetes operations report sync remains stale because the shared-state sync command was not rerun after the previous approval rejection.
+- Verification: parser checks for the artifact collection writer/verifier, `verify-operations-artifact-collection-plan.ps1`, `verify-operations-workflow-run-id-plan.ps1`, `verify-operations-evidence-handoff.ps1`, `verify-operations-readiness-convergence.ps1`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `npm run mock:api:self-test`, `npm run test:unit`, `verify-openapi-contract.ps1`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, and `git diff --check` passed; `git diff --check` still reports only existing CRLF normalization warnings.
+### 2026-06-30 - Development roadmap section numbering guard
+
+- Scope: closed a roadmap drift where the top-level numbered sections jumped from `## 1` to `## 0` before continuing through the phase list.
+- Docs/verifier: `development-roadmap.md` now uses sequential `## 1` through `## 10` headings, and `verify-development-roadmap.ps1` fails if the numbered section count or order drifts. `document-index.md` and `test-cases.md` describe the same section-numbering guard.
+- Verification: `verify-development-roadmap.ps1`, `verify-dev-doc-file-references.ps1`, and `verify-doc-encoding-hygiene.ps1` passed.
+### 2026-06-30 - Prototype status operations bottleneck snapshot
+
+- Scope: made the prototype status snapshot verify the current operations bottleneck chain, not only MVP and operations readiness totals.
+- Docs/verifier: `prototype-status.md` now records artifact collection, evidence handoff, and readiness convergence snapshot lines from the latest `.osmu-run` evidence. `verify-prototype-status.ps1` cross-checks artifact collection selected actions/security finalizer missing run-id inputs, handoff bottleneck/missing workflow run count, convergence bottleneck/Kubernetes sync stale state, and writes those reduced fields into `.osmu-run/latest-prototype-status.json`. Document index and TC-DOC-002 describe the expanded contract.
+- Evidence: regenerated `.osmu-run/latest-prototype-status.json`; it records `operationsArtifactCollection.result=security-source-action-required`, `securityEvidenceFinalizerMissingRunIdInputs=ImageSigningRunId,ContainerSecurityRunId`, `operationsEvidenceHandoff.currentBottleneck=dispatch-ready-subset-browser`, and `operationsReadinessConvergence.kubernetesReportSyncStale=true`.
+- Verification: PowerShell parser check for `verify-prototype-status.ps1`, `verify-prototype-status.ps1`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, and scoped `git diff --check` passed.
+
+### 2026-06-30 - Development roadmap operations bottleneck snapshot
+
+- Scope: made the roadmap baseline carry the same current operations bottleneck snapshot as prototype status, so the dev-docs planning view cannot drift away from the latest evidence chain.
+- Docs/verifier: `development-roadmap.md` now records artifact collection, evidence handoff, and readiness convergence snapshot lines. `verify-development-roadmap.ps1` reads the latest `.osmu-run` artifact collection, evidence handoff, and readiness convergence reports and cross-checks selected action orders, security finalizer missing run-id inputs, handoff bottleneck/missing workflow run count, and Kubernetes sync stale state. Document index and TC-INFRA-008F describe the expanded contract.
+- Verification: PowerShell parser check for `verify-development-roadmap.ps1` and `verify-development-roadmap.ps1 -RequireEvidenceReports` passed.
+### 2026-06-30 - MVP release checklist operations bottleneck verifier
+
+- Scope: made the MVP release checklist track the same current operations evidence chain used by prototype status and the roadmap, including workflow run-id and artifact collection handoff state.
+- Docs/verifier: `mvp-release-checklist.md` now lists the latest operations evidence plan invocation, workflow run-id plan, artifact collection plan, current action 6 bottleneck snapshot, and a checklist verifier gate. Added `verify-mvp-release-checklist.ps1`, wired it into `verify-local.ps1`, and documented it in `document-index.md` plus TC-DOC-003.
+- Evidence: the verifier cross-checks `.osmu-run/latest-mvp-completion.json`, operations readiness counts/categories, workflow run-id `result=query-required` with selected action 6 and one missing workflow run, artifact collection `security-source-action-required` with missing `ImageSigningRunId/ContainerSecurityRunId`, handoff `dispatch-ready-subset-browser`, and convergence `kubernetesReportSyncStale=true`.
+- Verification: PowerShell parser check for `verify-mvp-release-checklist.ps1` and `verify-mvp-release-checklist.ps1 -RequireEvidenceReports` passed.
+### 2026-06-30 - Encoding hygiene C0 control guard
+
+- Scope: closed a document hygiene gap where a C0 control character could survive the existing replacement/C1/CJK mojibake scan.
+- Scripts/docs: `verify-doc-encoding-hygiene.ps1` now rejects C0/DEL controls in addition to C1 controls and replacement/CJK suspicious characters. `verify-doc-encoding-hygiene-self-test.ps1` includes a BEL fixture, `document-index.md` documents the expanded guard, and an existing BEL-corrupted `action-required` worklog word was repaired.
+- Verification: parser checks for both encoding hygiene scripts, `verify-doc-encoding-hygiene-self-test.ps1`, and `verify-doc-encoding-hygiene.ps1` passed.
+### 2026-06-30 - Local verification sweep after docs guard
+
+- Scope: refreshed the local non-Docker verification baseline after the document hygiene guard and current operations bottleneck snapshots.
+- Verification: `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` passed, including whitespace, env ignore, PowerShell parser, encoding hygiene/self-test, dev-doc references, roadmap/prototype/MVP checklist verifiers, operations evidence self-tests, operations latest evidence refresh, and Kubernetes plan-only/report-sync verifier checks. Frontend `npm run mock:api:self-test`, `npm run test:unit` (115 tests), and `npm run build` passed. Backend `gradlew.bat test --no-daemon` passed; Gradle still emitted daemon expiration warnings for a stale temp JDK path after the successful build.
+- Evidence: latest operations evidence was refreshed at 2026-06-30T23:41+09:00 and remains externally gated at `dispatch-ready-subset-browser`, with workflow run ids `query-required`, artifact collection `security-source-action-required`, missing `ImageSigningRunId/ContainerSecurityRunId`, and convergence `action-required`.
+
+### 2026-06-30 - Mock Browser E2E UI smoke closure
+
+- Scope: turned the Browser Acceptance checklist fresh UI smoke rows into current execution evidence by fixing mock API gaps exposed by `verify-browser-e2e-mock-demo.ps1`.
+- Frontend/mock: `mock-api/server.mjs` now keeps stateful storage expansion requests/status/summary, bucket lifecycle XML, bucket tags, object prefixes, object tag updates, object metadata, and audit pagination/CSV export. The mock API self-test covers the storage expansion create/list/approve/plan/apply/summary lifecycle. `lightweight-demo.spec.js` now scopes the convergence command copy-button assertion to the first matching command row so repeated command rows are valid under Playwright strict mode.
+- Docs: `mvp-release-checklist.md` records the latest mock Browser E2E execution and marks the local UI smoke rows for login, bucket list, upload/list refresh, confirm modal, access key, prefix/search/tag, lifecycle, bucket tags, and audit filter/pagination/CSV paths as complete. External GitHub-hosted Browser E2E, durable Docker, real S3 client CI, and security evidence gates remain unchecked.
+- Verification: `node --check osmu-frontend/mock-api/server.mjs`, `node --check osmu-frontend/e2e/lightweight-demo.spec.js`, `npm run mock:api:self-test`, and `scripts/verify-browser-e2e-mock-demo.ps1` passed. The Browser E2E run reported 18 passed and 2 opt-in multipart tests skipped.
+
+### 2026-07-01 - Durable preflight handoff snapshot
+
+- Scope: refreshed the local durable preflight/completion handoff and made the current Docker daemon blocker visible in the top-level status documents.
+- Evidence: `verify-durable-demo-preflight.ps1 -S3Client docker-mc` now records `result=pending` with blocking actions `Docker daemon` and `Selected real S3 client path`; `verify-mvp-completion.ps1` refreshed `.osmu-run/latest-mvp-completion.*` with the same next-action command.
+- Docs/verifiers: `prototype-status.md`, `development-roadmap.md`, and `mvp-release-checklist.md` now include a durable preflight latest handoff line; their verifiers cross-check that line against `.osmu-run/latest-mvp-completion.json`. `document-index.md` and `test-cases.md` describe the new handoff contract.
+- Verification: PowerShell parser checks for the three status/checklist verifiers passed; `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, `verify-mvp-release-checklist.ps1 -RequireEvidenceReports`, `verify-mvp-completion.ps1`, `verify-dev-doc-file-references.ps1`, and `verify-doc-encoding-hygiene.ps1` passed.
+### 2026-07-01 - Verify-local durable completion chain
+
+- Scope: wired the non-Docker local verification sweep to protect the durable MVP finalizer plan-only contract and MVP completion/preflight handoff directly.
+- Script/docs: `verify-local.ps1` now runs `verify-durable-mvp-finalize-plan.ps1` and `verify-mvp-completion.ps1` after the release decision self-test. `README.md`, `document-index.md`, and `test-cases.md` describe the verify-local coverage, and TC-DEMO-007 now states that default `-PlanOnly` writes `latest-durable-mvp-finalize-plan.*` while preserving latest ready finalizer evidence.
+- Verification: parser checks for `verify-local.ps1`, `verify-durable-mvp-finalize-plan.ps1`, and `verify-mvp-completion.ps1` passed. `verify-durable-mvp-finalize-plan.ps1`, `verify-mvp-completion.ps1`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed; the local durable completion report remains pending on the Docker daemon/selected real S3 client path preflight blocker.
+### 2026-07-01 - Prototype status durable preflight JSON handoff
+
+- Scope: made the prototype status verification JSON carry the durable preflight blocker as structured evidence, not only as an expected document line.
+- Script/docs: `verify-prototype-status.ps1` now copies `durablePreflightResult`, `durablePreflightNextAction`, `durablePreflightNextActionCommand`, and `durablePreflightBlockingActions[]` from `.osmu-run/latest-mvp-completion.json` into `evidence.mvpCompletion`. `prototype-status.md`, `document-index.md`, and `test-cases.md` describe the structured durable preflight handoff.
+- Verification: parser check for `verify-prototype-status.ps1`, `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-dev-doc-file-references.ps1`, and `verify-doc-encoding-hygiene.ps1` passed. The refreshed `.osmu-run/latest-prototype-status.json` records the Docker daemon and selected real S3 client path blockers plus their next-action commands.
+### 2026-07-01 - Operations readiness pending remediation summary
+
+- Scope: made the operations readiness source report expose remaining evidence work as a top-level remediation summary instead of requiring consumers to walk every pending check.
+- Scripts/docs: `write-operations-readiness.ps1` now emits `pendingRemediationCount` and `pendingRemediations[]` with name/category/evidence/detail plus command/workflow/workflow-command/note fields for every pending check. `verify-operations-readiness.ps1` cross-checks the summary against the pending checks and Markdown count line. `operation-monitoring.md`, `document-index.md`, and `test-cases.md` document the source report contract.
+- Verification: PowerShell parser checks for the operations readiness writer/verifier passed. `verify-operations-readiness.ps1`, `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, and `verify-mvp-release-checklist.ps1 -RequireEvidenceReports` passed. Latest operations readiness remains externally gated at `passed=82 pending=20 total=102`, now with `pendingRemediationCount=20`.
+### 2026-07-01 - Dashboard source pending remediation summary
+
+- Scope: carried the operations readiness source `pendingRemediationCount`/`pendingRemediations[]` contract through the admin dashboard readiness API and frontend readiness panel.
+- Backend/frontend/docs: added `DashboardOperationsReadinessRemediationResponse`, mapped pending remediation summaries into `operationsReadinessSummary`, normalized the fields in `HomeView.vue`, showed a compact source remediation entry count in `DashboardPage.vue`, and updated the mock API/self-test, API spec, operation monitoring docs, document index, and TC-OPS-002.
+- Verification: `node --check osmu-frontend/mock-api/server.mjs`, `npm run mock:api:self-test`, `npm run test:unit`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `verify-openapi-contract.ps1`, `verify-dev-doc-file-references.ps1`, and `verify-doc-encoding-hygiene.ps1` passed. The backend Gradle run emitted the existing stale temp-JDK daemon expiration warning after a successful build.
+### 2026-07-01 - Status snapshots pending remediation count
+
+- Scope: pinned the operations readiness source remediation count into the high-level status documents so the current `passed=82 pending=20` snapshot also proves that every pending check has a tracked next-evidence action.
+- Docs/verifiers: `prototype-status.md`, `development-roadmap.md`, and `mvp-release-checklist.md` now include `Operations readiness pending remediation entries: 20.` Their verifiers cross-check `pendingRemediationCount` and `pendingRemediations[]` against pending checks, and `verify-prototype-status.ps1` writes the count into `.osmu-run/latest-prototype-status.json`. `document-index.md` and `test-cases.md` describe the extended snapshot contract.
+- Verification: parser checks for the three status verifiers passed. `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, and `verify-mvp-release-checklist.ps1 -RequireEvidenceReports` passed; the refreshed prototype status JSON records operations readiness `pendingRemediationCount=20`.
+### 2026-07-01 - Operations evidence plan remediation coverage
+
+- Scope: made the operations evidence plan prove that the source operations readiness `pendingRemediationCount` is covered by executable evidence actions, not only by pending category counts.
+- Scripts/API/frontend/docs: `write-operations-evidence-plan.ps1` now emits `sourcePendingRemediationCount`, `sourcePendingRemediationEntryCount`, `sourcePendingRemediationActionCount`, `sourcePendingRemediationMissingActionCount`, and `sourcePendingRemediationCoverageReady`; `verify-operations-evidence-plan.ps1` checks the JSON and Markdown coverage line. The admin dashboard API, frontend normalization/panel, mock API/self-test, API spec, operation monitoring docs, document index, and TC-OPS-003 now expose or test the same coverage contract.
+- Evidence: regenerated `.osmu-run/latest-operations-evidence-plan.*` and the downstream plan-only operations handoff chain. Latest evidence plan records `sourcePendingRemediationCount=20`, `sourcePendingRemediationEntryCount=20`, `sourcePendingRemediationActionCount=20`, `sourcePendingRemediationMissingActionCount=0`, and `sourcePendingRemediationCoverageReady=true`; handoff remains `dispatch-ready-subset-browser` with selected action 6 and `staleReportCount=0`, while convergence still requires one workflow run id and a fresh Kubernetes operations report sync.
+- Verification: PowerShell parser checks for the evidence plan writer/verifier, `verify-operations-evidence-plan.ps1`, `node --check osmu-frontend/mock-api/server.mjs`, `npm run mock:api:self-test`, `npm run test:unit`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `verify-openapi-contract.ps1`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, `verify-operations-evidence-handoff.ps1`, `verify-operations-readiness-convergence.ps1`, and scoped `git diff --check` passed; `git diff --check` still reports only existing CRLF normalization warnings.
+
+### 2026-07-01 - Status snapshots evidence plan remediation coverage
+
+- Scope: pinned the operations evidence plan remediation coverage into the top-level status documents so the current 20 pending operations checks also prove 20 executable evidence actions with zero missing remediation actions.
+- Docs/verifiers: `prototype-status.md`, `development-roadmap.md`, and `mvp-release-checklist.md` now include `Operations evidence plan remediation coverage: source=20, entries=20, actions=20, missing=0, ready=true.` Their verifiers read `.osmu-run/latest-operations-evidence-plan.json`, validate source/entry/action/missing/ready consistency, and cross-check the plan source count against operations readiness pending remediation counts. `verify-prototype-status.ps1` also writes the reduced `operationsEvidencePlan` snapshot into `.osmu-run/latest-prototype-status.json`; `document-index.md` and `test-cases.md` describe the expanded contract.
+- Hygiene: restored `prototype-status.md` and `development-roadmap.md` as clean UTF-8 after the first verification pass exposed mojibake in the edited files, then removed a redundant pre-load evidence-plan cross-check from `verify-mvp-release-checklist.ps1`.
+- Verification: PowerShell parser checks for the touched status verifiers passed. `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, `verify-mvp-release-checklist.ps1 -RequireEvidenceReports`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, scoped `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed; `git diff --check` reports only CRLF normalization warnings. The refreshed prototype status JSON records operations evidence plan coverage as `source=20, entries=20, actions=20, missing=0, ready=True`.
+### 2026-07-01 - Operations browser dispatch checklist handoff
+
+- Scope: reduced the current `dispatch-ready-subset-browser` friction by turning the ready action 6 browser workflow dispatch into a structured handoff checklist instead of leaving operators to infer run-id collection from post-dispatch commands alone.
+- Scripts/API/frontend/docs: `write-operations-evidence-handoff.ps1` now emits `browserDispatchChecklistCount` and `browserDispatchChecklist[]` with dispatch/runs URLs, run-id parameter, artifact name, run-list JSON path, manual artifact collection command, workflow inputs, operator checklist, and step text. The handoff verifier covers the JSON and Markdown section; the admin readiness API maps the rows through `DashboardOperationsEvidenceHandoffBrowserDispatchChecklistResponse`; the dashboard panel renders the checklist with dispatch/runs links and copyable manual command; the mock API/self-test and dev docs describe the same contract.
+- Evidence: regenerated `.osmu-run/latest-operations-evidence-handoff.*` and `.osmu-run/latest-operations-readiness-convergence.*`. Latest handoff remains `action-required` with `currentBottleneck=dispatch-ready-subset-browser`, `browserDispatchChecklistCount=1`, and `missingWorkflowRunCount=1`; convergence is fresh against handoff (`handoffStale=false`) and still has `kubernetesReportSyncStale=true` until external workflow evidence is dispatched and synced.
+- Verification: PowerShell parser checks, `verify-operations-evidence-handoff.ps1`, `verify-operations-readiness-convergence.ps1`, `node --check osmu-frontend/mock-api/server.mjs`, `npm run mock:api:self-test`, `npm run test:unit`, focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings`, `verify-openapi-contract.ps1`, `verify-dev-doc-file-references.ps1`, `verify-doc-encoding-hygiene.ps1`, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed; `git diff --check` still reports only existing CRLF normalization warnings.
+### 2026-07-01 - Status snapshots browser dispatch checklist
+
+- Scope: pinned the current action 6 browser dispatch handoff into the top-level status snapshots so the project status docs no longer preserve only the `dispatch-ready-subset-browser` bottleneck and missing run count.
+- Docs/verifiers: `prototype-status.md`, `development-roadmap.md`, and `mvp-release-checklist.md` now include `Operations evidence handoff browser dispatch checklist: count=1, actionOrders=6, workflows=container-security-ci.yml, runIdParameters=ContainerSecurityRunId.` Their verifiers cross-check `browserDispatchChecklistCount`, action orders, workflows, and run-id parameters against `.osmu-run/latest-operations-evidence-handoff.json`; `verify-prototype-status.ps1` also writes the reduced checklist snapshot into `.osmu-run/latest-prototype-status.json`. `document-index.md` and `test-cases.md` describe the expanded status snapshot contract.
+- Evidence: `.osmu-run/latest-prototype-status.json` now records `browserDispatchChecklistCount=1`, `browserDispatchChecklistActionOrders=[6]`, `browserDispatchChecklistWorkflows=[container-security-ci.yml]`, and `browserDispatchChecklistRunIdParameters=[ContainerSecurityRunId]` while the latest handoff/convergence remain `action-required` on `dispatch-ready-subset-browser` with one missing workflow run.
+- Verification: PowerShell parser checks for the three status verifiers passed. `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, and `verify-mvp-release-checklist.ps1 -RequireEvidenceReports` passed.
+### 2026-07-01 - Convergence bottleneck browser dispatch link
+
+- Scope: made the current `dispatch-ready-subset-browser` bottleneck actionable from the convergence summary itself, not only from the operations evidence handoff checklist.
+- Frontend/docs: `DashboardPage.vue` now renders `operationsReadinessConvergence.currentBottleneck.dispatchUrls` as a bottleneck dispatch link, and `HomeView.test.js` protects the selector/helper. `frontend-design.md`, `operation-monitoring.md`, `mvp-release-checklist.md`, and `test-cases.md` document the convergence bottleneck browser dispatch link and refreshed 2026-06-30 snapshot wording.
+- Hygiene: repaired UTF-8 text after the first write pass exposed mojibake in `frontend-design.md`, `test-cases.md`, and dashboard labels; the affected dashboard labels were normalized to ASCII text and the Vue build was used to confirm the template remained valid.
+- Verification: `npm run test:unit`, `npm run build`, `npm run mock:api:self-test`, `verify-doc-encoding-hygiene.ps1`, `verify-dev-doc-file-references.ps1`, `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, `verify-mvp-release-checklist.ps1 -RequireEvidenceReports`, `verify-iam-rbac-matrix.ps1`, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed; `git diff --check` reports only existing CRLF normalization warnings.
+### 2026-07-01 - Mock convergence bottleneck dispatch guard
+
+- Scope: closed a frontend fixture drift gap by making the mock API self-test verify the convergence bottleneck browser dispatch URL, not only the bottleneck code and post-dispatch commands.
+- Frontend/docs: `mock-api/server.mjs` now fails self-test if `operationsReadinessConvergence.currentBottleneck.dispatchUrls[0]` does not point at `container-security-ci.yml`. TC-OPS-002 documents that `npm run mock:api:self-test` protects the convergence bottleneck dispatch URL contract alongside the handoff browser checklist.
+- Verification: `node --check osmu-frontend/mock-api/server.mjs`, `npm run mock:api:self-test`, `npm run test:unit`, `verify-doc-encoding-hygiene.ps1`, `verify-dev-doc-file-references.ps1`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, `git diff --check`, and `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed; `git diff --check` reports only existing CRLF normalization warnings.
+
+### 2026-07-01 - Workflow run-id GitHub REST API handoff
+
+- Scope: reduced the current browser-dispatch follow-up friction by adding a GitHub REST API run-id collection path for machines where `gh` is unavailable after action 6 is dispatched.
+- Scripts/API/frontend/docs: `write-operations-workflow-run-id-plan.ps1` now supports `-UseGitHubApi`, emits top-level `githubApiRunListCommand`/`githubApiBaseUrl`, adds per-workflow `gitHubApiQueryUrl`, and includes a REST API recommended command between saved run-list JSON and GitHub CLI collection. The admin readiness API maps those fields, the dashboard exposes a `GitHub API` copy control for the command, the mock API fixture/self-test and API/frontend docs describe the contract, and token values from `GH_TOKEN`/`GITHUB_TOKEN` are never written to reports.
+- Verification: PowerShell parser checks, `verify-operations-workflow-run-id-plan.ps1`, a real public GitHub API smoke query against `chefbeom/object-storage-osmu`, `node --check osmu-frontend/mock-api/server.mjs`, `npm run mock:api:self-test`, `npm run test:unit`, and focused `AdminDashboardSummaryControllerTest.dashboardReadinessIncludesOperationsEvidenceReportWarnings` passed. The public API smoke found no existing `container-security-ci.yml` workflow_dispatch runs, so the external bottleneck remains browser dispatch plus run-id collection.
+### 2026-07-01 - Verify-local Java toolchain path guard
+
+- Scope: fixed the non-Docker local release gate so `-JavaHome C:\jdk-17` also constrains Gradle Java toolchain resolution, avoiding failures from stale temp JDK daemon/cache paths.
+- Script/docs: `verify-local.ps1` now stores the resolved Java home and runs backend Gradle tests with `org.gradle.java.installations.paths`, `auto-detect=false`, and `auto-download=false` as array arguments. `local-dev-env.md` and `mvp-release-checklist.md` document that the explicit JDK is propagated into the backend Gradle toolchain gate.
+- Verification: direct backend `gradlew.bat` test with forced toolchain properties passed, then `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome C:\jdk-17` passed end-to-end. Docker-dependent durable MVP finalization remains pending on Docker daemon availability.
+### 2026-07-01 - UTF-8 status verifier read guard
+
+- Scope: hardened the dev-doc status verifiers against Windows PowerShell default codepage reads so UTF-8 Korean status documents and JSON evidence reports are always parsed as UTF-8.
+- Scripts: `verify-development-roadmap.ps1`, `verify-prototype-status.ps1`, and `verify-mvp-release-checklist.ps1` now read optional JSON reports with `[System.IO.File]::ReadAllText(..., UTF8)`. `verify-prototype-status.ps1` also reads `prototype-status.md` and `api-spec.md` with the same explicit UTF-8 path.
+- Verification: parser checks and the status/checklist verifiers were rerun after the change.
+### 2026-07-01 - OpenAPI verifier UTF-8 read guard
+
+- Scope: extended the UTF-8 verifier read hardening to the OpenAPI contract gate so `openapi-mvp.json`, `api-spec.md`, and frontend API source are parsed independent of Windows PowerShell default codepage.
+- Script: `verify-openapi-contract.ps1` now reads its contract and source inputs through explicit UTF-8 `ReadAllText`.
+- Verification: parser check and `verify-openapi-contract.ps1` passed; doc hygiene and reference checks were rerun after this entry.
+### 2026-07-01 - Durable MVP completion verifier UTF-8 guard
+
+- Scope: hardened the durable MVP completion gate so finalizer PlanOnly evidence and MVP completion source reports are read as explicit UTF-8, then aligned TC-DEMO-007/008 with the current plan-only and pending-completion contract.
+- Scripts/docs: `verify-durable-mvp-finalize-plan.ps1` and `verify-mvp-completion.ps1` now read JSON/Markdown evidence through UTF-8 `ReadAllText`. `test-cases.md` now documents that default PlanOnly writes `latest-durable-mvp-finalize-plan.*`, preserves latest ready finalizer evidence, and that `verify-mvp-completion.ps1` records `classification=local-durable-mvp-pending`, `localDurableMvpReady=false`, `durablePreflightNextActionCommand`, and `durablePreflightBlockingActions` until the Docker-ready finalizer refresh completes.
+- Evidence: `verify-mvp-completion.ps1` now reports only one local MVP pending check, the Docker-dependent durable finalizer refresh.
+- Verification: parser checks, `verify-durable-mvp-finalize-plan.ps1`, `verify-mvp-completion.ps1`, `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, and `verify-mvp-release-checklist.ps1 -RequireEvidenceReports` passed; doc hygiene and local wrapper checks were rerun after this entry.
+### 2026-07-01 - Verify-local UTF-8 parse guard
+
+- Scope: hardened the top-level local verification wrapper so script parsing and latest evidence context reads use explicit UTF-8 instead of the active Windows PowerShell codepage.
+- Script/docs: `verify-local.ps1` now uses `ReadAllText(..., UTF8)` for latest JSON evidence inputs and parses `scripts/*.ps1` through `Invoke-PowerShellScriptParseCheck`. `README.md`, `local-dev-env.md`, and `document-index.md` document the wrapper-level UTF-8 guard.
+- Verification: parser checks, document hygiene/reference checks, and the non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` wrapper were rerun after this change.
+### 2026-07-01 - Image signing verifier UTF-8 read guard
+
+- Scope: closed the remaining default-codepage read in the early `verify-local.ps1` security/documentation gate chain.
+- Script/docs: `verify-image-signing-policy.ps1` now reads both `dev-docs/image-signing-policy.md` and `.github/workflows/image-publish-sign-ci.yml` through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contract.
+- Verification: parser check, `verify-image-signing-policy.ps1`, doc hygiene/reference checks, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` were rerun after this change.
+### 2026-07-01 - Container hardening verifier UTF-8 read guard
+
+- Scope: extended the UTF-8 verifier hardening into the container hardening release gate that reads Dockerfile, nginx, Kubernetes, Helm values, and Helm templates.
+- Script/docs: `verify-container-hardening.ps1` now reads all required inputs through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contract.
+- Verification: parser check, `verify-container-hardening.ps1`, doc hygiene/reference checks, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` were rerun after this change.
+### 2026-07-01 - Kubernetes manifest verifier UTF-8 read guard
+
+- Scope: extended UTF-8 verifier hardening into the Kubernetes manifest draft gate that reads base manifests, the osmu-dev overlay, restore example YAML, and placeholder scan inputs.
+- Script/docs: `verify-k8s-manifests.ps1` now reads all manifest inputs through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contract.
+- Verification: parser check, `verify-k8s-manifests.ps1`, doc hygiene/reference checks, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` were rerun after this change.
+### 2026-07-01 - Helm chart verifier UTF-8 read guard
+
+- Scope: extended UTF-8 verifier hardening into the Helm chart draft gate that reads chart metadata, values, templates, and template scan inputs.
+- Script/docs: `verify-helm-chart.ps1` now reads all chart inputs through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contract.
+- Verification: parser check, `verify-helm-chart.ps1`, doc hygiene/reference checks, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` were rerun after this change.
+### 2026-07-01 - TLS and secret rotation verifier UTF-8 read guard
+
+- Scope: extended UTF-8 verifier hardening into the TLS ingress and secret rotation policy gates that read Kubernetes/Helm inputs, policy docs, deployment/security docs, and evidence scripts.
+- Script/docs: `verify-tls-ingress.ps1` and `verify-secret-rotation-policy.ps1` now read required inputs through explicit UTF-8 `ReadAllText`; `document-index.md` records both verifier contracts.
+- Verification: parser checks, both verifiers, doc hygiene/reference checks, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` were rerun after this change.
+### 2026-07-01 - Backup and monitoring verifier UTF-8 read guard
+
+- Scope: extended UTF-8 verifier hardening into backup/restore and monitoring gates that read DR docs/scripts, Prometheus observability inputs, monitoring artifacts, and Prometheus Operator drafts.
+- Script/docs: `verify-backup-restore-drill.ps1`, `verify-prometheus-observability.ps1`, `verify-monitoring-artifacts.ps1`, and `verify-prometheus-operator-draft.ps1` now read required inputs through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contracts.
+- Verification: parser checks, all four verifiers, doc hygiene/reference checks, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` were rerun after this change.
+### 2026-07-01 - Migration and query verifier UTF-8 read guard
+
+- Scope: extended UTF-8 verifier hardening into migration rollback, metadata index coverage, MariaDB query-plan evidence, and object-list query pushdown gates.
+- Script/docs: `verify-migration-rollback-plan.ps1`, `verify-metadata-index-coverage.ps1`, `verify-mariadb-query-plan-evidence.ps1`, and `verify-object-list-query-pushdown.ps1` now read generated evidence, migration SQL, or repository source through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contracts.
+- Verification: parser checks, all four verifiers, doc hygiene/reference checks, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` were rerun after this change.
+### 2026-07-01 - Data-flow verifier UTF-8 read guard
+
+- Scope: extended UTF-8 verifier hardening into data-flow storage plan, query/retention budget, and transition runbook evidence self-tests that read generated JSON/Markdown reports.
+- Script/docs: `verify-data-flow-storage-plan.ps1`, `verify-data-flow-query-retention-budget-evidence.ps1`, and `verify-data-flow-storage-transition-runbook-evidence.ps1` now read generated evidence through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contracts.
+- Verification: parser checks, all three data-flow verifiers, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Operations evidence verifier UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening across the smaller operations evidence verifier self-tests that feed current readiness pending categories: monitoring threshold, secret rotation, storage backend telemetry, commercial integration, commercial approval, enterprise auth smoke/JIT rollback, and chargeback closeout.
+- Script/docs: `verify-monitoring-threshold-evidence.ps1`, `verify-secret-rotation-evidence.ps1`, `verify-storage-backend-telemetry-evidence.ps1`, `verify-commercial-integration-evidence.ps1`, `verify-commercial-approval-evidence.ps1`, `verify-enterprise-auth-smoke-plan.ps1`, `verify-enterprise-auth-jit-rollback-evidence.ps1`, and `verify-chargeback-closeout-evidence.ps1` now read generated JSON/Markdown evidence through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contracts.
+- Verification: parser checks, all eight focused verifier reruns, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Operations chain verifier UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into the operations evidence chain that leads from readiness planning to browser dispatch, workflow run-id planning, artifact collection, handoff, and convergence.
+- Script/docs: `verify-operations-evidence-plan.ps1`, `verify-operations-evidence-plan-invocation.ps1`, `verify-operations-invocation-unblock-plan.ps1`, `verify-operations-dispatch-preflight.ps1`, `verify-operations-workflow-run-id-plan.ps1`, `verify-operations-artifact-collection-plan.ps1`, `verify-operations-evidence-handoff.ps1`, and `verify-operations-readiness-convergence.ps1` now read generated JSON/Markdown evidence through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contracts.
+- Verification: parser checks, all eight focused verifier reruns, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Operations artifact import verifier UTF-8 read guard
+
+- Scope: hardened the operations readiness artifact import self-test, which validates generated and promoted target evidence artifacts before they can close operations readiness pending checks.
+- Script/docs: `verify-operations-readiness-artifact-import.ps1` now reads generated, promoted, weak, and unsafe artifact JSON fixtures through explicit UTF-8 `ReadAllText`; `document-index.md` records the same importer verifier contract.
+- Verification: parser check, `verify-operations-readiness-artifact-import.ps1`, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Operations readiness verifier UTF-8 read guard
+
+- Scope: hardened the source operations readiness verifier that regenerates `.osmu-run/latest-operations-readiness.*` and pins pending remediation/report shape before downstream evidence plan, artifact import, handoff, and convergence stages consume it.
+- Script/docs: `verify-operations-readiness.ps1` now reads generated readiness JSON/Markdown plus enterprise-auth, data-flow, handoff, and convergence self-test fixtures through explicit UTF-8 `ReadAllText`; `document-index.md` records the same verifier contract.
+- Verification: parser check, `verify-operations-readiness.ps1`, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Security evidence verifier UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into the security evidence path that feeds the current `security-hardening` pending group and action 6 finalizer handoff.
+- Script/docs: `verify-cluster-network-access-review-evidence.ps1`, `verify-helm-values-hardening-evidence.ps1`, `verify-security-evidence-writers.ps1`, `verify-security-evidence-finalizer.ps1`, and `finalize-security-evidence.ps1` now read generated security evidence JSON/Markdown and fixture inputs through strict UTF-8 `ReadAllText`; `document-index.md` records the cluster-network and Helm verifier contracts.
+- Verification: parser checks, focused security evidence verifier reruns, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Support handoff verifier UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into the support escalation handoff evidence self-test that feeds the operations handoff package readiness path.
+- Script/docs: `verify-support-escalation-handoff-evidence.ps1` now reads generated support handoff JSON/Markdown evidence through strict UTF-8 `ReadAllText`; `document-index.md` records the verifier contract.
+- Verification: parser check, focused support handoff verifier rerun, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Operations readiness finalizer UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into the operations readiness finalizer plan/final report path before live target evidence import and finalization runs consume the readiness JSON.
+- Script/docs: `finalize-operations-readiness.ps1` now reads the source operations readiness JSON through strict UTF-8 `ReadAllText`, and `verify-operations-readiness-finalizer.ps1` reads generated finalizer JSON/Markdown evidence the same way; `document-index.md` records both contracts.
+- Verification: parser checks, focused operations readiness finalizer rerun, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Operations handoff package UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into the operations handoff package writer and self-test, which consume the target readiness/convergence/data-flow/security/commercial/enterprise-auth evidence snapshots before the operations handoff package can close.
+- Script/docs: `write-operations-handoff-package.ps1` now reads sanitized JSON snapshot inputs through strict UTF-8 `ReadAllText`, and `verify-operations-handoff-package.ps1` reads generated and mutated JSON/Markdown evidence the same way; `document-index.md` records both contracts.
+- Verification: parser checks, focused operations handoff package verifier rerun, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Operations evidence chain writer UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening across the operations readiness writer chain that feeds the current evidence plan, invocation, dispatch, workflow run-id, artifact collection, handoff, and convergence reports.
+- Script/docs: `write-operations-readiness.ps1`, `write-operations-evidence-plan.ps1`, `invoke-operations-evidence-plan.ps1`, `write-operations-invocation-unblock-plan.ps1`, `write-operations-dispatch-preflight.ps1`, `write-operations-workflow-run-id-plan.ps1`, `write-operations-artifact-collection-plan.ps1`, `write-operations-evidence-handoff.ps1`, and `write-operations-readiness-convergence.ps1` now read their JSON/workflow inputs through strict UTF-8 `ReadAllText`; `document-index.md` records the writer-chain contract.
+- Verification: parser checks, focused operations writer-chain verifier reruns, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Kubernetes operations report sync UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into the Kubernetes operations report sync path that publishes convergence, sync evidence, and data-flow summaries to the `osmu-operations-reports` ConfigMap.
+- Script/docs: `sync-kubernetes-operations-reports.ps1` now reads convergence and data-flow JSON inputs through strict UTF-8 `ReadAllText`, and `verify-kubernetes-operations-report-sync.ps1` reads generated plan/server-dry-run/apply/unsafe fixture evidence the same way; `document-index.md` records both contracts.
+- Verification: parser checks, focused Kubernetes operations report sync verifier rerun, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Kubernetes operations report live and mount UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into the Kubernetes operations report live dashboard verifier and backend mount verifier, including their fake-kubectl/self-test fixture reads.
+- Script/docs: `verify-kubernetes-operations-report-sync-live.ps1`, `verify-kubernetes-operations-report-sync-live-self-test.ps1`, `verify-kubernetes-operations-report-mount.ps1`, and `verify-kubernetes-operations-report-mount-self-test.ps1` now read local sync/data-flow evidence and generated verifier output through strict UTF-8 `ReadAllText`; `document-index.md` records the live/mount verifier contracts.
+- Verification: parser checks, focused Kubernetes operations report sync-live and mount self-test reruns, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Operations artifact import UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into the operations readiness artifact importer that promotes target storage expansion, HA/DR, security, data-flow, monitoring, commercial, enterprise-auth, handoff, and Kubernetes report sync evidence into standard latest paths.
+- Script/docs: `import-operations-readiness-artifacts.ps1` now reads imported artifact JSON/Markdown inputs through strict UTF-8 `ReadAllText`, and `verify-operations-readiness-artifact-import.ps1` uses the same strict decoder for generated/promoted/weak/unsafe fixtures; `document-index.md` records the importer contract.
+- Verification: parser checks, focused operations readiness artifact import self-test, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Kubernetes DR finalizer UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into the Kubernetes DR evidence request/finalizer path that feeds the HA/DR readiness blocker and later artifact import/finalizer promotion.
+- Script/docs: `write-kubernetes-dr-evidence-request.ps1` now reads DR drill, backup artifact, DR bucket, and restore smoke JSON inputs through strict UTF-8 `ReadAllText`; `finalize-kubernetes-dr-drill.ps1` reads the generated evidence request JSON the same way; `document-index.md` records both contracts.
+- Verification: parser checks, `finalize-kubernetes-dr-drill.ps1 -PlanOnly`, `verify-backup-restore-drill.ps1`, `verify-ci-workflow.ps1`, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - Target evidence writer UTF-8 input read guard
+
+- Scope: extended explicit UTF-8 read hardening into the target evidence writers that feed storage backend telemetry, monitoring threshold, commercial integration/approval, chargeback closeout, enterprise auth smoke/JIT rollback, and data-flow storage/query-retention/runbook readiness blockers.
+- Script/docs: `write-storage-backend-telemetry-evidence.ps1`, `write-monitoring-threshold-evidence.ps1`, `write-commercial-integration-evidence.ps1`, `write-commercial-approval-evidence.ps1`, `write-chargeback-closeout-evidence.ps1`, `write-enterprise-auth-smoke-plan.ps1`, `write-enterprise-auth-jit-rollback-evidence.ps1`, `write-data-flow-storage-plan.ps1`, `write-data-flow-query-retention-budget-evidence.ps1`, and `write-data-flow-storage-transition-runbook-evidence.ps1` now read prepared target JSON/YAML snapshots through strict UTF-8 `ReadAllText`; `document-index.md` records the writer input contracts.
+- Verification: parser checks, the ten focused target evidence writer verifier reruns, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - MVP release artifact UTF-8 read guard
+
+- Scope: extended explicit UTF-8 read hardening into MVP durable release/audit/decision/notes/demo package scripts that consume latest release, durable gate, finalizer, preflight, and demo package evidence before the local MVP gate can be packaged.
+- Script/docs: `write-mvp-audit.ps1`, `write-mvp-release-decision.ps1`, `write-mvp-release-notes.ps1`, `verify-mvp-release-artifacts.ps1`, `write-durable-release-artifacts.ps1`, `verify-mvp-demo-readiness.ps1`, `write-mvp-demo-package-notes.ps1`, and `verify-mvp-demo-package-notes.ps1` now read JSON/Markdown/text evidence through strict UTF-8 `ReadAllText`; `write-mvp-demo-package-notes.ps1` mirrors parsed MVP completion classification when status evidence exists, `verify-mvp-completion.ps1` accepts that pending/ready package-status alignment, and `document-index.md` records the release/demo artifact contracts.
+- Verification: parser checks, `verify-mvp-demo-package-notes.ps1 -SelfTest`, durable release artifact regeneration, latest demo package notes verification, MVP release artifact verification, `verify-mvp-completion.ps1` package-status alignment, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change. The fast `verify-mvp-demo-readiness.ps1 -SkipBackendTests -SkipDockerFullStackE2E -NoWrite -JavaHome C:\jdk-17` probe was also attempted but timed out before completion.
+### 2026-07-01 - Security and storage expansion UTF-8 read guard
+
+- Scope: extended strict UTF-8 read hardening into the security/storage expansion evidence path that feeds current `security-hardening` and `storage-expansion` operations readiness blockers.
+- Script/docs: `write-container-security-evidence.ps1`, `verify-iam-rbac-finalizer.ps1`, `verify-kubernetes-rbac-matrix.ps1`, `verify-storage-expansion-server-dry-run.ps1`, and `verify-storage-expansion-finalizer.ps1` now read SBOM JSON, generated reports, matrix docs, scripts, Kubernetes manifests, Helm templates, and storage expansion manifests through strict UTF-8 `ReadAllText`; `document-index.md` records the same contracts.
+- Verification: parser checks, targeted no-raw-read scan, `verify-security-evidence-writers.ps1`, `verify-iam-rbac-finalizer.ps1`, `verify-kubernetes-rbac-matrix.ps1`, `verify-storage-expansion-server-dry-run.ps1 -PlanOnly`, `verify-storage-expansion-server-dry-run.ps1 -PlanOnly -Namespace osmu-dev -ImpersonateRunner`, `verify-storage-expansion-finalizer.ps1`, doc hygiene/reference checks, `git diff --check`, and non-Docker `verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend -JavaHome C:\jdk-17` passed after this change.
+### 2026-07-01 - AI GPU runtime configuration surface
+
+- Scope: added a backend runtime configuration surface for AI features that need a GPU inference server reachable through Tailscale or another private network.
+- Code/config/docs: `AdminAiController` now exposes `GET /api/admin/ai/configuration`; `AiConfigurationService` reads `OSMU_AI_ENABLED`, `OSMU_AI_PROVIDER`, `OSMU_AI_BASE_URL`, `OSMU_AI_MODEL`, and `OSMU_AI_TIMEOUT_SECONDS`, derives host/port from the configured base URL, and avoids outbound inference calls from the status endpoint. Application defaults, Docker Compose, Kubernetes ConfigMap, Helm values/template, README, API spec, backend design, local-dev, deployment, feature inventory, and document index now document the same keys.
+- Verification: `AdminAiControllerTest`, Kubernetes manifest verifier, Helm chart verifier, doc encoding hygiene, OpenAPI contract verifier, dev-doc file-reference verifier, targeted malformed-line scan, and `git diff --check` passed. Gradle emitted a daemon-expiration warning about an old temp JDK path after the successful build.
+### 2026-07-01 - AI GPU Ollama readiness probe
+
+- Scope: extended the AI GPU runtime configuration surface so operators can validate a changed Tailscale GPU server URL and model before future AI features depend on it.
+- Code/docs: `GET /api/admin/ai/readiness` now performs an ADMIN-only Ollama `/api/tags` probe, reports reachable/modelAvailable/status/availableModels without sending prompts, object data, or credentials, and the API spec/OpenAPI/backend/deployment/README/feature inventory docs describe the configuration/readiness split.
+- Verification: `AdminAiControllerTest` uses a local fake Ollama `/api/tags` server and passed, proving configuration parsing plus readiness model detection without contacting a real Tailscale host. OpenAPI contract verification, dev-doc file-reference verification, doc encoding hygiene, OpenAPI AI path formatting check, and `git diff --check` also passed.
+### 2026-07-01 - AI GPU dashboard readiness widget
+
+- Scope: connected the AI GPU Tailscale endpoint/model configuration surface to the ADMIN dashboard so operators can verify the active provider/model/base URL and readiness without opening raw API responses.
+- Frontend/docs: `api.js` now wraps `GET /api/admin/ai/configuration` and `GET /api/admin/ai/readiness`; `HomeView.vue` loads and resets AI status with admin dashboard state; `DashboardPage.vue` renders the `AI GPU Readiness` palette widget; `mock-api/server.mjs`, `HomeView.test.js`, `api-ai.test.js`, README, frontend design, feature inventory, and document index document and protect the same contract.
+- Verification: `npm run test:unit` passed 116 tests including the new AI wrapper test and dashboard selector guard; `npm run mock:api:self-test` passed with the AI fixture endpoints.
+### 2026-07-01 - AI GPU dashboard catalog alignment
+
+- Scope: aligned the AI GPU readiness dashboard widget with the server-backed dashboard layout catalog and deployment chart values so ADMIN operators keep the widget after catalog/layout sync.
+- Code/config/tests: `DashboardLayoutService` now includes `ai-readiness` in the ADMIN-only widget catalog and built-in operations/admin/operator/storage-ops presets; `DashboardLayoutControllerTest` verifies admin visibility plus non-admin/auditor filtering; `mock-api/server.mjs` exposes the same widget in mock catalog/default layout; `infra/helm/osmu/values.yaml` separates `aiTimeoutSeconds` from `metadataMode` so AI values and metadata mode render as distinct Helm config keys.
+- Verification: `DashboardLayoutControllerTest`, frontend `npm run test:unit`, frontend `npm run mock:api:self-test`, `verify-helm-chart.ps1`, and `git diff --check` passed after this change.
+### 2026-07-01 - Kubernetes operations report sync freshness refresh
+
+- Scope: refreshed the current operations convergence handoff after the AI dashboard work so the local evidence chain no longer reports stale Kubernetes operations report sync evidence.
+- Evidence/docs/fixtures: `sync-kubernetes-operations-reports.ps1 -SkipDataFlowQueryRetentionBudgetConfigMapPublish` regenerated `.osmu-run/latest-kubernetes-operations-report-sync.json` in plan mode with `failedCount=0`; `write-operations-readiness-convergence.ps1` regenerated `.osmu-run/latest-operations-readiness-convergence.*` with `kubernetesReportSyncStale=false` while preserving the real bottleneck on action 6 browser dispatch/run-id collection. `prototype-status.md`, `development-roadmap.md`, `mvp-release-checklist.md`, mock API convergence fixtures, and Browser E2E convergence seed fixtures now reflect the fresh sync evidence, and the MVP checklist frontend unit count is aligned to 116 passing tests.
+- Verification: `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, `verify-mvp-release-checklist.ps1 -RequireEvidenceReports`, `verify-kubernetes-operations-report-sync.ps1`, `verify-operations-readiness-convergence.ps1`, frontend `npm run mock:api:self-test`, PowerShell parser checks for the touched Browser E2E seed scripts, and `git diff --check` passed after this change.
+### 2026-07-01 - Operations handoff security finalizer dependency hint
+
+- Scope: clarified the current browser-dispatch bottleneck for action 6 so operators do not confuse container-security source evidence with the full security evidence finalizer input set.
+- Code/UI/evidence: `write-operations-evidence-handoff.ps1` now carries security finalizer run-id dependency context into each related `browserDispatchChecklist` item, including missing finalizer inputs and a dependency note. `AdminController` and `DashboardOperationsEvidenceHandoffBrowserDispatchChecklistResponse` expose the new fields, and the dashboard checklist displays the note plus missing finalizer run-id summary. Latest handoff/convergence evidence was regenerated so action 6 now states that `ContainerSecurityRunId` is only one input and `ImageSigningRunId` is still required before `security-evidence-finalizer-ci.yml`.
+- Verification: PowerShell parser checks, `verify-operations-evidence-handoff.ps1`, regenerated latest operations evidence handoff/convergence reports, `verify-operations-readiness-convergence.ps1`, frontend `npm run test:unit`, and backend `AdminDashboardSummaryControllerTest` passed. Gradle completed successfully and emitted only the existing daemon-expiration warning for a stale temp JDK path.
+### 2026-07-01 - Operations convergence browser dependency lift
+
+- Scope: lifted the action 6 browser-dispatch security finalizer dependency hint from the handoff checklist into the convergence bottleneck and recommended command notes so the top-level dashboard/convergence guidance is self-contained.
+- Script/docs/evidence: `write-operations-readiness-convergence.ps1` now copies unique `securityFinalizerDependencyNote` values from handoff `browserDispatchChecklist[]` when the bottleneck is a dispatch-ready subset, stores them as `handoffBrowserDispatchDependencyNotes`, and appends the note to `currentBottleneck.note` plus the first recommended command. `verify-operations-readiness-convergence.ps1`, `document-index.md`, and `api-spec.md` document and verify the lifted note path. Latest convergence and Kubernetes operations report sync evidence were regenerated; the real bottleneck remains action 6 browser dispatch/run-id collection with fresh sync evidence.
+- Verification: parser checks, `verify-operations-readiness-convergence.ps1`, latest convergence/sync regeneration, and direct JSON inspection passed before the broader doc/evidence verification rerun.
+## 2026-07-01 - Operations convergence dependency note API/demo contract
+
+- Code/tests: `DashboardOperationsReadinessConvergenceResponse` now exposes `handoffBrowserDispatchDependencyNotes[]`; `AdminController` maps it from the convergence report; `AdminDashboardSummaryControllerTest` verifies the raw note plus `ImageSigningRunId` bottleneck note coverage.
+- Frontend/mock: `DashboardPage.vue` can render dependency notes when they are not already present in the bottleneck note; `mock-api/server.mjs` and browser E2E convergence fixtures now carry the security finalizer dependency note for action 6 browser dispatch.
+- Docs: API/frontend/document-index notes now describe the structured convergence dependency note field and mock/browser fixture coverage.
+## 2026-07-01 - OpenAPI admin dashboard readiness convergence contract
+
+- Contract/docs: `openapi-mvp.json` now includes `GET /api/admin/dashboard/summary` and `GET /api/admin/dashboard/readiness`, plus a focused `DashboardOperationsReadinessConvergenceResponse` schema exposing `handoffBrowserDispatchDependencyNotes[]`.
+- Verification: `verify-openapi-contract.ps1` now requires the admin dashboard summary/readiness operations and the structured convergence dependency-note field, closing the gap between backend/dashboard behavior and the static API contract.
+### 2026-07-01 - Operations workflow run-id security finalizer input hints
+- Scope: made the workflow run-id plan explicitly carry the Security Evidence Finalizer input contract before artifact collection, so browser-dispatch handoff no longer hides that `security-evidence-finalizer-ci.yml` needs both `ImageSigningRunId` and `ContainerSecurityRunId`.
+- Scripts/API/frontend/docs: `write-operations-workflow-run-id-plan.ps1` now emits `securityEvidenceFinalizerReady`, `securityEvidenceFinalizerRunIdInputs[]`, `securityEvidenceFinalizerRunIdInputHints[]`, `securityEvidenceFinalizerMissingRunIdInputs[]`, and `securityEvidenceFinalizerDependencyNote`; the workflow-run-id verifier pins those fields in plan-only and ready fixtures; the admin dashboard readiness API maps them through `operationsWorkflowRunIdPlan`; the frontend readiness panel and mock API render/test the same summary; API/OpenAPI/docs describe the contract.
+- Current status: this reduces operator ambiguity in the current action 6 browser-dispatch path, but the overall operations convergence remains action-required until the live browser dispatch/run-id/artifact/finalizer evidence is collected.
+### 2026-07-02 - Security finalizer supplemental run-id hints
+
+- Scope: made the workflow run-id plan carry query/browser hints for both Security Evidence Finalizer inputs even when the selected browser-dispatch scope only includes `container-security-ci.yml`.
+- Scripts/API/frontend/docs: `securityEvidenceFinalizerRunIdInputHints[]` now distinguishes selected source rows from supplemental rows with `sourceSelected` and `supplementalForSecurityFinalizer`, exposes per-input `queryCommand` and `gitHubApiQueryUrl`, and the dashboard/mock/API/OpenAPI/docs surface the same hints so operators know to collect `ImageSigningRunId` as well as `ContainerSecurityRunId` before running `security-evidence-finalizer-ci.yml`.
+- Status docs/verifiers: `prototype-status.md`, `development-roadmap.md`, and `mvp-release-checklist.md` now pin `Operations workflow run-id security finalizer hints: count=2, inputs=ImageSigningRunId/ContainerSecurityRunId, supplemental=ImageSigningRunId.` Their verifiers cross-check the line against `.osmu-run/latest-operations-workflow-run-ids.json`, and `verify-prototype-status.ps1` writes the reduced hint summary into `.osmu-run/latest-prototype-status.json`.
+- Verification: parser checks for the three status verifiers, `verify-prototype-status.ps1 -RequireEvidenceReports`, `verify-development-roadmap.ps1 -RequireEvidenceReports`, `verify-mvp-release-checklist.ps1 -RequireEvidenceReports`, doc encoding hygiene, project doc reference check, and `git diff --check` passed. `git diff --check` reports only existing LF/CRLF normalization warnings.
+- Status: the current external bottleneck is still browser dispatch/run-id/artifact/finalizer evidence collection; this change reduces the handoff ambiguity but does not claim target evidence completion.
+### 2026-07-02 - Optional model-readiness scope removal
+
+- Scope: removed the optional GPU/Ollama readiness surface from the current MVP scope so development stays focused on object storage and operations readiness.
+- Code/config/docs: deleted the dedicated backend controller/service/DTO/test, removed the frontend API wrapper/test, dashboard widget, mock routes/fixtures, dashboard catalog/default layout entries, and removed the runtime keys from application, Docker Compose, Kubernetes, and Helm configuration. README, API spec, OpenAPI, backend/frontend/deployment/local-dev/design docs, feature inventory, document index, and MVP checklist now omit the optional model-readiness surface.
+- Verification: OpenAPI contract verifier passed with 199 operations and 152 frontend API functions checked; frontend unit tests passed 115 tests; mock API self-test, DashboardLayoutControllerTest, Helm chart verifier, Kubernetes manifest verifier, MVP release checklist verifier, dev-doc reference verifier, doc encoding hygiene, and git diff --check passed. Gradle still emits the pre-existing daemon-expiration warning for a stale temp JDK path after the successful build.
+- Status: object-storage, S3-compatible replacement, data-flow analytics, commercial evidence, and operations readiness remain the active scope; previous worklog entries are historical only.
+### 2026-07-02 - Operations dispatch REST API fallback
+
+- Scope: reduced the current action 6 operations-readiness dispatch bottleneck after removing optional model-readiness scope, keeping focus on object-storage and operations readiness evidence collection.
+- Scripts/docs/evidence: `invoke-operations-evidence-plan.ps1` can now dispatch reviewed `gh workflow run` actions through the GitHub REST API with `-UseGitHubApi -GitHubRepository <owner/repo> -GitHubRef <ref> -Execute`, using `GH_TOKEN` or `GITHUB_TOKEN` only at execution time and never writing token values to reports. `write-operations-dispatch-preflight.ps1` emits full and ready-subset API execute command previews, and `write-operations-evidence-handoff.ps1` includes the ready-subset API dispatch command when GitHub CLI is unavailable. Latest handoff/convergence evidence was regenerated; the real bottleneck remains action 6 dispatch/run-id/artifact/finalizer collection.
+- Verification: parser checks, `verify-operations-evidence-plan-invocation.ps1`, `verify-operations-dispatch-preflight.ps1`, `verify-operations-evidence-handoff.ps1`, and latest handoff/convergence regeneration passed. Missing-token API dispatch is covered as a safe blocked fixture.
+- Status: readiness is still `pending` with 20 target/live evidence checks until the external workflow, run-id, artifact import, and finalizer evidence is collected.
+### 2026-07-02 - Dispatch API command dashboard/API visibility
+
+- Scope: carried the new GitHub REST API dispatch path into the admin readiness API and dashboard so operators can copy the action 6 dispatch command without relying on local GitHub CLI availability.
+- Code/UI/docs: `operationsDispatchPreflight` now exposes `githubRef`, `apiExecuteCommand`, and `readySubsetApiExecuteCommand`; the admin dashboard readiness panel shows GitHub ref context and copy buttons for full/API and ready-subset/API dispatch commands; mock API and API/frontend docs cover the same fields.
+- Verification: `AdminDashboardSummaryControllerTest`, frontend unit tests, and mock API self-test passed after the contract update. The backend test fixture now also verifies the current web/API dispatch handoff wording.
+- Status: this improves the current action 6 dispatch handoff, but operations readiness remains `pending` until the external workflow/run-id/artifact/finalizer evidence is collected.
+### 2026-07-02 - Dispatch API fallback readiness item routing
+
+- Scope: tightened the current operations-readiness action 6 handoff by making the `OPERATIONS_DISPATCH_PREFLIGHT` readiness item carry the ready-subset GitHub REST API execute command when GitHub CLI is unavailable.
+- Code/docs: `AdminController` now selects an available dispatch command for `remediationWorkflowCommand` and appends a GH_TOKEN/GITHUB_TOKEN note when `readySubsetApiExecuteCommand` exists. Backend tests, mock API wording, and API spec examples cover the same operator path.
+- Verification: `AdminDashboardSummaryControllerTest`, frontend unit tests, mock API self-test, OpenAPI contract verification, MVP release checklist verification, dev-doc reference verification, doc encoding hygiene, and `git diff --check` passed.
+- Status: readiness is still `pending` at `passed=82 pending=20 total=102`; the remaining reduction requires external target/live evidence and GitHub workflow dispatch/run-id/artifact/finalizer collection.
+### 2026-07-02 - Dispatch Git ref safety routing
+
+- Scope: made the current action 6 dispatch handoff explicit about the local branch being ahead of the remote `main` ref, so operators do not dispatch a workflow against a ref that may not contain the latest readiness code.
+- Code/UI/docs: dispatch preflight can now emit `gitRefSafety`; the admin readiness API maps it through `operationsDispatchPreflight`, the readiness item prefers the suggested push command only when the working tree is clean, falls back to `git status --short` when dirty local changes would be excluded from Actions, and the dashboard/mock API show the safety summary, note, and optional push-command copy button. API/frontend docs describe the same contract.
+- Status: readiness remains pending until the suggested branch is pushed and the external workflow/run-id/artifact/finalizer evidence is collected.
+### 2026-07-02 - Dispatch Git ref dirty-worktree guard
+
+- Scope: tightened dispatch preflight so the current dirty working tree is not accidentally bypassed by pushing only `HEAD` to a GitHub Actions ref.
+- Code/UI/docs: `gitRefSafety` now treats dirty local changes as action-required, leaves `suggestedPushCommand` empty until the working tree is committed or intentionally cleaned, and the admin readiness item routes the next local remediation to `git status --short` instead of an API/browser dispatch command. Handoff/convergence evidence and API/frontend docs now describe the commit-before-push requirement.
+- Status: readiness remains pending at the target/live evidence stage; the next safe external path is to commit intended changes, rerun preflight, then publish a ref for action 6 dispatch.

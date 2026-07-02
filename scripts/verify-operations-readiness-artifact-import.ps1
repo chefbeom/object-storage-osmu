@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -66,14 +70,18 @@ function New-PassedOperationsHandoffPackageEvidenceRefs {
         operationsReadiness = "evidence/operations-readiness.json"
         operationsConvergence = "evidence/operations-convergence.json"
         dataFlowStoragePlan = "evidence/data-flow-storage-plan.json"
+        dataFlowQueryRetentionBudget = "evidence/data-flow-query-retention-budget.json"
         dataFlowStorageTransitionRunbook = "evidence/data-flow-storage-transition-runbook.json"
         secretRotation = "evidence/secret-rotation.json"
         commercialIntegration = "evidence/commercial-integration.json"
         commercialApproval = "evidence/commercial-approval.json"
+        chargebackCloseout = "evidence/chargeback-closeout.json"
         enterpriseAuth = "evidence/enterprise-auth-smoke.json"
         backupRestore = "evidence/backup-restore.json"
         haDr = "evidence/ha-dr.json"
         monitoring = "evidence/monitoring-threshold.json"
+        clusterNetworkAccessReview = "evidence/cluster-network-access-review.json"
+        helmValuesHardening = "evidence/helm-values-hardening.json"
         security = "evidence/security.json"
         iamRbac = "evidence/iam-rbac.json"
         runbookReview = "review/runbook"
@@ -95,12 +103,17 @@ function New-PassedOperationsHandoffPackageConfirmations {
         operationsReadinessSnapshotReviewed = $true
         operationsConvergenceSnapshotReviewed = $true
         dataFlowStoragePlanReviewed = $true
+        dataFlowQueryRetentionBudgetReviewed = $true
         dataFlowStorageTransitionRunbookReviewed = $true
         secretRotationSnapshotReviewed = $true
         commercialIntegrationSnapshotReviewed = $true
         commercialApprovalSnapshotReviewed = $true
+        chargebackCloseoutSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
+        enterpriseAuthJitRollbackSnapshotReviewed = $true
         monitoringThresholdReviewed = $true
+        clusterNetworkAccessReviewReviewed = $true
+        helmValuesHardeningReviewed = $true
         requireProductionEvidence = $true
         requireOperationsSnapshotEvidence = $true
     }
@@ -114,11 +127,38 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             validFormatVersion = $true
             result = "passed"
             passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
             candidateStore = "EXTERNAL_TIME_SERIES"
             checkCount = 8
             passedCount = 8
             pendingCount = 0
             queryPlanEvidencePassed = $true
+        }
+        dataFlowQueryRetentionBudget = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
+            queryLatencyWithinBudget = $true
+            retentionJobsWithinBudget = $true
+            confirmationsValid = $true
+            targetP95QueryLatencyMs = 500
+            observedP95QueryLatencyMs = 420
+            observedP99QueryLatencyMs = 470
+            querySampleCount = 120
+            observedQueryWindowDays = 180
+            retentionJobBudgetSeconds = 30
+            detailedRetentionObservedSeconds = 20
+            dailyRollupRetentionObservedSeconds = 18
+            monthlyRollupRetentionObservedSeconds = 12
+            failureCount = 0
+            checkCount = 8
         }
         dataFlowStorageTransitionRunbook = [ordered]@{
             provided = $true
@@ -126,6 +166,9 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             validFormatVersion = $true
             result = "passed"
             passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
             candidateStore = "EXTERNAL_TIME_SERIES"
             failureCount = 0
             checkCount = 8
@@ -137,6 +180,9 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             validFormatVersion = $true
             result = "passed"
             passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
             confirmationsValid = $true
             coreRequiredCount = 5
             coreRotatedCount = 5
@@ -150,6 +196,9 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             validFormatVersion = $true
             result = "passed"
             passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
             countsValid = $true
             integrationCount = 4
             verifiedCount = 4
@@ -166,6 +215,9 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             validFormatVersion = $true
             result = "passed"
             passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
             countsValid = $true
             passedCount = 14
             failureCount = 0
@@ -175,12 +227,73 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             pricingPolicyProposalCommercialApprovedCount = 1
             pricingPolicyProposalApprovedPriceListCount = 1
         }
+        chargebackCloseout = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
+            billingPeriod = "2026-06"
+            confirmationsValid = $true
+            summaryValid = $true
+            closeoutCountsValid = $true
+            rawDataFlagsValid = $true
+            noRawDataStored = $true
+            reconciliationDifferenceMinorUnits = 0
+            checkCount = 24
+            passCount = 24
+            failureCount = 0
+            plannedCount = 0
+            chargebackCloseoutSnapshot = [ordered]@{
+                provided = $true
+                parsed = $true
+                valid = $true
+                billingPeriod = "2026-06"
+                result = "RECONCILED"
+                statusClosed = $true
+                billingPeriodMatches = $true
+                integersValid = $true
+                booleansValid = $true
+                failureCountZero = $true
+                noRawDataStored = $true
+                counts = [ordered]@{
+                    invoiceDraftCount = 3
+                    finalInvoiceCount = 3
+                    paymentRequestedCount = 3
+                    paymentHandoffCount = 3
+                    paidInvoiceCount = 3
+                    reconciliationDifferenceMinorUnits = 0
+                    failureCount = 0
+                }
+                rawDataFlags = [ordered]@{
+                    rawCustomerPaymentDataStored = $false
+                    rawProviderResponseStored = $false
+                    rawSecretValuesStored = $false
+                }
+            }
+            paymentProviderAdapterReadiness = [ordered]@{
+                provided = $true
+                parsed = $true
+                valid = $true
+                mode = "PAYMENT_PROVIDER_ADAPTER_READINESS"
+                status = "WEBHOOK_PROFILE_READY"
+                profileCount = 5
+                webhookReadyProfileCount = 5
+                nativeApiReadyProfileCount = 0
+            }
+        }
         enterpriseAuthSmoke = [ordered]@{
             provided = $true
             parsed = $true
             validFormatVersion = $true
             result = "scope-out"
             passed = $false
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
             scopeOutAccepted = $true
             scopeOutAcceptedValid = $true
             countsValid = $true
@@ -189,12 +302,40 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             blockedCount = 0
             plannedCount = 0
         }
+        enterpriseAuthJitRollback = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
+            confirmationsValid = $true
+            failureCount = 0
+            checkCount = 10
+            enterpriseAuthSmokeSnapshot = [ordered]@{
+                provided = $true
+                parsed = $true
+                formatVersion = "osmu.enterprise-auth-smoke.v1"
+                result = "passed"
+                executionMode = "target-smoke"
+                passCount = 8
+                failCount = 0
+                blockedCount = 0
+                plannedCount = 0
+                scopeOutAccepted = $false
+            }
+        }
         monitoringThreshold = [ordered]@{
             provided = $true
             parsed = $true
             validFormatVersion = $true
             result = "passed"
             passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
             complete = $true
             requiredAlertCount = 4
             mappedAlertCount = 4
@@ -202,8 +343,42 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             routeCount = 2
             grafanaPanelCount = 4
             tuningEvidenceCount = 4
+            alertTargetCoverageComplete = $true
+            routeCoverageComplete = $true
+            grafanaPanelCoverageComplete = $true
+            tuningEvidenceCoverageComplete = $true
+            thresholdMappingComplete = $true
             failureCount = 0
             checkCount = 10
+        }
+        clusterNetworkAccessReview = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
+            staticControlsValid = $true
+            confirmationsValid = $true
+            failureCount = 0
+            totalCount = 32
+        }
+        helmValuesHardening = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            environmentName = "prod"
+            targetCluster = "osmu-prod"
+            operatorName = "ops-owner"
+            staticHardeningValid = $true
+            confirmationsValid = $true
+            failureCount = 0
+            totalCount = 31
+            chartFileCount = 1
         }
     }
 }
@@ -230,6 +405,9 @@ function New-PassedOperationsHandoffPackageChecks {
         "data-flow-storage-plan-evidence",
         "data-flow-storage-plan-snapshot-passed",
         "data-flow-storage-plan-reviewed",
+        "data-flow-query-retention-budget-evidence",
+        "data-flow-query-retention-budget-snapshot-passed",
+        "data-flow-query-retention-budget-reviewed",
         "data-flow-storage-transition-runbook-evidence",
         "data-flow-storage-transition-runbook-snapshot-passed",
         "data-flow-storage-transition-runbook-reviewed",
@@ -242,14 +420,28 @@ function New-PassedOperationsHandoffPackageChecks {
         "commercial-approval-evidence",
         "commercial-approval-snapshot-passed",
         "commercial-approval-snapshot-reviewed",
+        "chargeback-closeout-evidence",
+        "chargeback-closeout-snapshot-passed",
+        "chargeback-closeout-snapshot-reviewed",
         "enterprise-auth-evidence",
         "enterprise-auth-smoke-snapshot-accepted",
         "enterprise-auth-smoke-snapshot-reviewed",
+        "enterprise-auth-jit-rollback-evidence",
+        "enterprise-auth-jit-rollback-snapshot-passed",
+        "enterprise-auth-jit-rollback-snapshot-reviewed",
         "backup-restore-evidence",
         "ha-dr-evidence",
         "monitoring-evidence",
         "monitoring-threshold-snapshot-passed",
         "monitoring-threshold-reviewed",
+        "cluster-network-access-review-evidence",
+        "cluster-network-access-review-snapshot-parsed",
+        "cluster-network-access-review-snapshot-passed",
+        "cluster-network-access-review-reviewed",
+        "helm-values-hardening-evidence",
+        "helm-values-hardening-snapshot-parsed",
+        "helm-values-hardening-snapshot-passed",
+        "helm-values-hardening-reviewed",
         "security-evidence",
         "iam-rbac-evidence"
     )
@@ -278,12 +470,17 @@ function New-PassedOperationsHandoffPackageSummary([int] $CheckCount) {
         operationsConvergenceKubernetesReportSyncReady = $true
         operationsConvergenceKubernetesReportSyncSourceReportResult = "ready"
         dataFlowStoragePlanSnapshotResult = "passed"
+        dataFlowQueryRetentionBudgetSnapshotResult = "passed"
         dataFlowStorageTransitionRunbookSnapshotResult = "passed"
         secretRotationSnapshotResult = "passed"
         commercialIntegrationSnapshotResult = "passed"
         commercialApprovalSnapshotResult = "passed"
+        chargebackCloseoutSnapshotResult = "passed"
         enterpriseAuthSmokeSnapshotResult = "scope-out"
+        enterpriseAuthJitRollbackSnapshotResult = "passed"
         monitoringThresholdSnapshotResult = "passed"
+        clusterNetworkAccessReviewSnapshotResult = "passed"
+        helmValuesHardeningSnapshotResult = "passed"
     }
 }
 
@@ -402,6 +599,69 @@ function New-MinioBucketCorsVerification([bool] $Passed = $true, [object] $Failu
     }
 }
 
+function New-PassedDataFlowQueryRetentionBudgetEvidence([object] $DetailedRetentionObservedSeconds = 20, [object] $FailureCount = 0) {
+    return [ordered]@{
+        formatVersion = "osmu.data-flow-query-retention-budget-evidence.v1"
+        generatedAt = "2026-06-22T00:00:00Z"
+        result = "passed"
+        environmentName = "prod"
+        targetCluster = "osmu-prod"
+        operatorName = "ops-owner"
+        evidenceRef = "data-flow-query-retention-budget-20260622"
+        reviewWindow = @{
+            startedAt = "2026-06-22T00:00:00Z"
+            completedAt = "2026-06-22T00:10:00Z"
+        }
+        dataFlowStoragePlanSnapshot = @{
+            formatVersion = "osmu.data-flow-storage-plan.v1"
+            result = "passed"
+            candidateStore = "MARIADB_PARTITION"
+            targetP95QueryLatencyMs = 500
+            pendingCount = 0
+            checkCount = 10
+            queryPlanEvidenceResult = "passed"
+        }
+        evidenceRefs = @{
+            dataFlowStoragePlan = "data-flow-storage-plan-passed-20260622"
+            queryLatency = "query-latency-target-20260622"
+            retentionBudget = "retention-budget-target-20260622"
+        }
+        queryLatencyBudget = @{
+            targetP95QueryLatencyMs = 500
+            observedP95QueryLatencyMs = 420
+            observedP99QueryLatencyMs = 470
+            querySampleCount = 120
+            observedQueryWindowDays = 180
+            withinBudget = $true
+        }
+        retentionBudget = @{
+            budgetSeconds = 30
+            detailedRetentionObservedSeconds = $DetailedRetentionObservedSeconds
+            dailyRollupRetentionObservedSeconds = 18
+            monthlyRollupRetentionObservedSeconds = 12
+            detailedRetentionDeletedRows = 1000
+            dailyRollupRetentionDeletedRows = 300
+            monthlyRollupRetentionDeletedRows = 20
+            withinBudget = $true
+        }
+        confirmations = @{
+            queryLatencyReviewed = $true
+            retentionJobsWithinBudget = $true
+            noObjectKeysInEvidence = $true
+            noRawSqlOrExplain = $true
+            noSecretValues = $true
+        }
+        summary = @{
+            failureCount = $FailureCount
+            checkCount = 8
+        }
+        checks = @(
+            @{ id = "query-latency-reviewed"; status = "PASS"; passed = $true },
+            @{ id = "retention-jobs-within-budget"; status = "PASS"; passed = $true }
+        )
+        topFailedChecks = @()
+    }
+}
 function New-PassedDataFlowStorageTransitionRunbookChecks {
     $ids = @(
         "environment-name",
@@ -927,6 +1187,87 @@ function New-PassedEnterpriseAuthEvidence(
     }
 }
 
+function New-PassedEnterpriseAuthJitRollbackEvidence {
+    $checks = @(
+        @{ id = "environment-name"; name = "Environment name recorded"; status = "PASS"; passed = $true; detail = "environmentName=prod" },
+        @{ id = "target-cluster"; name = "Target cluster recorded"; status = "PASS"; passed = $true; detail = "targetCluster=osmu-prod" },
+        @{ id = "operator"; name = "Operator recorded"; status = "PASS"; passed = $true; detail = "operator=ops-owner" },
+        @{ id = "review-started-at"; name = "Review start timestamp recorded"; status = "PASS"; passed = $true; detail = "reviewStartedAt=2026-06-20T01:10:00Z" },
+        @{ id = "review-completed-at"; name = "Review completion timestamp recorded"; status = "PASS"; passed = $true; detail = "reviewCompletedAt=2026-06-20T01:40:00Z" },
+        @{ id = "review-window-order"; name = "Review window order valid"; status = "PASS"; passed = $true; detail = "review window ordered" },
+        @{ id = "change-approval-ref"; name = "Change approval reference recorded"; status = "PASS"; passed = $true; detail = "changeApprovalRef=enterprise-auth-jit-change-20260620" },
+        @{ id = "enterprise-auth-smoke-snapshot-accepted"; name = "Enterprise auth smoke or scope-out evidence snapshot accepted"; status = "PASS"; passed = $true; detail = "formatVersion=osmu.enterprise-auth-smoke.v1; result=passed; executionMode=execute; pass=6; fail=0; blocked=0; planned=0; scopeOutAccepted=False" },
+        @{ id = "jit-provision-evidence-ref"; name = "JIT provisioning evidence reference recorded"; status = "PASS"; passed = $true; detail = "jitProvisionEvidenceRef=jit-provision-20260620" },
+        @{ id = "jit-rollback-runbook-ref"; name = "JIT rollback runbook reference recorded"; status = "PASS"; passed = $true; detail = "jitRollbackRunbookRef=jit-rollback-runbook-20260620" },
+        @{ id = "user-disable-rollback-evidence-ref"; name = "JIT user disable or lock rollback evidence reference recorded"; status = "PASS"; passed = $true; detail = "userDisableRollbackEvidenceRef=jit-user-disable-20260620" },
+        @{ id = "role-mapping-rollback-evidence-ref"; name = "Role/org/team mapping rollback evidence reference recorded"; status = "PASS"; passed = $true; detail = "roleMappingRollbackEvidenceRef=role-org-team-rollback-20260620" },
+        @{ id = "local-login-fallback-evidence-ref"; name = "Local password fallback evidence reference recorded"; status = "PASS"; passed = $true; detail = "localLoginFallbackEvidenceRef=local-login-fallback-20260620" },
+        @{ id = "audit-review-evidence-ref"; name = "JIT audit review evidence reference recorded"; status = "PASS"; passed = $true; detail = "auditReviewEvidenceRef=jit-audit-review-20260620" },
+        @{ id = "admin-approval-required-confirmed"; name = "Admin approval required for JIT provisioning"; status = "PASS"; passed = $true; detail = "admin approval required" },
+        @{ id = "callback-auto-jit-disabled-confirmed"; name = "OIDC callback auto-JIT disabled"; status = "PASS"; passed = $true; detail = "callback auto-JIT disabled" },
+        @{ id = "jit-user-disable-or-lock-rollback-confirmed"; name = "JIT user disable or lock rollback reviewed"; status = "PASS"; passed = $true; detail = "user disable rollback reviewed" },
+        @{ id = "role-org-team-rollback-confirmed"; name = "Role, organization, and team mapping rollback reviewed"; status = "PASS"; passed = $true; detail = "role org team rollback reviewed" },
+        @{ id = "local-login-fallback-confirmed"; name = "Local password fallback validated"; status = "PASS"; passed = $true; detail = "local login fallback validated" },
+        @{ id = "audit-events-reviewed-confirmed"; name = "JIT audit events reviewed"; status = "PASS"; passed = $true; detail = "audit events reviewed" },
+        @{ id = "no-raw-claims-confirmed"; name = "No raw claims recorded confirmation"; status = "PASS"; passed = $true; detail = "no raw claims" },
+        @{ id = "no-secret-values-confirmed"; name = "No secret values recorded confirmation"; status = "PASS"; passed = $true; detail = "no secret values" }
+    )
+    return @{
+        formatVersion = "osmu.enterprise-auth-jit-rollback-evidence.v1"
+        generatedAt = "2026-06-22T00:00:00Z"
+        result = "passed"
+        environmentName = "prod"
+        targetCluster = "osmu-prod"
+        operatorName = "ops-owner"
+        evidenceRef = "enterprise-auth-jit-rollback-20260620"
+        reviewWindow = @{
+            startedAt = "2026-06-20T01:10:00Z"
+            completedAt = "2026-06-20T01:40:00Z"
+        }
+        enterpriseAuthSmokeSnapshot = @{
+            provided = $true
+            path = "latest-enterprise-auth-smoke.json"
+            parsed = $true
+            formatVersion = "osmu.enterprise-auth-smoke.v1"
+            result = "passed"
+            executionMode = "execute"
+            passCount = 6
+            failCount = 0
+            blockedCount = 0
+            plannedCount = 0
+            skippedCount = 0
+            scopeOutAccepted = $false
+            detail = "formatVersion=osmu.enterprise-auth-smoke.v1; result=passed; executionMode=execute; pass=6; fail=0; blocked=0; planned=0; scopeOutAccepted=False"
+        }
+        evidenceRefs = @{
+            changeApproval = "enterprise-auth-jit-change-20260620"
+            jitProvision = "jit-provision-20260620"
+            jitRollbackRunbook = "jit-rollback-runbook-20260620"
+            userDisableRollback = "jit-user-disable-20260620"
+            roleMappingRollback = "role-org-team-rollback-20260620"
+            localLoginFallback = "local-login-fallback-20260620"
+            auditReview = "jit-audit-review-20260620"
+        }
+        confirmations = @{
+            adminApprovalRequired = $true
+            callbackAutoJitDisabled = $true
+            jitUserDisableOrLockRollbackReviewed = $true
+            roleOrgTeamRollbackReviewed = $true
+            localPasswordFallbackValidated = $true
+            auditEventsReviewed = $true
+            noRawClaims = $true
+            noSecretValues = $true
+        }
+        summary = @{
+            failureCount = 0
+            checkCount = $checks.Count
+        }
+        checks = $checks
+        decisionRule = "Production/B2B enterprise auth JIT readiness requires result=passed after admin-approved JIT provisioning evidence, rollback runbook review, user disable/lock rollback evidence, role/org/team mapping rollback review, local password fallback validation, audit review, and no-raw-claim/no-secret confirmations."
+        scopePolicy = "Enterprise auth JIT rollback/runbook evidence only. It does not execute IdP, LDAP, user, role, organization, or team changes."
+        secretPolicy = "Evidence stores only environment labels, references, booleans, reduced enterprise auth smoke summary, and external evidence references; it does not contain passwords, bearer tokens, OIDC codes/states, access/refresh/id tokens, LDAP/admin passwords, client secrets, raw OIDC claims, raw identity provider responses, or raw directory data."
+    }
+}
 $resolvedOutputDirectory = Resolve-ProjectPath $OutputDirectory
 if (Test-Path -LiteralPath $resolvedOutputDirectory) {
     Remove-Item -LiteralPath $resolvedOutputDirectory -Recurse -Force
@@ -960,6 +1301,8 @@ $weakDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "weak-data-flow-ru
 $stringBoolDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "string-bool-data-flow-runbook-source"
 $weakDataFlowRunbookChecksRoot = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-checks-source"
 $weakDirectDataFlowStoragePlanRoot = Join-Path $resolvedOutputDirectory "weak-direct-data-flow-storage-plan-source"
+$weakDirectDataFlowQueryRetentionBudgetRoot = Join-Path $resolvedOutputDirectory "weak-direct-data-flow-query-retention-budget-source"
+$stringCountDirectDataFlowQueryRetentionBudgetRoot = Join-Path $resolvedOutputDirectory "string-count-direct-data-flow-query-retention-budget-source"
 $stringCountDirectDataFlowStoragePlanRoot = Join-Path $resolvedOutputDirectory "string-count-direct-data-flow-storage-plan-source"
 $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-source"
 $stringBoolMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold-source"
@@ -975,6 +1318,8 @@ $weakCommercialApprovalChecksRoot = Join-Path $resolvedOutputDirectory "weak-com
 $invalidEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-source"
 $stringCountEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-source"
 $weakEnterpriseAuthChecksRoot = Join-Path $resolvedOutputDirectory "weak-enterprise-auth-checks-source"
+$selfTestTargetClusterNetworkAccessReviewRoot = Join-Path $resolvedOutputDirectory "self-test-target-cluster-network-access-review-source"
+$selfTestTargetHelmValuesHardeningRoot = Join-Path $resolvedOutputDirectory "self-test-target-helm-values-hardening-source"
 $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-source"
 $badConvergenceOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-source"
 $stringBoolOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "string-bool-operations-handoff-package-source"
@@ -989,13 +1334,19 @@ $securitySource = Join-Path $sourceRoot "security-evidence"
 $storageBackendTelemetrySource = Join-Path $sourceRoot "storage-backend-telemetry"
 $minioBucketCorsSource = Join-Path $sourceRoot "minio-bucket-cors"
 $monitoringThresholdSource = Join-Path $sourceRoot "monitoring-threshold"
+$clusterNetworkAccessReviewSource = Join-Path $sourceRoot "cluster-network-access-review"
+$helmValuesHardeningSource = Join-Path $sourceRoot "helm-values-hardening"
+$supportEscalationHandoffSource = Join-Path $sourceRoot "support-escalation-handoff"
 $secretRotationSource = Join-Path $sourceRoot "secret-rotation"
 $commercialIntegrationSource = Join-Path $sourceRoot "commercial-integration"
 $commercialApprovalSource = Join-Path $sourceRoot "commercial-approval"
+$chargebackCloseoutSource = Join-Path $sourceRoot "chargeback-closeout"
 $enterpriseAuthSource = Join-Path $sourceRoot "enterprise-auth"
+$enterpriseAuthJitRollbackSource = Join-Path $sourceRoot "enterprise-auth-jit-rollback"
 $operationsHandoffPackageSource = Join-Path $sourceRoot "operations-handoff-package"
 $kubernetesOperationsReportSyncSource = Join-Path $sourceRoot "kubernetes-operations-report-sync"
 $directDataFlowStoragePlanSource = Join-Path $sourceRoot "data-flow-storage-plan"
+$dataFlowQueryRetentionBudgetSource = Join-Path $sourceRoot "data-flow-query-retention-budget"
 $dataFlowStorageTransitionRunbookSource = Join-Path $sourceRoot "data-flow-storage-transition-runbook"
 
 Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-finalize.json") (New-PassedStorageExpansionFinalize)
@@ -1139,6 +1490,11 @@ Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-thre
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+        alertTargetCoverageComplete = $true
+        routeCoverageComplete = $true
+        grafanaPanelCoverageComplete = $true
+        tuningEvidenceCoverageComplete = $true
+        thresholdMappingComplete = $true
     }
     evidenceRefs = @{
         changeApproval = "CHG-2026-MONITORING"
@@ -1332,7 +1688,7 @@ Write-JsonEvidence (Join-Path $commercialIntegrationSource "latest-commercial-in
         @{ id = "required-integration-coverage"; status = "PASS"; passed = $true }
     )
     decisionRule = "Production/B2B commercial integration readiness requires result=passed from the target environment for every required notification/payment handoff adapter profile, payment-provider adapter readiness review, adapter retry worker evidence, payload cap check, private/local endpoint blocking check, HMAC signature review, no-secret confirmation, and no-raw-provider-response confirmation."
-    scopePolicy = "This evidence covers configured webhook/Slack/EMAIL SMTP relay, generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification, and the sanitized payment-provider adapter readiness snapshot. It does not claim or require native card, bank, tax invoice, or ERP processor API support."
+    scopePolicy = "This evidence covers configured webhook/Slack/EMAIL SMTP relay, generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification, configurable native payment-provider bridge readiness, and the sanitized payment-provider adapter readiness snapshot. It does not claim vendor-specific fixed SDK/schema card, bank, tax invoice, ERP, or external payment processor implementation or raw provider response handling."
     secretPolicy = "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain webhook URLs with credentials, SMTP passwords, payment provider credentials, signing secrets, bearer tokens, private keys, raw provider responses, or customer payment data."
 }
 Write-TextEvidence (Join-Path $commercialIntegrationSource "latest-commercial-integration-evidence.md") "# Commercial integration"
@@ -1416,12 +1772,130 @@ Write-JsonEvidence (Join-Path $commercialApprovalSource "latest-commercial-appro
     secretPolicy = "Evidence stores only product version, approver identity, timestamps, booleans, sanitized pricing proposal status/reference metadata, and external approval references; it must not contain passwords, tokens, private keys, license keys, signing secrets, customer payment data, raw price tables, or raw contract text."
 }
 Write-TextEvidence (Join-Path $commercialApprovalSource "latest-commercial-approval-evidence.md") "# Commercial approval"
+Write-JsonEvidence (Join-Path $chargebackCloseoutSource "latest-chargeback-closeout-evidence.json") @{
+    formatVersion = "osmu.chargeback-closeout-evidence.v1"
+    generatedAt = "2026-06-20T02:00:00Z"
+    result = "passed"
+    target = @{
+        environmentName = "prod"
+        targetCluster = "osmu-prod"
+        operator = "ops-owner"
+        billingPeriod = "2026-06"
+        closeoutStartedAt = "2026-06-30T01:00:00Z"
+        closeoutCompletedAt = "2026-06-30T01:45:00Z"
+        changeApprovalRef = "chargeback-closeout-change-20260630"
+    }
+    summary = @{
+        checkCount = 40
+        passCount = 40
+        failureCount = 0
+        plannedCount = 0
+        requiredEvidenceRefCount = 14
+        providedEvidenceRefCount = 14
+        chargebackCloseoutSnapshotValid = $true
+        paymentProviderAdapterReadinessSnapshotValid = $true
+        paymentProviderAdapterReadinessReviewed = $true
+        commercialEvidenceReviewed = $true
+    }
+    evidenceRefs = @{
+        pricingPolicy = "pricing-policy-run-20260630"
+        pricingProposalApproval = "pricing-proposal-approval-run-20260630"
+        chargebackPreview = "chargeback-preview-run-20260630"
+        chargebackTrendExport = "chargeback-trend-export-run-20260630"
+        invoiceDraft = "invoice-draft-run-20260630"
+        invoiceFinalization = "invoice-finalization-run-20260630"
+        paymentRequest = "payment-request-run-20260630"
+        paymentProviderHandoff = "payment-provider-handoff-run-20260630"
+        paymentProviderAdapterReadiness = "payment-adapter-readiness-run-20260630"
+        notificationDelivery = "notification-delivery-run-20260630"
+        adapterRetryWorker = "adapter-retry-worker-run-20260630"
+        reconciliation = "chargeback-reconciliation-run-20260630"
+        commercialIntegration = "commercial-integration-run-20260630"
+        commercialApproval = "commercial-approval-run-20260630"
+    }
+    confirmations = @{
+        pricingPolicyReviewed = $true
+        priceListApproved = $true
+        usageWindowReviewed = $true
+        chargebackPreviewReviewed = $true
+        trendExportReviewed = $true
+        invoiceDraftReviewed = $true
+        invoiceFinalized = $true
+        paymentRequestReviewed = $true
+        paymentProviderHandoffReviewed = $true
+        paymentProviderAdapterReadinessReviewed = $true
+        notificationDeliveryReviewed = $true
+        adapterRetryReviewed = $true
+        reconciliationReviewed = $true
+        commercialIntegrationReviewed = $true
+        commercialApprovalReviewed = $true
+        noRawCustomerPaymentData = $true
+        noRawProviderResponses = $true
+        noSecretValues = $true
+        requirePaymentProviderAdapterReadinessSnapshot = $true
+    }
+    chargebackCloseoutSnapshot = @{
+        provided = $true
+        parsed = $true
+        valid = $true
+        billingPeriod = "2026-06"
+        result = "passed"
+        statusClosed = $true
+        billingPeriodMatches = $true
+        integersValid = $true
+        booleansValid = $true
+        failureCountZero = $true
+        noRawDataStored = $true
+        counts = @{
+            invoiceDraftCount = 4
+            finalInvoiceCount = 4
+            paymentRequestedCount = 4
+            paymentHandoffCount = 4
+            paidInvoiceCount = 4
+            reconciliationDifferenceMinorUnits = 0
+            failureCount = 0
+        }
+        rawDataFlags = @{
+            rawCustomerPaymentDataStored = $false
+            rawProviderResponseStored = $false
+            rawSecretValuesStored = $false
+        }
+    }
+    paymentProviderAdapterReadiness = @{
+        provided = $true
+        parsed = $true
+        valid = $true
+        profileCoverageValid = $true
+    }
+    checks = @(
+        @{ id = "target-metadata"; status = "PASS"; passed = $true },
+        @{ id = "closeout-window-order"; status = "PASS"; passed = $true },
+        @{ id = "change-approval-ref"; status = "PASS"; passed = $true },
+        @{ id = "chargeback-closeout-snapshot-valid"; status = "PASS"; passed = $true },
+        @{ id = "payment-provider-adapter-readiness-snapshot-valid"; status = "PASS"; passed = $true },
+        @{ id = "payment-provider-adapter-readiness-reviewed"; status = "PASS"; passed = $true },
+        @{ id = "commercial-integration-reviewed"; status = "PASS"; passed = $true },
+        @{ id = "commercial-approval-reviewed"; status = "PASS"; passed = $true },
+        @{ id = "no-raw-customer-payment-data"; status = "PASS"; passed = $true },
+        @{ id = "no-raw-provider-responses"; status = "PASS"; passed = $true },
+        @{ id = "no-secret-values"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Production/B2B chargeback closeout readiness requires result=passed from the target environment."
+    scopePolicy = "OSMU tenant billing/chargeback closeout evidence only. This does not claim vendor-specific fixed SDK/schema card, bank, tax, ERP, or external payment processor implementation."
+    secretPolicy = "Evidence stores references, booleans, typed counts, and reduced readiness metadata only."
+}
+Write-TextEvidence (Join-Path $chargebackCloseoutSource "latest-chargeback-closeout-evidence.md") "# Chargeback closeout"
 Write-JsonEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.json") (New-ScopeOutEnterpriseAuthEvidence)
 Write-TextEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.md") "# Enterprise auth smoke"
+Write-JsonEvidence (Join-Path $enterpriseAuthJitRollbackSource "latest-enterprise-auth-jit-rollback-evidence.json") (New-PassedEnterpriseAuthJitRollbackEvidence)
+Write-TextEvidence (Join-Path $enterpriseAuthJitRollbackSource "latest-enterprise-auth-jit-rollback-evidence.md") "# Enterprise auth JIT rollback"
 $passedOperationsHandoffPackageChecks = New-PassedOperationsHandoffPackageChecks
 Write-JsonEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
     operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
     evidenceRefs = (New-PassedOperationsHandoffPackageEvidenceRefs)
     targetEvidenceSnapshots = (New-PassedOperationsHandoffPackageTargetSnapshots)
@@ -1430,6 +1904,8 @@ Write-JsonEvidence (Join-Path $operationsHandoffPackageSource "latest-operations
     checks = $passedOperationsHandoffPackageChecks
 }
 Write-TextEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.md") "# Operations handoff package"
+Write-JsonEvidence (Join-Path $dataFlowQueryRetentionBudgetSource "latest-data-flow-query-retention-budget-evidence.json") (New-PassedDataFlowQueryRetentionBudgetEvidence)
+Write-TextEvidence (Join-Path $dataFlowQueryRetentionBudgetSource "latest-data-flow-query-retention-budget-evidence.md") "# Data-flow query retention budget"
 $passedDataFlowRunbookChecks = New-PassedDataFlowStorageTransitionRunbookChecks
 Write-JsonEvidence (Join-Path $dataFlowStorageTransitionRunbookSource "latest-data-flow-storage-transition-runbook-evidence.json") @{
     formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
@@ -1516,6 +1992,7 @@ Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data
         detail = "No MariaDB query plan evidence JSON supplied."
     }
 }
+Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data-flow-query-retention-budget-evidence.json") (New-PassedDataFlowQueryRetentionBudgetEvidence)
 Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data-flow-storage-transition-runbook-evidence.json") @{
     formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
     generatedAt = "2026-06-22T00:00:00Z"
@@ -1565,7 +2042,140 @@ Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data
     topFailedChecks = @()
 }
 
+$clusterNetworkAccessReviewWriter = Resolve-ProjectPath ".\scripts\write-cluster-network-access-review-evidence.ps1"
+& powershell -NoProfile -ExecutionPolicy Bypass -File $clusterNetworkAccessReviewWriter `
+    -EnvironmentName prod `
+    -TargetCluster osmu-prod `
+    -Operator ops-owner `
+    -ReviewStartedAt 2026-06-20T04:00:00Z `
+    -ReviewCompletedAt 2026-06-20T04:20:00Z `
+    -ChangeApprovalRef cluster-network-review-change-20260620 `
+    -DnsEgressReviewRef dns-egress-review-20260620 `
+    -MariaDbAccessReviewRef mariadb-access-review-20260620 `
+    -MinioAccessReviewRef minio-access-review-20260620 `
+    -BackupAccessReviewRef backup-access-review-20260620 `
+    -PublicIngressReviewRef public-ingress-review-20260620 `
+    -DefaultDenyReviewRef default-deny-review-20260620 `
+    -ObservabilityScrapeReviewRef observability-scrape-review-20260620 `
+    -K8sVerifierEvidenceRef k8s-verifier-20260620 `
+    -HelmVerifierEvidenceRef helm-verifier-20260620 `
+    -EvidenceRef cluster-network-access-review-20260620 `
+    -ConfirmBackendOnlyMariaDb `
+    -ConfirmBackendOnlyMinio `
+    -ConfirmBackupOnlyMariaDbMinio `
+    -ConfirmDnsEgressScoped `
+    -ConfirmMariaDbIngressBackendBackupOnly `
+    -ConfirmMinioIngressBackendBackupOnly `
+    -ConfirmPublicIngressLimited `
+    -ConfirmNamespaceDefaultDenyReviewed `
+    -ConfirmObservabilityScrapeReviewed `
+    -ConfirmHelmNetworkPolicyEnabled `
+    -ConfirmNoCredentialValues `
+    -JsonOutputPath (Join-Path $clusterNetworkAccessReviewSource "latest-cluster-network-access-review-evidence.json") `
+    -MarkdownOutputPath (Join-Path $clusterNetworkAccessReviewSource "latest-cluster-network-access-review-evidence.md") `
+    -FailIfNotPassed | Out-Host
+if ($LASTEXITCODE -ne 0) { throw "write-cluster-network-access-review-evidence.ps1 source fixture failed with exit code $LASTEXITCODE." }
+
+$helmValuesHardeningWriter = Resolve-ProjectPath ".\scripts\write-helm-values-hardening-evidence.ps1"
+& powershell -NoProfile -ExecutionPolicy Bypass -File $helmValuesHardeningWriter `
+    -EnvironmentName prod `
+    -TargetCluster osmu-prod `
+    -Operator ops-owner `
+    -ReviewStartedAt 2026-06-20T04:20:00Z `
+    -ReviewCompletedAt 2026-06-20T04:40:00Z `
+    -ChangeApprovalRef helm-values-hardening-change-20260620 `
+    -HelmVerifierEvidenceRef helm-verifier-20260620 `
+    -KubernetesVerifierEvidenceRef k8s-verifier-20260620 `
+    -ContainerHardeningEvidenceRef container-hardening-20260620 `
+    -ClusterNetworkAccessReviewEvidenceRef cluster-network-access-review-20260620 `
+    -EvidenceRef helm-values-hardening-20260620 `
+    -ConfirmSecretsExternalized `
+    -ConfirmDefaultSecretPlaceholdersNotUsed `
+    -ConfirmHaReplicasReviewed `
+    -ConfirmResourcesBounded `
+    -ConfirmSecurityContextsReviewed `
+    -ConfirmNetworkPolicyEnabled `
+    -ConfirmTlsIngressReviewed `
+    -ConfirmOperationsReportsReadOnly `
+    -ConfirmStorageExpansionRbacDisabledByDefault `
+    -ConfirmNoCredentialValues `
+    -JsonOutputPath (Join-Path $helmValuesHardeningSource "latest-helm-values-hardening-evidence.json") `
+    -MarkdownOutputPath (Join-Path $helmValuesHardeningSource "latest-helm-values-hardening-evidence.md") `
+    -FailIfNotPassed | Out-Host
+if ($LASTEXITCODE -ne 0) { throw "write-helm-values-hardening-evidence.ps1 source fixture failed with exit code $LASTEXITCODE." }
+
 $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artifacts.ps1"
+
+$supportEscalationHandoffWriter = Resolve-ProjectPath ".\scripts\write-support-escalation-handoff-evidence.ps1"
+& powershell -NoProfile -ExecutionPolicy Bypass -File $supportEscalationHandoffWriter `
+    -EnvironmentName prod `
+    -TargetCluster osmu-prod `
+    -Operator ops-owner `
+    -ReviewStartedAt "2026-06-20T04:40:00Z" `
+    -ReviewCompletedAt "2026-06-20T05:00:00Z" `
+    -ChangeApprovalRef support-handoff-change-20260620 `
+    -OperationsHandoffPackageRef operations-handoff-package-20260620 `
+    -RunbookReviewRef runbook-20260620 `
+    -TroubleshootingReviewRef troubleshooting-20260620 `
+    -RollbackReviewRef rollback-20260620 `
+    -SupportEscalationRef support-escalation-20260620 `
+    -SupportSlaRef support-sla-20260620 `
+    -KnownGapsRef known-gaps-20260620 `
+    -EvidenceRef support-escalation-handoff-20260620 `
+    -ConfirmRunbookReviewed `
+    -ConfirmTroubleshootingReviewed `
+    -ConfirmRollbackPathReviewed `
+    -ConfirmSupportEscalationReviewed `
+    -ConfirmSupportSlaReviewed `
+    -ConfirmKnownGapsAccepted `
+    -ConfirmOperationsHandoffReferenceReady `
+    -ConfirmNoCredentialValues `
+    -JsonOutputPath (Join-Path $supportEscalationHandoffSource "latest-support-escalation-handoff-evidence.json") `
+    -MarkdownOutputPath (Join-Path $supportEscalationHandoffSource "latest-support-escalation-handoff-evidence.md") `
+    -FailIfNotPassed | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "write-support-escalation-handoff-evidence.ps1 source fixture failed with exit code $LASTEXITCODE." }
+function Invoke-ImportExpectedFailure(
+    [string] $ArtifactParameterName,
+    [string] $ArtifactRoot,
+    [string] $OutputName,
+    [string] $FileName,
+    [string] $ExpectedDetail
+) {
+    $output = Join-Path $resolvedOutputDirectory "$OutputName-promoted"
+    $json = Join-Path $resolvedOutputDirectory "$OutputName-import.json"
+    $markdown = Join-Path $resolvedOutputDirectory "$OutputName-import.md"
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $arguments = @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            $importScript,
+            $ArtifactParameterName,
+            $ArtifactRoot,
+            "-OutputDirectory",
+            $output,
+            "-JsonOutputPath",
+            $json,
+            "-MarkdownOutputPath",
+            $markdown
+        )
+        $null = & powershell @arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    Assert-True ($exitCode -ne 0) "$OutputName import should fail."
+    Assert-True (Test-Path -LiteralPath $json) "$OutputName import report should still be written."
+    $report = Read-Utf8Text $json | ConvertFrom-Json
+    Assert-True ($report.result -eq "failed") "$OutputName import report should be failed."
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $output $FileName))) "$OutputName evidence must not be promoted."
+    Assert-True (($report.entries | ConvertTo-Json -Depth 12).Contains($ExpectedDetail)) "$OutputName report should describe $ExpectedDetail."
+    return $report
+}
 & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
     -StorageExpansionArtifactPath $storageSource `
     -HaDrReadinessArtifactPath $haDrSource `
@@ -1575,12 +2185,18 @@ $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artif
     -StorageBackendTelemetryArtifactPath $storageBackendTelemetrySource `
     -MinioBucketCorsArtifactPath $minioBucketCorsSource `
     -MonitoringThresholdArtifactPath $monitoringThresholdSource `
+    -ClusterNetworkAccessReviewArtifactPath $clusterNetworkAccessReviewSource `
+    -HelmValuesHardeningArtifactPath $helmValuesHardeningSource `
+    -SupportEscalationHandoffArtifactPath $supportEscalationHandoffSource `
     -SecretRotationArtifactPath $secretRotationSource `
     -CommercialIntegrationArtifactPath $commercialIntegrationSource `
     -CommercialApprovalArtifactPath $commercialApprovalSource `
+    -ChargebackCloseoutArtifactPath $chargebackCloseoutSource `
     -EnterpriseAuthArtifactPath $enterpriseAuthSource `
+    -EnterpriseAuthJitRollbackArtifactPath $enterpriseAuthJitRollbackSource `
     -OperationsHandoffPackageArtifactPath $operationsHandoffPackageSource `
     -DataFlowStorageTransitionRunbookArtifactPath $dataFlowStorageTransitionRunbookSource `
+    -DataFlowQueryRetentionBudgetArtifactPath $dataFlowQueryRetentionBudgetSource `
     -KubernetesOperationsReportSyncArtifactPath $kubernetesOperationsReportSyncSource `
     -OutputDirectory $promotedRoot `
     -JsonOutputPath (Join-Path $resolvedOutputDirectory "latest-operations-readiness-artifact-import.json") `
@@ -1590,11 +2206,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $reportPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-artifact-import.json"
-$report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
+$report = Read-Utf8Text $reportPath | ConvertFrom-Json
 Assert-True ($report.formatVersion -eq "osmu.operations-readiness-artifact-import.v1") "Unexpected import report formatVersion."
 Assert-True ($report.result -eq "passed") "Expected import report result=passed."
 Assert-True ($report.status -eq "artifact-imported") "Expected import report status=artifact-imported."
-Assert-True ($report.importedCount -ge 19) "Expected imported evidence files."
+Assert-True ($report.importedCount -ge 25) "Expected imported evidence files."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-finalize.json")) "Promoted storage expansion evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-rbac-auth.json")) "Promoted storage expansion RBAC evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-server-dry-run.json")) "Promoted storage expansion server dry-run evidence missing."
@@ -1610,32 +2226,50 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-minio-bucke
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-minio-bucket-cors-verification.md")) "Promoted MinIO bucket CORS verification markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json")) "Promoted monitoring threshold evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.md")) "Promoted monitoring threshold markdown missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-cluster-network-access-review-evidence.json")) "Promoted cluster network access review evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-cluster-network-access-review-evidence.md")) "Promoted cluster network access review markdown missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-helm-values-hardening-evidence.json")) "Promoted Helm values hardening evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-helm-values-hardening-evidence.md")) "Promoted Helm values hardening markdown missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-support-escalation-handoff-evidence.json")) "Promoted support escalation handoff evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-support-escalation-handoff-evidence.md")) "Promoted support escalation handoff markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json")) "Promoted secret rotation evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.md")) "Promoted secret rotation markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json")) "Promoted commercial integration evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.md")) "Promoted commercial integration markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json")) "Promoted commercial approval evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.md")) "Promoted commercial approval markdown missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-chargeback-closeout-evidence.json")) "Promoted chargeback closeout evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-chargeback-closeout-evidence.md")) "Promoted chargeback closeout markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json")) "Promoted enterprise auth smoke evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-jit-rollback-evidence.json")) "Promoted enterprise auth JIT rollback evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-jit-rollback-evidence.md")) "Promoted enterprise auth JIT rollback markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.json")) "Promoted operations handoff package evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.md")) "Promoted operations handoff package markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json")) "Promoted data-flow storage transition runbook evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-query-retention-budget-evidence.json")) "Promoted data-flow query/retention budget evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-query-retention-budget-evidence.md")) "Promoted data-flow query/retention budget markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.md")) "Promoted data-flow storage transition runbook markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json")) "Promoted Kubernetes operations report sync evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-plan.json")) "Promoted data-flow storage plan evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json")) "Promoted data-flow storage transition runbook evidence missing."
-$promotedImageSigning = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-image-signing-evidence.json") | ConvertFrom-Json
-$promotedContainerSecurity = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-container-security-evidence.json") | ConvertFrom-Json
-$promotedStorageExpansion = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-finalize.json") | ConvertFrom-Json
-$promotedHaDrReadiness = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-ha-dr-readiness.json") | ConvertFrom-Json
-$promotedKubernetesDrFinalize = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-dr-finalize.json") | ConvertFrom-Json
-$promotedIamRbac = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-iam-rbac-finalize.json") | ConvertFrom-Json
-$promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
-$promotedStorageBackendTelemetry = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
-$promotedMinioBucketCors = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-minio-bucket-cors-verification.json") | ConvertFrom-Json
-$promotedMonitoringThreshold = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json") | ConvertFrom-Json
-$promotedSecretRotation = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json") | ConvertFrom-Json
-$promotedCommercialIntegration = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json") | ConvertFrom-Json
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-query-retention-budget-evidence.json")) "Promoted data-flow query/retention budget evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-query-retention-budget-evidence.md")) "Promoted data-flow query/retention budget markdown missing."
+$promotedImageSigning = Read-Utf8Text (Join-Path $promotedRoot "latest-image-signing-evidence.json") | ConvertFrom-Json
+$promotedContainerSecurity = Read-Utf8Text (Join-Path $promotedRoot "latest-container-security-evidence.json") | ConvertFrom-Json
+$promotedStorageExpansion = Read-Utf8Text (Join-Path $promotedRoot "latest-storage-expansion-finalize.json") | ConvertFrom-Json
+$promotedHaDrReadiness = Read-Utf8Text (Join-Path $promotedRoot "latest-kubernetes-ha-dr-readiness.json") | ConvertFrom-Json
+$promotedKubernetesDrFinalize = Read-Utf8Text (Join-Path $promotedRoot "latest-kubernetes-dr-finalize.json") | ConvertFrom-Json
+$promotedIamRbac = Read-Utf8Text (Join-Path $promotedRoot "latest-iam-rbac-finalize.json") | ConvertFrom-Json
+$promotedCommercialApproval = Read-Utf8Text (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
+$promotedChargebackCloseout = Read-Utf8Text (Join-Path $promotedRoot "latest-chargeback-closeout-evidence.json") | ConvertFrom-Json
+$promotedStorageBackendTelemetry = Read-Utf8Text (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
+$promotedMinioBucketCors = Read-Utf8Text (Join-Path $promotedRoot "latest-minio-bucket-cors-verification.json") | ConvertFrom-Json
+$promotedMonitoringThreshold = Read-Utf8Text (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json") | ConvertFrom-Json
+$promotedClusterNetworkAccessReview = Read-Utf8Text (Join-Path $promotedRoot "latest-cluster-network-access-review-evidence.json") | ConvertFrom-Json
+$promotedHelmValuesHardening = Read-Utf8Text (Join-Path $promotedRoot "latest-helm-values-hardening-evidence.json") | ConvertFrom-Json
+$promotedSupportEscalationHandoff = Read-Utf8Text (Join-Path $promotedRoot "latest-support-escalation-handoff-evidence.json") | ConvertFrom-Json
+$promotedSecretRotation = Read-Utf8Text (Join-Path $promotedRoot "latest-secret-rotation-evidence.json") | ConvertFrom-Json
+$promotedCommercialIntegration = Read-Utf8Text (Join-Path $promotedRoot "latest-commercial-integration-evidence.json") | ConvertFrom-Json
 Assert-True ($promotedImageSigning.backend.versionSignatureVerified -eq $true -and $promotedImageSigning.frontend.shaSignatureVerified -eq $true) "Promoted image signing evidence should preserve signature verification flags."
 Assert-True ($promotedContainerSecurity.scans.backendScanPassed -eq $true -and $promotedContainerSecurity.sbom.backend.valid -eq $true) "Promoted container security evidence should preserve scan and SBOM flags."
 Assert-True ($promotedStorageExpansion.impersonateRunner -eq $true -and $promotedStorageExpansion.failedCount -eq 0) "Promoted storage expansion finalizer should preserve typed runner and failure fields."
@@ -1681,9 +2315,22 @@ Assert-True ($promotedMonitoringThreshold.confirmations.noSecretValues) "Promote
 $monitoringThresholdEntry = @($report.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
 Assert-True ($monitoringThresholdEntry.Count -eq 1) "Monitoring threshold import entry missing."
 Assert-True (([string] $monitoringThresholdEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $monitoringThresholdEntry[0].detail).Contains("requiredAlerts=11") -and ([string] $monitoringThresholdEntry[0].detail).Contains("checkRows=24")) "Monitoring threshold import entry should include strict target metadata and check row validation detail."
+Assert-True ($promotedClusterNetworkAccessReview.result -eq "passed") "Promoted cluster network access review evidence should preserve result=passed."
+Assert-True ($promotedClusterNetworkAccessReview.confirmations.noCredentialValues) "Promoted cluster network access review evidence should preserve no-credential confirmation."
+$clusterNetworkAccessReviewEntry = @($report.entries | Where-Object { $_.group -eq "cluster-network-access-review" -and $_.fileName -eq "latest-cluster-network-access-review-evidence.json" })
+Assert-True ($clusterNetworkAccessReviewEntry.Count -eq 1) "Cluster network access review import entry missing."
+Assert-True (([string] $clusterNetworkAccessReviewEntry[0].detail).Contains("result=passed") -and ([string] $clusterNetworkAccessReviewEntry[0].detail).Contains("failures=0") -and ([string] $clusterNetworkAccessReviewEntry[0].detail).Contains("checks=")) "Cluster network access review import entry should include result, failure count, and check count."
+Assert-True ($promotedHelmValuesHardening.result -eq "passed") "Promoted Helm values hardening evidence should preserve result=passed."
+Assert-True ($promotedHelmValuesHardening.confirmations.noCredentialValues) "Promoted Helm values hardening evidence should preserve no-credential confirmation."
+Assert-True ($promotedSupportEscalationHandoff.result -eq "passed") "Promoted support escalation handoff evidence should preserve result=passed."
+Assert-True ($promotedSupportEscalationHandoff.confirmations.noCredentialValues) "Promoted support escalation handoff evidence should preserve no-credential confirmation."
+$helmValuesHardeningEntry = @($report.entries | Where-Object { $_.group -eq "helm-values-hardening" -and $_.fileName -eq "latest-helm-values-hardening-evidence.json" })
+Assert-True ($helmValuesHardeningEntry.Count -eq 1) "Helm values hardening import entry missing."
+Assert-True (([string] $helmValuesHardeningEntry[0].detail).Contains("result=passed") -and ([string] $helmValuesHardeningEntry[0].detail).Contains("failures=0") -and ([string] $helmValuesHardeningEntry[0].detail).Contains("chartFiles=")) "Helm values hardening import entry should include result, failure count, and chart file count."
 Assert-True ($promotedSecretRotation.result -eq "passed") "Promoted secret rotation evidence should preserve result=passed."
 Assert-True ($promotedCommercialIntegration.result -eq "passed") "Promoted commercial integration evidence should preserve result=passed."
 Assert-True ($promotedCommercialApproval.result -eq "passed") "Promoted commercial approval evidence should preserve result=passed."
+Assert-True ($promotedChargebackCloseout.result -eq "passed") "Promoted chargeback closeout evidence should preserve result=passed."
 $secretRotationEntry = @($report.entries | Where-Object { $_.group -eq "secret-rotation" -and $_.fileName -eq "latest-secret-rotation-evidence.json" })
 Assert-True ($secretRotationEntry.Count -eq 1) "Secret rotation import entry missing."
 Assert-True (([string] $secretRotationEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $secretRotationEntry[0].detail).Contains("coreRotated=5/5") -and ([string] $secretRotationEntry[0].detail).Contains("checkCount=16")) "Secret rotation import entry should include target metadata and core rotation validation detail."
@@ -1693,24 +2340,42 @@ Assert-True (([string] $commercialIntegrationEntry[0].detail).Contains("targetCl
 $commercialApprovalEntry = @($report.entries | Where-Object { $_.group -eq "commercial-approval" -and $_.fileName -eq "latest-commercial-approval-evidence.json" })
 Assert-True ($commercialApprovalEntry.Count -eq 1) "Commercial approval import entry missing."
 Assert-True (([string] $commercialApprovalEntry[0].detail).Contains("productVersion=v0.1.0-rc.1") -and ([string] $commercialApprovalEntry[0].detail).Contains("commercialApproved=1") -and ([string] $commercialApprovalEntry[0].detail).Contains("checkCount=14")) "Commercial approval import entry should include target approval metadata and validation detail."
-$promotedEnterpriseAuth = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json") | ConvertFrom-Json
+$chargebackCloseoutEntry = @($report.entries | Where-Object { $_.group -eq "chargeback-closeout" -and $_.fileName -eq "latest-chargeback-closeout-evidence.json" })
+Assert-True ($chargebackCloseoutEntry.Count -eq 1) "Chargeback closeout import entry missing."
+Assert-True (([string] $chargebackCloseoutEntry[0].detail).Contains("billingPeriod=2026-06") -and ([string] $chargebackCloseoutEntry[0].detail).Contains("refs=14/14") -and ([string] $chargebackCloseoutEntry[0].detail).Contains("failures=0")) "Chargeback closeout import entry should include billing period, refs, and validation detail."
+$promotedEnterpriseAuth = Read-Utf8Text (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json") | ConvertFrom-Json
 Assert-True ($promotedEnterpriseAuth.result -eq "scope-out") "Promoted enterprise auth scope-out evidence should be preserved."
 $enterpriseAuthImportEntry = @($report.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
 Assert-True ($enterpriseAuthImportEntry.Count -eq 1) "Enterprise auth import entry missing."
 Assert-True (([string] $enterpriseAuthImportEntry[0].detail).Contains("executionMode=scope-out") -and ([string] $enterpriseAuthImportEntry[0].detail).Contains("accepted=true") -and ([string] $enterpriseAuthImportEntry[0].detail).Contains("passCount=3")) "Enterprise auth import entry should document strict scope-out acceptance."
-$promotedOperationsHandoffPackage = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.json") | ConvertFrom-Json
+$promotedEnterpriseAuthJitRollback = Read-Utf8Text (Join-Path $promotedRoot "latest-enterprise-auth-jit-rollback-evidence.json") | ConvertFrom-Json
+Assert-True ($promotedEnterpriseAuthJitRollback.result -eq "passed") "Promoted enterprise auth JIT rollback evidence should preserve result=passed."
+Assert-True ($promotedEnterpriseAuthJitRollback.confirmations.noRawClaims -and $promotedEnterpriseAuthJitRollback.confirmations.noSecretValues) "Promoted enterprise auth JIT rollback evidence should preserve no-raw-claims and no-secret confirmations."
+$enterpriseAuthJitRollbackImportEntry = @($report.entries | Where-Object { $_.group -eq "enterprise-auth-jit-rollback" -and $_.fileName -eq "latest-enterprise-auth-jit-rollback-evidence.json" })
+Assert-True ($enterpriseAuthJitRollbackImportEntry.Count -eq 1) "Enterprise auth JIT rollback import entry missing."
+Assert-True (([string] $enterpriseAuthJitRollbackImportEntry[0].detail).Contains("smokeResult=passed") -and ([string] $enterpriseAuthJitRollbackImportEntry[0].detail).Contains("failures=0") -and ([string] $enterpriseAuthJitRollbackImportEntry[0].detail).Contains("checkCount=22")) "Enterprise auth JIT rollback import entry should include smoke result, failure count, and check count."
+$promotedOperationsHandoffPackage = Read-Utf8Text (Join-Path $promotedRoot "latest-operations-handoff-package.json") | ConvertFrom-Json
 Assert-True ($promotedOperationsHandoffPackage.result -eq "passed") "Promoted operations handoff package evidence should preserve result=passed."
 Assert-True ($promotedOperationsHandoffPackage.confirmations.noSecretValues) "Promoted operations handoff package should preserve no-secret confirmation."
 Assert-True ($promotedOperationsHandoffPackage.confirmations.secretRotationSnapshotReviewed) "Promoted operations handoff package should preserve secret rotation snapshot review confirmation."
 Assert-True ($promotedOperationsHandoffPackage.confirmations.commercialApprovalSnapshotReviewed) "Promoted operations handoff package should preserve commercial approval snapshot review confirmation."
 Assert-True ($promotedOperationsHandoffPackage.confirmations.enterpriseAuthSmokeSnapshotReviewed) "Promoted operations handoff package should preserve enterprise auth smoke snapshot review confirmation."
+Assert-True ($promotedOperationsHandoffPackage.confirmations.enterpriseAuthJitRollbackSnapshotReviewed) "Promoted operations handoff package should preserve enterprise auth JIT rollback snapshot review confirmation."
+Assert-True ($promotedOperationsHandoffPackage.confirmations.dataFlowQueryRetentionBudgetReviewed) "Promoted operations handoff package should preserve data-flow query/retention budget review confirmation."
+Assert-True ($promotedOperationsHandoffPackage.targetEvidenceSnapshots.dataFlowQueryRetentionBudget.result -eq "passed") "Promoted operations handoff package should preserve data-flow query/retention budget target snapshot."
+Assert-True ($promotedOperationsHandoffPackage.targetEvidenceSnapshots.enterpriseAuthJitRollback.result -eq "passed") "Promoted operations handoff package should preserve enterprise auth JIT rollback target snapshot."
 $operationsHandoffPackageEntry = @($report.entries | Where-Object { $_.group -eq "operations-handoff-package" -and $_.fileName -eq "latest-operations-handoff-package.json" })
 Assert-True ($operationsHandoffPackageEntry.Count -eq 1) "Operations handoff package import entry missing."
-Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requiredConfirmations=17") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("sourceReportResult=ready") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("targetSnapshots=7/7")) "Operations handoff package import entry should include required confirmation, strict snapshot validation, and target snapshot validation detail."
-$promotedDataFlowRunbook = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json") | ConvertFrom-Json
+Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requiredConfirmations=22") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("sourceReportResult=ready") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("targetSnapshots=12/12")) "Operations handoff package import entry should include required confirmation, strict snapshot validation, and target snapshot validation detail."
+$promotedDataFlowRunbook = Read-Utf8Text (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json") | ConvertFrom-Json
+$promotedDataFlowQueryRetentionBudget = Read-Utf8Text (Join-Path $promotedRoot "latest-data-flow-query-retention-budget-evidence.json") | ConvertFrom-Json
+Assert-True ($promotedDataFlowQueryRetentionBudget.result -eq "passed" -and $promotedDataFlowQueryRetentionBudget.queryLatencyBudget.observedP95QueryLatencyMs -eq 420) "Promoted data-flow query/retention budget evidence should preserve passed query latency metrics."
+$dataFlowQueryRetentionBudgetEntry = @($report.entries | Where-Object { $_.group -eq "data-flow-query-retention-budget" -and $_.fileName -eq "latest-data-flow-query-retention-budget-evidence.json" })
+Assert-True ($dataFlowQueryRetentionBudgetEntry.Count -eq 1) "Data-flow query/retention budget import entry missing."
+Assert-True (([string] $dataFlowQueryRetentionBudgetEntry[0].detail).Contains("p95=420/500") -and ([string] $dataFlowQueryRetentionBudgetEntry[0].detail).Contains("failureCount=0")) "Data-flow query/retention budget import entry should include query and retention validation detail."
 Assert-True ($promotedDataFlowRunbook.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve result=passed."
 Assert-True ($promotedDataFlowRunbook.dataFlowStoragePlanSnapshot.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve passed storage plan snapshot."
-$promotedKubernetesOperationsReportSync = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json") | ConvertFrom-Json
+$promotedKubernetesOperationsReportSync = Read-Utf8Text (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json") | ConvertFrom-Json
 Assert-True ($promotedKubernetesOperationsReportSync.result -eq "applied") "Promoted Kubernetes operations report sync evidence should preserve result=applied."
 Assert-True ($promotedKubernetesOperationsReportSync.sourceReportResult -eq "ready") "Promoted Kubernetes operations report sync evidence should preserve ready source report."
 $kubernetesOperationsReportSyncEntry = @($report.entries | Where-Object { $_.group -eq "kubernetes-operations-report-sync" -and $_.fileName -eq "latest-kubernetes-operations-report-sync.json" })
@@ -1725,7 +2390,7 @@ Assert-True (([string] $kubernetesSyncRunbookEntry[0].detail).Contains("targetCl
 $monitoringThresholdEntry = @($report.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
 Assert-True ($monitoringThresholdEntry.Count -eq 1) "Monitoring threshold import entry missing."
 Assert-True (([string] $monitoringThresholdEntry[0].detail).Contains("requiredAlerts=11")) "Monitoring threshold import entry should include threshold mapping validation detail."
-$promotedDataFlowStoragePlan = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-plan.json") | ConvertFrom-Json
+$promotedDataFlowStoragePlan = Read-Utf8Text (Join-Path $promotedRoot "latest-data-flow-storage-plan.json") | ConvertFrom-Json
 Assert-True ($promotedDataFlowStoragePlan.formatVersion -eq "osmu.data-flow-storage-plan.v1") "Promoted data-flow storage plan evidence should preserve formatVersion."
 Assert-True ($promotedDataFlowStoragePlan.candidateStore -eq "MARIADB_PARTITION") "Promoted data-flow storage plan evidence should preserve candidateStore."
 Assert-True ($promotedDataFlowStoragePlan.queryPlanEvidence.expectedFormatVersion -eq "osmu.mariadb-query-plan-evidence.v1") "Promoted data-flow storage plan evidence should preserve query plan expected format."
@@ -1752,7 +2417,7 @@ finally {
 }
 Assert-True ($weakStorageExpansionExitCode -ne 0) "Storage expansion finalizer with skipped RBAC gap should fail import."
 Assert-True (Test-Path -LiteralPath $weakStorageExpansionJson) "Weak storage expansion import report should still be written."
-$weakStorageExpansionReport = Get-Content -Raw -LiteralPath $weakStorageExpansionJson | ConvertFrom-Json
+$weakStorageExpansionReport = Read-Utf8Text $weakStorageExpansionJson | ConvertFrom-Json
 Assert-True ($weakStorageExpansionReport.result -eq "failed") "Weak storage expansion import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakStorageExpansionOutput "latest-storage-expansion-finalize.json"))) "Weak storage expansion evidence must not be promoted."
 Assert-True (($weakStorageExpansionReport.entries | ConvertTo-Json -Depth 8).Contains("RBAC authorization evidence was skipped")) "Weak storage expansion report should describe skipped RBAC evidence."
@@ -1779,7 +2444,7 @@ finally {
 }
 Assert-True ($invalidExitCode -ne 0) "Invalid HA/DR evidence import should fail."
 Assert-True (Test-Path -LiteralPath $invalidJson) "Invalid import report should still be written."
-$invalidReport = Get-Content -Raw -LiteralPath $invalidJson | ConvertFrom-Json
+$invalidReport = Read-Utf8Text $invalidJson | ConvertFrom-Json
 Assert-True ($invalidReport.result -eq "failed") "Invalid import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidOutput "latest-kubernetes-ha-dr-readiness.json"))) "Invalid evidence must not be promoted."
 
@@ -1803,7 +2468,7 @@ finally {
 }
 Assert-True ($weakKubernetesDrExitCode -ne 0) "Kubernetes DR finalizer with placeholder timestamp should fail import."
 Assert-True (Test-Path -LiteralPath $weakKubernetesDrJson) "Weak Kubernetes DR import report should still be written."
-$weakKubernetesDrReport = Get-Content -Raw -LiteralPath $weakKubernetesDrJson | ConvertFrom-Json
+$weakKubernetesDrReport = Read-Utf8Text $weakKubernetesDrJson | ConvertFrom-Json
 Assert-True ($weakKubernetesDrReport.result -eq "failed") "Weak Kubernetes DR import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakKubernetesDrOutput "latest-kubernetes-dr-finalize.json"))) "Weak Kubernetes DR evidence must not be promoted."
 Assert-True (($weakKubernetesDrReport.entries | ConvertTo-Json -Depth 8).Contains("backupTimestamp=YYYYMMDDTHHMMSSZ")) "Weak Kubernetes DR report should describe placeholder backup timestamp."
@@ -1839,7 +2504,7 @@ finally {
 }
 Assert-True ($weakKubernetesDrStepsExitCode -ne 0) "Kubernetes DR finalizer with a failed extra step should fail import."
 Assert-True (Test-Path -LiteralPath $weakKubernetesDrStepsJson) "Weak Kubernetes DR steps import report should still be written."
-$weakKubernetesDrStepsReport = Get-Content -Raw -LiteralPath $weakKubernetesDrStepsJson | ConvertFrom-Json
+$weakKubernetesDrStepsReport = Read-Utf8Text $weakKubernetesDrStepsJson | ConvertFrom-Json
 Assert-True ($weakKubernetesDrStepsReport.result -eq "failed") "Weak Kubernetes DR steps import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakKubernetesDrStepsOutput "latest-kubernetes-dr-finalize.json"))) "Weak Kubernetes DR steps evidence must not be promoted."
 Assert-True (($weakKubernetesDrStepsReport.entries | ConvertTo-Json -Depth 8).Contains("steps.Unexpected Kubernetes DR cleanup result=failed exitCode=1")) "Weak Kubernetes DR steps report should describe the failed extra step."
@@ -1864,7 +2529,7 @@ finally {
 }
 Assert-True ($weakIamRbacExitCode -ne 0) "IAM/RBAC finalizer without Kubernetes verifier step should fail import."
 Assert-True (Test-Path -LiteralPath $weakIamRbacJson) "Weak IAM/RBAC import report should still be written."
-$weakIamRbacReport = Get-Content -Raw -LiteralPath $weakIamRbacJson | ConvertFrom-Json
+$weakIamRbacReport = Read-Utf8Text $weakIamRbacJson | ConvertFrom-Json
 Assert-True ($weakIamRbacReport.result -eq "failed") "Weak IAM/RBAC import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakIamRbacOutput "latest-iam-rbac-finalize.json"))) "Weak IAM/RBAC evidence must not be promoted."
 Assert-True (($weakIamRbacReport.entries | ConvertTo-Json -Depth 8).Contains("steps.Kubernetes RBAC matrix verifier missing")) "Weak IAM/RBAC report should describe missing Kubernetes verifier step."
@@ -1889,7 +2554,7 @@ finally {
 }
 Assert-True ($weakIamRbacStatusExitCode -ne 0) "IAM/RBAC finalizer with mismatched status and backend flag should fail import."
 Assert-True (Test-Path -LiteralPath $weakIamRbacStatusJson) "Weak IAM/RBAC status import report should still be written."
-$weakIamRbacStatusReport = Get-Content -Raw -LiteralPath $weakIamRbacStatusJson | ConvertFrom-Json
+$weakIamRbacStatusReport = Read-Utf8Text $weakIamRbacStatusJson | ConvertFrom-Json
 Assert-True ($weakIamRbacStatusReport.result -eq "failed") "Weak IAM/RBAC status import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakIamRbacStatusOutput "latest-iam-rbac-finalize.json"))) "Weak IAM/RBAC status evidence must not be promoted."
 Assert-True (($weakIamRbacStatusReport.entries | ConvertTo-Json -Depth 8).Contains("status=iam-rbac-static-passed expected=iam-rbac-backend-passed")) "Weak IAM/RBAC status report should describe status/flag mismatch."
@@ -1915,7 +2580,7 @@ finally {
 }
 Assert-True ($weakSecurityFinalizerExitCode -ne 0) "Security finalizer allowing synthetic evidence should fail import."
 Assert-True (Test-Path -LiteralPath $weakSecurityFinalizerJson) "Weak security finalizer import report should still be written."
-$weakSecurityFinalizerReport = Get-Content -Raw -LiteralPath $weakSecurityFinalizerJson | ConvertFrom-Json
+$weakSecurityFinalizerReport = Read-Utf8Text $weakSecurityFinalizerJson | ConvertFrom-Json
 Assert-True ($weakSecurityFinalizerReport.result -eq "failed") "Weak security finalizer import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakSecurityFinalizerOutput "latest-security-evidence-finalize.json"))) "Weak security finalizer evidence must not be promoted."
 Assert-True (($weakSecurityFinalizerReport.entries | ConvertTo-Json -Depth 8).Contains("allowSyntheticEvidence=True expected boolean false")) "Weak security finalizer report should describe synthetic evidence flag."
@@ -1965,7 +2630,7 @@ finally {
 }
 Assert-True ($weakImageSigningExitCode -ne 0) "Image signing evidence without digest should fail import."
 Assert-True (Test-Path -LiteralPath $weakImageSigningJson) "Weak image signing import report should still be written."
-$weakImageSigningReport = Get-Content -Raw -LiteralPath $weakImageSigningJson | ConvertFrom-Json
+$weakImageSigningReport = Read-Utf8Text $weakImageSigningJson | ConvertFrom-Json
 Assert-True ($weakImageSigningReport.result -eq "failed") "Weak image signing import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakImageSigningOutput "latest-image-signing-evidence.json"))) "Weak image signing evidence must not be promoted."
 Assert-True (($weakImageSigningReport.entries | ConvertTo-Json -Depth 8).Contains("backend.digest=")) "Weak image signing report should describe missing digest."
@@ -2015,7 +2680,7 @@ finally {
 }
 Assert-True ($weakImageSigningRefsExitCode -ne 0) "Image signing evidence with mismatched SHA ref should fail import."
 Assert-True (Test-Path -LiteralPath $weakImageSigningRefsJson) "Weak image signing refs import report should still be written."
-$weakImageSigningRefsReport = Get-Content -Raw -LiteralPath $weakImageSigningRefsJson | ConvertFrom-Json
+$weakImageSigningRefsReport = Read-Utf8Text $weakImageSigningRefsJson | ConvertFrom-Json
 Assert-True ($weakImageSigningRefsReport.result -eq "failed") "Weak image signing refs import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakImageSigningRefsOutput "latest-image-signing-evidence.json"))) "Weak image signing refs evidence must not be promoted."
 Assert-True (($weakImageSigningRefsReport.entries | ConvertTo-Json -Depth 8).Contains("backend.shaRef=ghcr.io/osmu/object-storage-osmu-backend:v1.2.2 expected tag 1234567890abcdef1234567890abcdef12345678")) "Weak image signing refs report should describe mismatched SHA ref."
@@ -2076,7 +2741,7 @@ finally {
 }
 Assert-True ($weakContainerSecurityExitCode -ne 0) "Container security evidence with string scan flag should fail import."
 Assert-True (Test-Path -LiteralPath $weakContainerSecurityJson) "Weak container security import report should still be written."
-$weakContainerSecurityReport = Get-Content -Raw -LiteralPath $weakContainerSecurityJson | ConvertFrom-Json
+$weakContainerSecurityReport = Read-Utf8Text $weakContainerSecurityJson | ConvertFrom-Json
 Assert-True ($weakContainerSecurityReport.result -eq "failed") "Weak container security import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakContainerSecurityOutput "latest-container-security-evidence.json"))) "Weak container security evidence must not be promoted."
 Assert-True (($weakContainerSecurityReport.entries | ConvertTo-Json -Depth 8).Contains("scans.backendScanPassed=true expected boolean true")) "Weak container security report should describe invalid typed scan flag."
@@ -2137,7 +2802,7 @@ finally {
 }
 Assert-True ($weakContainerSecuritySbomExitCode -ne 0) "Container security evidence with weak SBOM metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakContainerSecuritySbomJson) "Weak container security SBOM import report should still be written."
-$weakContainerSecuritySbomReport = Get-Content -Raw -LiteralPath $weakContainerSecuritySbomJson | ConvertFrom-Json
+$weakContainerSecuritySbomReport = Read-Utf8Text $weakContainerSecuritySbomJson | ConvertFrom-Json
 Assert-True ($weakContainerSecuritySbomReport.result -eq "failed") "Weak container security SBOM import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakContainerSecuritySbomOutput "latest-container-security-evidence.json"))) "Weak container security SBOM evidence must not be promoted."
 Assert-True (($weakContainerSecuritySbomReport.entries | ConvertTo-Json -Depth 8).Contains("sbom.backend.spdxVersion= expected SPDX-*")) "Weak container security SBOM report should describe invalid SPDX metadata."
@@ -2169,7 +2834,7 @@ finally {
 }
 Assert-True ($weakStorageBackendTelemetryExitCode -ne 0) "Storage backend telemetry without required target metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakStorageBackendTelemetryJson) "Weak storage backend telemetry import report should still be written."
-$weakStorageBackendTelemetryReport = Get-Content -Raw -LiteralPath $weakStorageBackendTelemetryJson | ConvertFrom-Json
+$weakStorageBackendTelemetryReport = Read-Utf8Text $weakStorageBackendTelemetryJson | ConvertFrom-Json
 Assert-True ($weakStorageBackendTelemetryReport.result -eq "failed") "Weak storage backend telemetry import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakStorageBackendTelemetryOutput "latest-storage-backend-telemetry.json"))) "Weak storage backend telemetry evidence must not be promoted."
 $weakStorageBackendTelemetryEntry = @($weakStorageBackendTelemetryReport.entries | Where-Object { $_.group -eq "storage-backend-telemetry" -and $_.fileName -eq "latest-storage-backend-telemetry.json" })
@@ -2228,7 +2893,7 @@ finally {
 }
 Assert-True ($weakStorageBackendTelemetryChecksExitCode -ne 0) "Storage backend telemetry without complete check rows should fail import."
 Assert-True (Test-Path -LiteralPath $weakStorageBackendTelemetryChecksJson) "Weak storage backend telemetry checks import report should still be written."
-$weakStorageBackendTelemetryChecksReport = Get-Content -Raw -LiteralPath $weakStorageBackendTelemetryChecksJson | ConvertFrom-Json
+$weakStorageBackendTelemetryChecksReport = Read-Utf8Text $weakStorageBackendTelemetryChecksJson | ConvertFrom-Json
 Assert-True ($weakStorageBackendTelemetryChecksReport.result -eq "failed") "Weak storage backend telemetry checks import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakStorageBackendTelemetryChecksOutput "latest-storage-backend-telemetry.json"))) "Weak storage backend telemetry checks evidence must not be promoted."
 Assert-True (($weakStorageBackendTelemetryChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.target-cluster missing")) "Weak storage backend telemetry checks report should describe missing target check row."
@@ -2296,7 +2961,7 @@ finally {
 }
 Assert-True ($unsafeStorageBackendTelemetryExitCode -ne 0) "Storage backend telemetry with raw credential-shaped content should fail import."
 Assert-True (Test-Path -LiteralPath $unsafeStorageBackendTelemetryJson) "Unsafe storage backend telemetry import report should still be written."
-$unsafeStorageBackendTelemetryReport = Get-Content -Raw -LiteralPath $unsafeStorageBackendTelemetryJson | ConvertFrom-Json
+$unsafeStorageBackendTelemetryReport = Read-Utf8Text $unsafeStorageBackendTelemetryJson | ConvertFrom-Json
 Assert-True ($unsafeStorageBackendTelemetryReport.result -eq "failed") "Unsafe storage backend telemetry import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeStorageBackendTelemetryOutput "latest-storage-backend-telemetry.json"))) "Unsafe storage backend telemetry evidence must not be promoted."
 Assert-True (($unsafeStorageBackendTelemetryReport.entries | ConvertTo-Json -Depth 8).Contains("credential-shaped content")) "Unsafe storage backend telemetry report should describe credential-shaped content."
@@ -2323,7 +2988,7 @@ finally {
 }
 Assert-True ($unsafeMinioBucketCorsExitCode -ne 0) "MinIO bucket CORS verification with raw XML content should fail import."
 Assert-True (Test-Path -LiteralPath $unsafeMinioBucketCorsJson) "Unsafe MinIO bucket CORS import report should still be written."
-$unsafeMinioBucketCorsReport = Get-Content -Raw -LiteralPath $unsafeMinioBucketCorsJson | ConvertFrom-Json
+$unsafeMinioBucketCorsReport = Read-Utf8Text $unsafeMinioBucketCorsJson | ConvertFrom-Json
 Assert-True ($unsafeMinioBucketCorsReport.result -eq "failed") "Unsafe MinIO bucket CORS import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeMinioBucketCorsOutput "latest-minio-bucket-cors-verification.json"))) "Unsafe MinIO bucket CORS evidence must not be promoted."
 Assert-True (($unsafeMinioBucketCorsReport.entries | ConvertTo-Json -Depth 8).Contains("raw CORS XML")) "Unsafe MinIO bucket CORS report should describe raw CORS XML."
@@ -2351,7 +3016,7 @@ finally {
 }
 Assert-True ($weakKubernetesOperationsReportSyncExitCode -ne 0) "Kubernetes operations report sync without ready source metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakKubernetesOperationsReportSyncJson) "Weak Kubernetes operations report sync import report should still be written."
-$weakKubernetesOperationsReportSyncReport = Get-Content -Raw -LiteralPath $weakKubernetesOperationsReportSyncJson | ConvertFrom-Json
+$weakKubernetesOperationsReportSyncReport = Read-Utf8Text $weakKubernetesOperationsReportSyncJson | ConvertFrom-Json
 Assert-True ($weakKubernetesOperationsReportSyncReport.result -eq "failed") "Weak Kubernetes operations report sync import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakKubernetesOperationsReportSyncOutput "latest-kubernetes-operations-report-sync.json"))) "Weak Kubernetes operations report sync evidence must not be promoted."
 Assert-True (($weakKubernetesOperationsReportSyncReport.entries | ConvertTo-Json -Depth 8).Contains("sourceReportFormatVersion=")) "Weak Kubernetes operations report sync report should describe missing source report format."
@@ -2383,7 +3048,7 @@ finally {
 }
 Assert-True ($stringCountKubernetesOperationsReportSyncExitCode -ne 0) "Kubernetes operations report sync with string failedCount should fail import."
 Assert-True (Test-Path -LiteralPath $stringCountKubernetesOperationsReportSyncJson) "String-count Kubernetes operations report sync import report should still be written."
-$stringCountKubernetesOperationsReportSyncReport = Get-Content -Raw -LiteralPath $stringCountKubernetesOperationsReportSyncJson | ConvertFrom-Json
+$stringCountKubernetesOperationsReportSyncReport = Read-Utf8Text $stringCountKubernetesOperationsReportSyncJson | ConvertFrom-Json
 Assert-True ($stringCountKubernetesOperationsReportSyncReport.result -eq "failed") "String-count Kubernetes operations report sync import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringCountKubernetesOperationsReportSyncOutput "latest-kubernetes-operations-report-sync.json"))) "String-count Kubernetes operations report sync evidence must not be promoted."
 Assert-True (($stringCountKubernetesOperationsReportSyncReport.entries | ConvertTo-Json -Depth 8).Contains("failedCount=0(valid=False)")) "String-count Kubernetes operations report sync report should describe invalid typed failed count."
@@ -2415,7 +3080,7 @@ finally {
 }
 Assert-True ($nonReadyKubernetesOperationsReportSyncExitCode -ne 0) "Kubernetes operations report sync with non-ready source report should fail import."
 Assert-True (Test-Path -LiteralPath $nonReadyKubernetesOperationsReportSyncJson) "Non-ready Kubernetes operations report sync import report should still be written."
-$nonReadyKubernetesOperationsReportSyncReport = Get-Content -Raw -LiteralPath $nonReadyKubernetesOperationsReportSyncJson | ConvertFrom-Json
+$nonReadyKubernetesOperationsReportSyncReport = Read-Utf8Text $nonReadyKubernetesOperationsReportSyncJson | ConvertFrom-Json
 Assert-True ($nonReadyKubernetesOperationsReportSyncReport.result -eq "failed") "Non-ready Kubernetes operations report sync import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $nonReadyKubernetesOperationsReportSyncOutput "latest-kubernetes-operations-report-sync.json"))) "Non-ready Kubernetes operations report sync evidence must not be promoted."
 Assert-True (($nonReadyKubernetesOperationsReportSyncReport.entries | ConvertTo-Json -Depth 8).Contains("sourceReportResult=action-required")) "Non-ready Kubernetes operations report sync report should describe non-ready source report."
@@ -2453,7 +3118,7 @@ finally {
 }
 Assert-True ($invalidDataFlowExitCode -ne 0) "Data-flow storage plan without required query plan summary should fail import."
 Assert-True (Test-Path -LiteralPath $invalidDataFlowJson) "Invalid data-flow import report should still be written."
-$invalidDataFlowReport = Get-Content -Raw -LiteralPath $invalidDataFlowJson | ConvertFrom-Json
+$invalidDataFlowReport = Read-Utf8Text $invalidDataFlowJson | ConvertFrom-Json
 Assert-True ($invalidDataFlowReport.result -eq "failed") "Invalid data-flow import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidDataFlowOutput "latest-data-flow-storage-plan.json"))) "Invalid data-flow storage plan must not be promoted."
 Assert-True (($invalidDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("requires queryPlanEvidence summary")) "Invalid data-flow report should describe missing query plan summary."
@@ -2498,7 +3163,7 @@ finally {
 }
 Assert-True ($unsafeDataFlowExitCode -ne 0) "Data-flow storage plan with unsafe query plan summary should fail import."
 Assert-True (Test-Path -LiteralPath $unsafeDataFlowJson) "Unsafe data-flow import report should still be written."
-$unsafeDataFlowReport = Get-Content -Raw -LiteralPath $unsafeDataFlowJson | ConvertFrom-Json
+$unsafeDataFlowReport = Read-Utf8Text $unsafeDataFlowJson | ConvertFrom-Json
 Assert-True ($unsafeDataFlowReport.result -eq "failed") "Unsafe data-flow import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeDataFlowOutput "latest-data-flow-storage-plan.json"))) "Unsafe data-flow storage plan must not be promoted."
 Assert-True (($unsafeDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("raw SQL")) "Unsafe data-flow report should describe sanitized summary failure."
@@ -2533,7 +3198,7 @@ finally {
 }
 Assert-True ($unsafeDataFlowRunbookExitCode -ne 0) "Data-flow storage transition runbook with unsafe raw SQL should fail import."
 Assert-True (Test-Path -LiteralPath $unsafeDataFlowRunbookJson) "Unsafe data-flow runbook import report should still be written."
-$unsafeDataFlowRunbookReport = Get-Content -Raw -LiteralPath $unsafeDataFlowRunbookJson | ConvertFrom-Json
+$unsafeDataFlowRunbookReport = Read-Utf8Text $unsafeDataFlowRunbookJson | ConvertFrom-Json
 Assert-True ($unsafeDataFlowRunbookReport.result -eq "failed") "Unsafe data-flow runbook import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeDataFlowRunbookOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "Unsafe data-flow storage transition runbook must not be promoted."
 Assert-True (($unsafeDataFlowRunbookReport.entries | ConvertTo-Json -Depth 8).Contains("raw SQL")) "Unsafe data-flow runbook report should describe sanitized summary failure."
@@ -2581,7 +3246,7 @@ finally {
 }
 Assert-True ($weakDataFlowRunbookExitCode -ne 0) "Data-flow storage transition runbook with string failureCount should fail import."
 Assert-True (Test-Path -LiteralPath $weakDataFlowRunbookJson) "Weak data-flow runbook import report should still be written."
-$weakDataFlowRunbookReport = Get-Content -Raw -LiteralPath $weakDataFlowRunbookJson | ConvertFrom-Json
+$weakDataFlowRunbookReport = Read-Utf8Text $weakDataFlowRunbookJson | ConvertFrom-Json
 Assert-True ($weakDataFlowRunbookReport.result -eq "failed") "Weak data-flow runbook import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakDataFlowRunbookOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "Weak data-flow storage transition runbook must not be promoted."
 Assert-True (($weakDataFlowRunbookReport.entries | ConvertTo-Json -Depth 8).Contains("failureCount=0(valid=False)")) "Weak data-flow runbook report should describe invalid typed failure count."
@@ -2629,7 +3294,7 @@ finally {
 }
 Assert-True ($stringBoolDataFlowRunbookExitCode -ne 0) "Data-flow storage transition runbook with string confirmation should fail import."
 Assert-True (Test-Path -LiteralPath $stringBoolDataFlowRunbookJson) "String-bool data-flow runbook import report should still be written."
-$stringBoolDataFlowRunbookReport = Get-Content -Raw -LiteralPath $stringBoolDataFlowRunbookJson | ConvertFrom-Json
+$stringBoolDataFlowRunbookReport = Read-Utf8Text $stringBoolDataFlowRunbookJson | ConvertFrom-Json
 Assert-True ($stringBoolDataFlowRunbookReport.result -eq "failed") "String-bool data-flow runbook import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringBoolDataFlowRunbookOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "String-bool data-flow storage transition runbook must not be promoted."
 Assert-True (($stringBoolDataFlowRunbookReport.entries | ConvertTo-Json -Depth 8).Contains("confirmation backfillRehearsed=true expected boolean true")) "String-bool data-flow runbook report should describe invalid typed confirmation."
@@ -2700,7 +3365,7 @@ finally {
 }
 Assert-True ($weakDataFlowRunbookChecksExitCode -ne 0) "Data-flow storage transition runbook without complete PASS check rows should fail import."
 Assert-True (Test-Path -LiteralPath $weakDataFlowRunbookChecksJson) "Weak data-flow runbook checks import report should still be written."
-$weakDataFlowRunbookChecksReport = Get-Content -Raw -LiteralPath $weakDataFlowRunbookChecksJson | ConvertFrom-Json
+$weakDataFlowRunbookChecksReport = Read-Utf8Text $weakDataFlowRunbookChecksJson | ConvertFrom-Json
 Assert-True ($weakDataFlowRunbookChecksReport.result -eq "failed") "Weak data-flow runbook checks import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakDataFlowRunbookChecksOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "Weak data-flow storage transition runbook checks evidence must not be promoted."
 Assert-True (($weakDataFlowRunbookChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.rollback-rehearsed-confirmed missing PASS")) "Weak data-flow runbook checks report should describe missing PASS check row."
@@ -2741,7 +3406,7 @@ finally {
 }
 Assert-True ($unsafeMonitoringThresholdExitCode -ne 0) "Monitoring threshold evidence with credential-shaped content should fail import."
 Assert-True (Test-Path -LiteralPath $unsafeMonitoringThresholdJson) "Unsafe monitoring threshold import report should still be written."
-$unsafeMonitoringThresholdReport = Get-Content -Raw -LiteralPath $unsafeMonitoringThresholdJson | ConvertFrom-Json
+$unsafeMonitoringThresholdReport = Read-Utf8Text $unsafeMonitoringThresholdJson | ConvertFrom-Json
 Assert-True ($unsafeMonitoringThresholdReport.result -eq "failed") "Unsafe monitoring threshold import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "Unsafe monitoring threshold evidence must not be promoted."
 Assert-True (($unsafeMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8).Contains("credential-shaped content")) "Unsafe monitoring threshold report should describe credential-shaped content."
@@ -2757,6 +3422,11 @@ Write-JsonEvidence (Join-Path $stringBoolMonitoringThresholdRoot "latest-monitor
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+        alertTargetCoverageComplete = $true
+        routeCoverageComplete = $true
+        grafanaPanelCoverageComplete = $true
+        tuningEvidenceCoverageComplete = $true
+        thresholdMappingComplete = $true
     }
     summary = @{
         failureCount = 0
@@ -2789,7 +3459,7 @@ finally {
 }
 Assert-True ($stringBoolMonitoringThresholdExitCode -ne 0) "Monitoring threshold evidence with string confirmation should fail import."
 Assert-True (Test-Path -LiteralPath $stringBoolMonitoringThresholdJson) "String-bool monitoring threshold import report should still be written."
-$stringBoolMonitoringThresholdReport = Get-Content -Raw -LiteralPath $stringBoolMonitoringThresholdJson | ConvertFrom-Json
+$stringBoolMonitoringThresholdReport = Read-Utf8Text $stringBoolMonitoringThresholdJson | ConvertFrom-Json
 Assert-True ($stringBoolMonitoringThresholdReport.result -eq "failed") "String-bool monitoring threshold import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringBoolMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "String-bool monitoring threshold evidence must not be promoted."
 Assert-True (($stringBoolMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8).Contains("confirmation prometheusRulesLoaded=false expected boolean true")) "String-bool monitoring threshold report should describe invalid confirmation."
@@ -2805,6 +3475,11 @@ Write-JsonEvidence (Join-Path $stringCountMonitoringThresholdRoot "latest-monito
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+        alertTargetCoverageComplete = $true
+        routeCoverageComplete = $true
+        grafanaPanelCoverageComplete = $true
+        tuningEvidenceCoverageComplete = $true
+        thresholdMappingComplete = $true
     }
     summary = @{
         failureCount = 0
@@ -2837,7 +3512,7 @@ finally {
 }
 Assert-True ($stringCountMonitoringThresholdExitCode -ne 0) "Monitoring threshold evidence with string count should fail import."
 Assert-True (Test-Path -LiteralPath $stringCountMonitoringThresholdJson) "String-count monitoring threshold import report should still be written."
-$stringCountMonitoringThresholdReport = Get-Content -Raw -LiteralPath $stringCountMonitoringThresholdJson | ConvertFrom-Json
+$stringCountMonitoringThresholdReport = Read-Utf8Text $stringCountMonitoringThresholdJson | ConvertFrom-Json
 Assert-True ($stringCountMonitoringThresholdReport.result -eq "failed") "String-count monitoring threshold import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringCountMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "String-count monitoring threshold evidence must not be promoted."
 Assert-True (($stringCountMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8).Contains("requiredAlertCount=11(valid=False) expected integer")) "String-count monitoring threshold report should describe invalid typed count."
@@ -2884,7 +3559,7 @@ finally {
 }
 Assert-True ($missingCountMonitoringThresholdExitCode -ne 0) "Monitoring threshold evidence with missing count should fail import."
 Assert-True (Test-Path -LiteralPath $missingCountMonitoringThresholdJson) "Missing-count monitoring threshold import report should still be written."
-$missingCountMonitoringThresholdReport = Get-Content -Raw -LiteralPath $missingCountMonitoringThresholdJson | ConvertFrom-Json
+$missingCountMonitoringThresholdReport = Read-Utf8Text $missingCountMonitoringThresholdJson | ConvertFrom-Json
 Assert-True ($missingCountMonitoringThresholdReport.result -eq "failed") "Missing-count monitoring threshold import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $missingCountMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "Missing-count monitoring threshold evidence must not be promoted."
 $missingCountMonitoringThresholdEntry = @($missingCountMonitoringThresholdReport.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
@@ -2912,6 +3587,11 @@ Write-JsonEvidence (Join-Path $weakMonitoringThresholdChecksRoot "latest-monitor
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+        alertTargetCoverageComplete = $true
+        routeCoverageComplete = $true
+        grafanaPanelCoverageComplete = $true
+        tuningEvidenceCoverageComplete = $true
+        thresholdMappingComplete = $true
     }
     evidenceRefs = @{
         changeApproval = "CHG-2026-MONITORING"
@@ -2953,7 +3633,7 @@ finally {
 }
 Assert-True ($weakMonitoringThresholdChecksExitCode -ne 0) "Monitoring threshold evidence without complete PASS check rows should fail import."
 Assert-True (Test-Path -LiteralPath $weakMonitoringThresholdChecksJson) "Weak monitoring threshold checks import report should still be written."
-$weakMonitoringThresholdChecksReport = Get-Content -Raw -LiteralPath $weakMonitoringThresholdChecksJson | ConvertFrom-Json
+$weakMonitoringThresholdChecksReport = Read-Utf8Text $weakMonitoringThresholdChecksJson | ConvertFrom-Json
 Assert-True ($weakMonitoringThresholdChecksReport.result -eq "failed") "Weak monitoring threshold checks import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakMonitoringThresholdChecksOutput "latest-monitoring-threshold-evidence.json"))) "Weak monitoring threshold checks evidence must not be promoted."
 Assert-True (($weakMonitoringThresholdChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.grafana-panels-mapped missing PASS")) "Weak monitoring threshold checks report should describe missing PASS check row."
@@ -2985,7 +3665,7 @@ finally {
 }
 Assert-True ($weakSecretRotationExitCode -ne 0) "Secret rotation evidence without required target metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakSecretRotationJson) "Weak secret rotation import report should still be written."
-$weakSecretRotationReport = Get-Content -Raw -LiteralPath $weakSecretRotationJson | ConvertFrom-Json
+$weakSecretRotationReport = Read-Utf8Text $weakSecretRotationJson | ConvertFrom-Json
 Assert-True ($weakSecretRotationReport.result -eq "failed") "Weak secret rotation import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakSecretRotationOutput "latest-secret-rotation-evidence.json"))) "Weak secret rotation evidence must not be promoted."
 $weakSecretRotationEntry = @($weakSecretRotationReport.entries | Where-Object { $_.group -eq "secret-rotation" -and $_.fileName -eq "latest-secret-rotation-evidence.json" })
@@ -3054,7 +3734,7 @@ finally {
 }
 Assert-True ($weakSecretRotationChecksExitCode -ne 0) "Secret rotation evidence without complete check rows should fail import."
 Assert-True (Test-Path -LiteralPath $weakSecretRotationChecksJson) "Weak secret rotation checks import report should still be written."
-$weakSecretRotationChecksReport = Get-Content -Raw -LiteralPath $weakSecretRotationChecksJson | ConvertFrom-Json
+$weakSecretRotationChecksReport = Read-Utf8Text $weakSecretRotationChecksJson | ConvertFrom-Json
 Assert-True ($weakSecretRotationChecksReport.result -eq "failed") "Weak secret rotation checks import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakSecretRotationChecksOutput "latest-secret-rotation-evidence.json"))) "Weak secret rotation checks evidence must not be promoted."
 Assert-True (($weakSecretRotationChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.target-cluster missing")) "Weak secret rotation checks report should describe missing target check row."
@@ -3087,7 +3767,7 @@ finally {
 }
 Assert-True ($weakCommercialIntegrationExitCode -ne 0) "Commercial integration evidence without required target metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakCommercialIntegrationJson) "Weak commercial integration import report should still be written."
-$weakCommercialIntegrationReport = Get-Content -Raw -LiteralPath $weakCommercialIntegrationJson | ConvertFrom-Json
+$weakCommercialIntegrationReport = Read-Utf8Text $weakCommercialIntegrationJson | ConvertFrom-Json
 Assert-True ($weakCommercialIntegrationReport.result -eq "failed") "Weak commercial integration import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialIntegrationOutput "latest-commercial-integration-evidence.json"))) "Weak commercial integration evidence must not be promoted."
 $weakCommercialIntegrationEntry = @($weakCommercialIntegrationReport.entries | Where-Object { $_.group -eq "commercial-integration" -and $_.fileName -eq "latest-commercial-integration-evidence.json" })
@@ -3175,7 +3855,7 @@ Write-JsonEvidence (Join-Path $weakCommercialIntegrationChecksRoot "latest-comme
         @{ id = "environment-name"; status = "PASS"; passed = $true }
     )
     decisionRule = "Production/B2B commercial integration readiness requires result=passed from the target environment for every required notification/payment handoff adapter profile, payment-provider adapter readiness review, adapter retry worker evidence, payload cap check, private/local endpoint blocking check, HMAC signature review, no-secret confirmation, and no-raw-provider-response confirmation."
-    scopePolicy = "This evidence covers configured webhook/Slack/EMAIL SMTP relay, generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification, and the sanitized payment-provider adapter readiness snapshot. It does not claim or require native card, bank, tax invoice, or ERP processor API support."
+    scopePolicy = "This evidence covers configured webhook/Slack/EMAIL SMTP relay, generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification, configurable native payment-provider bridge readiness, and the sanitized payment-provider adapter readiness snapshot. It does not claim vendor-specific fixed SDK/schema card, bank, tax invoice, ERP, or external payment processor implementation or raw provider response handling."
     secretPolicy = "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain webhook URLs with credentials, SMTP passwords, payment provider credentials, signing secrets, bearer tokens, private keys, raw provider responses, or customer payment data."
 }
 $weakCommercialIntegrationChecksOutput = Join-Path $resolvedOutputDirectory "weak-commercial-integration-checks-promoted"
@@ -3196,7 +3876,7 @@ finally {
 }
 Assert-True ($weakCommercialIntegrationChecksExitCode -ne 0) "Commercial integration evidence without complete check rows should fail import."
 Assert-True (Test-Path -LiteralPath $weakCommercialIntegrationChecksJson) "Weak commercial integration checks import report should still be written."
-$weakCommercialIntegrationChecksReport = Get-Content -Raw -LiteralPath $weakCommercialIntegrationChecksJson | ConvertFrom-Json
+$weakCommercialIntegrationChecksReport = Read-Utf8Text $weakCommercialIntegrationChecksJson | ConvertFrom-Json
 Assert-True ($weakCommercialIntegrationChecksReport.result -eq "failed") "Weak commercial integration checks import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialIntegrationChecksOutput "latest-commercial-integration-evidence.json"))) "Weak commercial integration checks evidence must not be promoted."
 Assert-True (($weakCommercialIntegrationChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.target-cluster missing")) "Weak commercial integration checks report should describe missing target check row."
@@ -3229,7 +3909,7 @@ finally {
 }
 Assert-True ($weakCommercialApprovalExitCode -ne 0) "Commercial approval evidence without required approval metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakCommercialApprovalJson) "Weak commercial approval import report should still be written."
-$weakCommercialApprovalReport = Get-Content -Raw -LiteralPath $weakCommercialApprovalJson | ConvertFrom-Json
+$weakCommercialApprovalReport = Read-Utf8Text $weakCommercialApprovalJson | ConvertFrom-Json
 Assert-True ($weakCommercialApprovalReport.result -eq "failed") "Weak commercial approval import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialApprovalOutput "latest-commercial-approval-evidence.json"))) "Weak commercial approval evidence must not be promoted."
 $weakCommercialApprovalEntry = @($weakCommercialApprovalReport.entries | Where-Object { $_.group -eq "commercial-approval" -and $_.fileName -eq "latest-commercial-approval-evidence.json" })
@@ -3319,7 +3999,7 @@ finally {
 }
 Assert-True ($weakCommercialApprovalChecksExitCode -ne 0) "Commercial approval evidence without complete check rows should fail import."
 Assert-True (Test-Path -LiteralPath $weakCommercialApprovalChecksJson) "Weak commercial approval checks import report should still be written."
-$weakCommercialApprovalChecksReport = Get-Content -Raw -LiteralPath $weakCommercialApprovalChecksJson | ConvertFrom-Json
+$weakCommercialApprovalChecksReport = Read-Utf8Text $weakCommercialApprovalChecksJson | ConvertFrom-Json
 Assert-True ($weakCommercialApprovalChecksReport.result -eq "failed") "Weak commercial approval checks import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialApprovalChecksOutput "latest-commercial-approval-evidence.json"))) "Weak commercial approval checks evidence must not be promoted."
 Assert-True (($weakCommercialApprovalChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.approval-ref missing")) "Weak commercial approval checks report should describe missing approval check row."
@@ -3343,7 +4023,7 @@ finally {
 }
 Assert-True ($invalidEnterpriseAuthExitCode -ne 0) "Enterprise auth scope-out evidence with string accepted=false should fail import."
 Assert-True (Test-Path -LiteralPath $invalidEnterpriseAuthJson) "Invalid enterprise auth import report should still be written."
-$invalidEnterpriseAuthReport = Get-Content -Raw -LiteralPath $invalidEnterpriseAuthJson | ConvertFrom-Json
+$invalidEnterpriseAuthReport = Read-Utf8Text $invalidEnterpriseAuthJson | ConvertFrom-Json
 Assert-True ($invalidEnterpriseAuthReport.result -eq "failed") "Invalid enterprise auth import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidEnterpriseAuthOutput "latest-enterprise-auth-smoke.json"))) "Invalid enterprise auth evidence must not be promoted."
 $invalidEnterpriseAuthEntry = @($invalidEnterpriseAuthReport.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
@@ -3369,7 +4049,7 @@ finally {
 }
 Assert-True ($stringCountEnterpriseAuthExitCode -ne 0) "Enterprise auth passed evidence with string count should fail import."
 Assert-True (Test-Path -LiteralPath $stringCountEnterpriseAuthJson) "String-count enterprise auth import report should still be written."
-$stringCountEnterpriseAuthReport = Get-Content -Raw -LiteralPath $stringCountEnterpriseAuthJson | ConvertFrom-Json
+$stringCountEnterpriseAuthReport = Read-Utf8Text $stringCountEnterpriseAuthJson | ConvertFrom-Json
 Assert-True ($stringCountEnterpriseAuthReport.result -eq "failed") "String-count enterprise auth import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringCountEnterpriseAuthOutput "latest-enterprise-auth-smoke.json"))) "String-count enterprise auth evidence must not be promoted."
 $stringCountEnterpriseAuthEntry = @($stringCountEnterpriseAuthReport.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
@@ -3397,14 +4077,159 @@ finally {
 }
 Assert-True ($weakEnterpriseAuthChecksExitCode -ne 0) "Enterprise auth scope-out evidence without complete check rows should fail import."
 Assert-True (Test-Path -LiteralPath $weakEnterpriseAuthChecksJson) "Weak enterprise auth checks import report should still be written."
-$weakEnterpriseAuthChecksReport = Get-Content -Raw -LiteralPath $weakEnterpriseAuthChecksJson | ConvertFrom-Json
+$weakEnterpriseAuthChecksReport = Read-Utf8Text $weakEnterpriseAuthChecksJson | ConvertFrom-Json
 Assert-True ($weakEnterpriseAuthChecksReport.result -eq "failed") "Weak enterprise auth checks import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakEnterpriseAuthChecksOutput "latest-enterprise-auth-smoke.json"))) "Weak enterprise auth checks evidence must not be promoted."
 Assert-True (($weakEnterpriseAuthChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.enterprise-auth-scope-out-ref missing PASS")) "Weak enterprise auth checks report should describe missing scope-out check row."
 
+$selfTestTargetDataFlowQueryRoot = Join-Path $resolvedOutputDirectory "self-test-target-data-flow-query-source"
+$selfTestTargetDataFlowQuery = New-PassedDataFlowQueryRetentionBudgetEvidence
+$selfTestTargetDataFlowQuery["environmentName"] = "pilot-prod-self-test"
+$selfTestTargetDataFlowQuery["targetCluster"] = "customer-cluster-a"
+$selfTestTargetDataFlowQuery["operatorName"] = "data-self-test"
+Write-JsonEvidence (Join-Path $selfTestTargetDataFlowQueryRoot "latest-data-flow-query-retention-budget-evidence.json") $selfTestTargetDataFlowQuery
+Invoke-ImportExpectedFailure `
+    -ArtifactParameterName "-DataFlowQueryRetentionBudgetArtifactPath" `
+    -ArtifactRoot $selfTestTargetDataFlowQueryRoot `
+    -OutputName "self-test-target-data-flow-query" `
+    -FileName "latest-data-flow-query-retention-budget-evidence.json" `
+    -ExpectedDetail "self-test target evidence rejected" | Out-Null
+
+$selfTestTargetChargebackRoot = Join-Path $resolvedOutputDirectory "self-test-target-chargeback-source"
+New-Item -ItemType Directory -Force -Path $selfTestTargetChargebackRoot | Out-Null
+$selfTestTargetChargebackRaw = Read-Utf8Text (Join-Path $chargebackCloseoutSource "latest-chargeback-closeout-evidence.json")
+$selfTestTargetChargebackRaw = $selfTestTargetChargebackRaw -replace '"environmentName"\s*:\s*"prod"', '"environmentName": "pilot-prod-self-test"'
+$selfTestTargetChargebackRaw = $selfTestTargetChargebackRaw -replace '"operator"\s*:\s*"ops-owner"', '"operator": "ops-self-test"'
+Set-Content -LiteralPath (Join-Path $selfTestTargetChargebackRoot "latest-chargeback-closeout-evidence.json") -Value $selfTestTargetChargebackRaw -Encoding UTF8
+Invoke-ImportExpectedFailure `
+    -ArtifactParameterName "-ChargebackCloseoutArtifactPath" `
+    -ArtifactRoot $selfTestTargetChargebackRoot `
+    -OutputName "self-test-target-chargeback" `
+    -FileName "latest-chargeback-closeout-evidence.json" `
+    -ExpectedDetail "self-test target evidence rejected" | Out-Null
+
+$selfTestTargetEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "self-test-target-enterprise-auth-source"
+$selfTestTargetEnterpriseAuth = New-PassedEnterpriseAuthEvidence
+$selfTestTargetEnterpriseAuth["target"] = @{
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operator = "security-self-test"
+}
+Write-JsonEvidence (Join-Path $selfTestTargetEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") $selfTestTargetEnterpriseAuth
+Invoke-ImportExpectedFailure `
+    -ArtifactParameterName "-EnterpriseAuthArtifactPath" `
+    -ArtifactRoot $selfTestTargetEnterpriseAuthRoot `
+    -OutputName "self-test-target-enterprise-auth" `
+    -FileName "latest-enterprise-auth-smoke.json" `
+    -ExpectedDetail "self-test target evidence rejected" | Out-Null
+
+$selfTestTargetClusterNetworkAccessReviewWriter = Resolve-ProjectPath ".\scripts\write-cluster-network-access-review-evidence.ps1"
+& powershell -NoProfile -ExecutionPolicy Bypass -File $selfTestTargetClusterNetworkAccessReviewWriter `
+    -EnvironmentName pilot-prod-self-test `
+    -TargetCluster osmu-prod `
+    -Operator cluster-self-test `
+    -ReviewStartedAt 2026-06-20T04:00:00Z `
+    -ReviewCompletedAt 2026-06-20T04:20:00Z `
+    -ChangeApprovalRef cluster-network-review-change-20260620 `
+    -DnsEgressReviewRef dns-egress-review-20260620 `
+    -MariaDbAccessReviewRef mariadb-access-review-20260620 `
+    -MinioAccessReviewRef minio-access-review-20260620 `
+    -BackupAccessReviewRef backup-access-review-20260620 `
+    -PublicIngressReviewRef public-ingress-review-20260620 `
+    -DefaultDenyReviewRef default-deny-review-20260620 `
+    -ObservabilityScrapeReviewRef observability-scrape-review-20260620 `
+    -K8sVerifierEvidenceRef k8s-verifier-20260620 `
+    -HelmVerifierEvidenceRef helm-verifier-20260620 `
+    -EvidenceRef cluster-network-access-review-20260620 `
+    -ConfirmBackendOnlyMariaDb `
+    -ConfirmBackendOnlyMinio `
+    -ConfirmBackupOnlyMariaDbMinio `
+    -ConfirmDnsEgressScoped `
+    -ConfirmMariaDbIngressBackendBackupOnly `
+    -ConfirmMinioIngressBackendBackupOnly `
+    -ConfirmPublicIngressLimited `
+    -ConfirmNamespaceDefaultDenyReviewed `
+    -ConfirmObservabilityScrapeReviewed `
+    -ConfirmHelmNetworkPolicyEnabled `
+    -ConfirmNoCredentialValues `
+    -JsonOutputPath (Join-Path $selfTestTargetClusterNetworkAccessReviewRoot "latest-cluster-network-access-review-evidence.json") `
+    -MarkdownOutputPath (Join-Path $selfTestTargetClusterNetworkAccessReviewRoot "latest-cluster-network-access-review-evidence.md") `
+    -FailIfNotPassed | Out-Host
+if ($LASTEXITCODE -ne 0) { throw "write-cluster-network-access-review-evidence.ps1 self-test fixture failed with exit code $LASTEXITCODE." }
+Invoke-ImportExpectedFailure `
+    -ArtifactParameterName "-ClusterNetworkAccessReviewArtifactPath" `
+    -ArtifactRoot $selfTestTargetClusterNetworkAccessReviewRoot `
+    -OutputName "self-test-target-cluster-network-access-review" `
+    -FileName "latest-cluster-network-access-review-evidence.json" `
+    -ExpectedDetail "self-test target evidence rejected" | Out-Null
+
+$selfTestTargetHelmValuesHardeningWriter = Resolve-ProjectPath ".\scripts\write-helm-values-hardening-evidence.ps1"
+& powershell -NoProfile -ExecutionPolicy Bypass -File $selfTestTargetHelmValuesHardeningWriter `
+    -EnvironmentName pilot-prod-self-test `
+    -TargetCluster osmu-prod `
+    -Operator helm-self-test `
+    -ReviewStartedAt 2026-06-20T04:20:00Z `
+    -ReviewCompletedAt 2026-06-20T04:40:00Z `
+    -ChangeApprovalRef helm-values-hardening-change-20260620 `
+    -HelmVerifierEvidenceRef helm-verifier-20260620 `
+    -KubernetesVerifierEvidenceRef k8s-verifier-20260620 `
+    -ContainerHardeningEvidenceRef container-hardening-20260620 `
+    -ClusterNetworkAccessReviewEvidenceRef cluster-network-access-review-20260620 `
+    -EvidenceRef helm-values-hardening-20260620 `
+    -ConfirmSecretsExternalized `
+    -ConfirmDefaultSecretPlaceholdersNotUsed `
+    -ConfirmHaReplicasReviewed `
+    -ConfirmResourcesBounded `
+    -ConfirmSecurityContextsReviewed `
+    -ConfirmNetworkPolicyEnabled `
+    -ConfirmTlsIngressReviewed `
+    -ConfirmOperationsReportsReadOnly `
+    -ConfirmStorageExpansionRbacDisabledByDefault `
+    -ConfirmNoCredentialValues `
+    -JsonOutputPath (Join-Path $selfTestTargetHelmValuesHardeningRoot "latest-helm-values-hardening-evidence.json") `
+    -MarkdownOutputPath (Join-Path $selfTestTargetHelmValuesHardeningRoot "latest-helm-values-hardening-evidence.md") `
+    -FailIfNotPassed | Out-Host
+if ($LASTEXITCODE -ne 0) { throw "write-helm-values-hardening-evidence.ps1 self-test fixture failed with exit code $LASTEXITCODE." }
+Invoke-ImportExpectedFailure `
+    -ArtifactParameterName "-HelmValuesHardeningArtifactPath" `
+    -ArtifactRoot $selfTestTargetHelmValuesHardeningRoot `
+    -OutputName "self-test-target-helm-values-hardening" `
+    -FileName "latest-helm-values-hardening-evidence.json" `
+    -ExpectedDetail "self-test target evidence rejected" | Out-Null
+
+$selfTestTargetOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "self-test-target-operations-handoff-package-source"
+$selfTestTargetOperationsHandoffChecks = New-PassedOperationsHandoffPackageChecks
+Write-JsonEvidence (Join-Path $selfTestTargetOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    target = @{
+        environmentName = "pilot-prod-self-test"
+        targetCluster = "customer-cluster-a"
+        operator = "ops-self-test"
+    }
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
+    evidenceRefs = (New-PassedOperationsHandoffPackageEvidenceRefs)
+    targetEvidenceSnapshots = (New-PassedOperationsHandoffPackageTargetSnapshots)
+    confirmations = (New-PassedOperationsHandoffPackageConfirmations)
+    summary = (New-PassedOperationsHandoffPackageSummary -CheckCount $selfTestTargetOperationsHandoffChecks.Count)
+    checks = $selfTestTargetOperationsHandoffChecks
+}
+Invoke-ImportExpectedFailure `
+    -ArtifactParameterName "-OperationsHandoffPackageArtifactPath" `
+    -ArtifactRoot $selfTestTargetOperationsHandoffPackageRoot `
+    -OutputName "self-test-target-operations-handoff-package" `
+    -FileName "latest-operations-handoff-package.json" `
+    -ExpectedDetail "self-test target evidence rejected" | Out-Null
+
 Write-JsonEvidence (Join-Path $staleOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
     operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
     confirmations = [ordered]@{
         noSecretValues = $true
@@ -3416,12 +4241,16 @@ Write-JsonEvidence (Join-Path $staleOperationsHandoffPackageRoot "latest-operati
         operationsReadinessSnapshotReviewed = $true
         operationsConvergenceSnapshotReviewed = $true
         dataFlowStoragePlanReviewed = $true
+        dataFlowQueryRetentionBudgetReviewed = $true
         dataFlowStorageTransitionRunbookReviewed = $true
         secretRotationSnapshotReviewed = $true
         commercialIntegrationSnapshotReviewed = $true
         commercialApprovalSnapshotReviewed = $false
+        chargebackCloseoutSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
         monitoringThresholdReviewed = $true
+        clusterNetworkAccessReviewReviewed = $true
+        helmValuesHardeningReviewed = $true
         requireProductionEvidence = $true
         requireOperationsSnapshotEvidence = $true
     }
@@ -3444,7 +4273,7 @@ finally {
 }
 Assert-True ($staleOperationsHandoffPackageExitCode -ne 0) "Operations handoff package without required review confirmations should fail import."
 Assert-True (Test-Path -LiteralPath $staleOperationsHandoffPackageJson) "Stale operations handoff package import report should still be written."
-$staleOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $staleOperationsHandoffPackageJson | ConvertFrom-Json
+$staleOperationsHandoffPackageReport = Read-Utf8Text $staleOperationsHandoffPackageJson | ConvertFrom-Json
 Assert-True ($staleOperationsHandoffPackageReport.result -eq "failed") "Stale operations handoff package import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $staleOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Stale operations handoff package must not be promoted."
 Assert-True (($staleOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("commercialApprovalSnapshotReviewed")) "Stale operations handoff package report should describe missing required review confirmation."
@@ -3452,6 +4281,9 @@ Assert-True (($staleOperationsHandoffPackageReport.entries | ConvertTo-Json -Dep
 Write-JsonEvidence (Join-Path $badConvergenceOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
     operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots -ConvergenceSourceReportResult "action-required")
     confirmations = [ordered]@{
         noSecretValues = $true
@@ -3463,12 +4295,17 @@ Write-JsonEvidence (Join-Path $badConvergenceOperationsHandoffPackageRoot "lates
         operationsReadinessSnapshotReviewed = $true
         operationsConvergenceSnapshotReviewed = $true
         dataFlowStoragePlanReviewed = $true
+        dataFlowQueryRetentionBudgetReviewed = $true
         dataFlowStorageTransitionRunbookReviewed = $true
         secretRotationSnapshotReviewed = $true
         commercialIntegrationSnapshotReviewed = $true
         commercialApprovalSnapshotReviewed = $true
+        chargebackCloseoutSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
+        enterpriseAuthJitRollbackSnapshotReviewed = $true
         monitoringThresholdReviewed = $true
+        clusterNetworkAccessReviewReviewed = $true
+        helmValuesHardeningReviewed = $true
         requireProductionEvidence = $true
         requireOperationsSnapshotEvidence = $true
     }
@@ -3491,7 +4328,7 @@ finally {
 }
 Assert-True ($badConvergenceOperationsHandoffPackageExitCode -ne 0) "Operations handoff package with non-ready convergence source should fail import."
 Assert-True (Test-Path -LiteralPath $badConvergenceOperationsHandoffPackageJson) "Bad convergence handoff package import report should still be written."
-$badConvergenceOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $badConvergenceOperationsHandoffPackageJson | ConvertFrom-Json
+$badConvergenceOperationsHandoffPackageReport = Read-Utf8Text $badConvergenceOperationsHandoffPackageJson | ConvertFrom-Json
 Assert-True ($badConvergenceOperationsHandoffPackageReport.result -eq "failed") "Bad convergence handoff package import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $badConvergenceOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Bad convergence handoff package must not be promoted."
 Assert-True (($badConvergenceOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("sourceReportResult=action-required")) "Bad convergence handoff package report should describe non-ready source report result."
@@ -3499,6 +4336,9 @@ Assert-True (($badConvergenceOperationsHandoffPackageReport.entries | ConvertTo-
 Write-JsonEvidence (Join-Path $stringBoolOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
     operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots -KubernetesReportSyncReady "false")
     confirmations = [ordered]@{
         noSecretValues = $true
@@ -3510,12 +4350,17 @@ Write-JsonEvidence (Join-Path $stringBoolOperationsHandoffPackageRoot "latest-op
         operationsReadinessSnapshotReviewed = $true
         operationsConvergenceSnapshotReviewed = $true
         dataFlowStoragePlanReviewed = $true
+        dataFlowQueryRetentionBudgetReviewed = $true
         dataFlowStorageTransitionRunbookReviewed = $true
         secretRotationSnapshotReviewed = $true
         commercialIntegrationSnapshotReviewed = $true
         commercialApprovalSnapshotReviewed = $true
+        chargebackCloseoutSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
+        enterpriseAuthJitRollbackSnapshotReviewed = $true
         monitoringThresholdReviewed = $true
+        clusterNetworkAccessReviewReviewed = $true
+        helmValuesHardeningReviewed = $true
         requireProductionEvidence = $true
         requireOperationsSnapshotEvidence = $true
     }
@@ -3538,7 +4383,7 @@ finally {
 }
 Assert-True ($stringBoolOperationsHandoffPackageExitCode -ne 0) "Operations handoff package with string sync boolean should fail import."
 Assert-True (Test-Path -LiteralPath $stringBoolOperationsHandoffPackageJson) "String-bool handoff package import report should still be written."
-$stringBoolOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $stringBoolOperationsHandoffPackageJson | ConvertFrom-Json
+$stringBoolOperationsHandoffPackageReport = Read-Utf8Text $stringBoolOperationsHandoffPackageJson | ConvertFrom-Json
 Assert-True ($stringBoolOperationsHandoffPackageReport.result -eq "failed") "String-bool handoff package import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringBoolOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "String-bool handoff package must not be promoted."
 Assert-True (($stringBoolOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("kubernetesReportSyncReady=false")) "String-bool handoff package report should describe invalid sync ready value."
@@ -3548,6 +4393,9 @@ $missingCountSnapshots["convergence"].Remove("finalizerGapCount")
 Write-JsonEvidence (Join-Path $missingCountOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
     operationsSnapshots = $missingCountSnapshots
     confirmations = [ordered]@{
         noSecretValues = $true
@@ -3559,12 +4407,17 @@ Write-JsonEvidence (Join-Path $missingCountOperationsHandoffPackageRoot "latest-
         operationsReadinessSnapshotReviewed = $true
         operationsConvergenceSnapshotReviewed = $true
         dataFlowStoragePlanReviewed = $true
+        dataFlowQueryRetentionBudgetReviewed = $true
         dataFlowStorageTransitionRunbookReviewed = $true
         secretRotationSnapshotReviewed = $true
         commercialIntegrationSnapshotReviewed = $true
         commercialApprovalSnapshotReviewed = $true
+        chargebackCloseoutSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
+        enterpriseAuthJitRollbackSnapshotReviewed = $true
         monitoringThresholdReviewed = $true
+        clusterNetworkAccessReviewReviewed = $true
+        helmValuesHardeningReviewed = $true
         requireProductionEvidence = $true
         requireOperationsSnapshotEvidence = $true
     }
@@ -3587,7 +4440,7 @@ finally {
 }
 Assert-True ($missingCountOperationsHandoffPackageExitCode -ne 0) "Operations handoff package with missing finalizer gap count should fail import."
 Assert-True (Test-Path -LiteralPath $missingCountOperationsHandoffPackageJson) "Missing-count handoff package import report should still be written."
-$missingCountOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $missingCountOperationsHandoffPackageJson | ConvertFrom-Json
+$missingCountOperationsHandoffPackageReport = Read-Utf8Text $missingCountOperationsHandoffPackageJson | ConvertFrom-Json
 Assert-True ($missingCountOperationsHandoffPackageReport.result -eq "failed") "Missing-count handoff package import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $missingCountOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Missing-count handoff package must not be promoted."
 $missingCountOperationsHandoffPackageEntry = @($missingCountOperationsHandoffPackageReport.entries | Where-Object { $_.group -eq "operations-handoff-package" -and $_.fileName -eq "latest-operations-handoff-package.json" })
@@ -3600,6 +4453,9 @@ $weakTargetOperationsHandoffSnapshots["commercialApproval"]["failureCount"] = 1
 Write-JsonEvidence (Join-Path $weakTargetOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
     operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
     evidenceRefs = (New-PassedOperationsHandoffPackageEvidenceRefs)
     targetEvidenceSnapshots = $weakTargetOperationsHandoffSnapshots
@@ -3625,11 +4481,50 @@ finally {
 }
 Assert-True ($weakTargetOperationsHandoffPackageExitCode -ne 0) "Operations handoff package with weak target snapshot should fail import."
 Assert-True (Test-Path -LiteralPath $weakTargetOperationsHandoffPackageJson) "Weak-target handoff package import report should still be written."
-$weakTargetOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $weakTargetOperationsHandoffPackageJson | ConvertFrom-Json
+$weakTargetOperationsHandoffPackageReport = Read-Utf8Text $weakTargetOperationsHandoffPackageJson | ConvertFrom-Json
 Assert-True ($weakTargetOperationsHandoffPackageReport.result -eq "failed") "Weak-target handoff package import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakTargetOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Weak-target handoff package must not be promoted."
 Assert-True (($weakTargetOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("targetEvidenceSnapshots.commercialApproval.failureCount=1")) "Weak-target handoff package report should describe failing commercial approval target snapshot."
 
+$mismatchedIdentityOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "mismatched-identity-operations-handoff-package-source"
+$mismatchedIdentityOperationsHandoffChecks = New-PassedOperationsHandoffPackageChecks
+$mismatchedIdentityOperationsHandoffSnapshots = New-PassedOperationsHandoffPackageTargetSnapshots
+$mismatchedIdentityOperationsHandoffSnapshots["monitoringThreshold"]["targetCluster"] = "osmu-prod-blue"
+Write-JsonEvidence (Join-Path $mismatchedIdentityOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
+    evidenceRefs = (New-PassedOperationsHandoffPackageEvidenceRefs)
+    targetEvidenceSnapshots = $mismatchedIdentityOperationsHandoffSnapshots
+    confirmations = (New-PassedOperationsHandoffPackageConfirmations)
+    summary = (New-PassedOperationsHandoffPackageSummary -CheckCount $mismatchedIdentityOperationsHandoffChecks.Count)
+    checks = $mismatchedIdentityOperationsHandoffChecks
+}
+$mismatchedIdentityOperationsHandoffPackageOutput = Join-Path $resolvedOutputDirectory "mismatched-identity-operations-handoff-package-promoted"
+$mismatchedIdentityOperationsHandoffPackageJson = Join-Path $resolvedOutputDirectory "mismatched-identity-operations-handoff-package-import.json"
+$mismatchedIdentityOperationsHandoffPackageMarkdown = Join-Path $resolvedOutputDirectory "mismatched-identity-operations-handoff-package-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $mismatchedIdentityOperationsHandoffPackageOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -OperationsHandoffPackageArtifactPath $mismatchedIdentityOperationsHandoffPackageRoot `
+        -OutputDirectory $mismatchedIdentityOperationsHandoffPackageOutput `
+        -JsonOutputPath $mismatchedIdentityOperationsHandoffPackageJson `
+        -MarkdownOutputPath $mismatchedIdentityOperationsHandoffPackageMarkdown 2>&1
+    $mismatchedIdentityOperationsHandoffPackageExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($mismatchedIdentityOperationsHandoffPackageExitCode -ne 0) "Operations handoff package with mismatched target identity should fail import."
+Assert-True (Test-Path -LiteralPath $mismatchedIdentityOperationsHandoffPackageJson) "Mismatched-identity handoff package import report should still be written."
+$mismatchedIdentityOperationsHandoffPackageReport = Read-Utf8Text $mismatchedIdentityOperationsHandoffPackageJson | ConvertFrom-Json
+Assert-True ($mismatchedIdentityOperationsHandoffPackageReport.result -eq "failed") "Mismatched-identity handoff package import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $mismatchedIdentityOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Mismatched-identity handoff package must not be promoted."
+Assert-True (($mismatchedIdentityOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("targetEvidenceSnapshots.monitoringThreshold.targetCluster=osmu-prod-blue expected=osmu-prod")) "Mismatched-identity handoff package report should describe target cluster mismatch."
 Write-JsonEvidence (Join-Path $directDataFlowStoragePlanSource "latest-data-flow-storage-plan.json") @{
     formatVersion = "osmu.data-flow-storage-plan.v1"
     result = "passed"
@@ -3664,7 +4559,7 @@ finally {
 }
 Assert-True ($weakDirectDataFlowExitCode -ne 0) "Direct data-flow storage plan with non-passed result should fail import."
 Assert-True (Test-Path -LiteralPath $weakDirectDataFlowJson) "Weak direct data-flow import report should still be written."
-$weakDirectDataFlowReport = Get-Content -Raw -LiteralPath $weakDirectDataFlowJson | ConvertFrom-Json
+$weakDirectDataFlowReport = Read-Utf8Text $weakDirectDataFlowJson | ConvertFrom-Json
 Assert-True ($weakDirectDataFlowReport.result -eq "failed") "Weak direct data-flow import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakDirectDataFlowOutput "latest-data-flow-storage-plan.json"))) "Weak direct data-flow storage plan must not be promoted."
 Assert-True (($weakDirectDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("result=plan-ready-execute-required expected=passed")) "Weak direct data-flow report should describe non-passed result."
@@ -3698,7 +4593,7 @@ finally {
 }
 Assert-True ($stringCountDirectDataFlowExitCode -ne 0) "Direct data-flow storage plan with string query-plan failedCount should fail import."
 Assert-True (Test-Path -LiteralPath $stringCountDirectDataFlowJson) "String-count direct data-flow import report should still be written."
-$stringCountDirectDataFlowReport = Get-Content -Raw -LiteralPath $stringCountDirectDataFlowJson | ConvertFrom-Json
+$stringCountDirectDataFlowReport = Read-Utf8Text $stringCountDirectDataFlowJson | ConvertFrom-Json
 Assert-True ($stringCountDirectDataFlowReport.result -eq "failed") "String-count direct data-flow import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringCountDirectDataFlowOutput "latest-data-flow-storage-plan.json"))) "String-count direct data-flow storage plan must not be promoted."
 Assert-True (($stringCountDirectDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("queryPlanEvidence.failedCount=0(valid=False)")) "String-count direct data-flow report should describe invalid typed query-plan failed count."
@@ -3714,7 +4609,7 @@ $directDataFlowMarkdown = Join-Path $resolvedOutputDirectory "direct-data-flow-i
 if ($LASTEXITCODE -ne 0) {
     throw "Direct data-flow storage plan import failed with exit code $LASTEXITCODE."
 }
-$directDataFlowReport = Get-Content -Raw -LiteralPath $directDataFlowJson | ConvertFrom-Json
+$directDataFlowReport = Read-Utf8Text $directDataFlowJson | ConvertFrom-Json
 Assert-True ($directDataFlowReport.result -eq "passed") "Direct data-flow import report should pass."
 Assert-True ($directDataFlowReport.selectedGroupCount -eq 1) "Direct data-flow import should select one group."
 Assert-True (Test-Path -LiteralPath (Join-Path $directDataFlowOutput "latest-data-flow-storage-plan.json")) "Direct data-flow storage plan must be promoted."

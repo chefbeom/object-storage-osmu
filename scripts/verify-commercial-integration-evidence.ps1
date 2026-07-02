@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -58,7 +62,7 @@ $readinessFixture = [ordered]@{
         generatedAt = "2026-06-20T01:30:00Z"
         scopePolicy = "Readiness view checks OSMU payment-provider handoff adapter configuration only."
         secretPolicy = "Only sanitized profile metadata is exposed."
-        note = "Webhook handoff profiles are ready; native card/bank/tax/ERP API adapters remain out of scope for this evidence."
+        note = "Webhook handoff profiles and configurable native bridge readiness are reviewed; vendor-specific fixed SDK/schema card/bank/tax/ERP adapters remain out of scope for this evidence."
         profiles = @(
             [ordered]@{ providerProfile = "GENERIC"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
             [ordered]@{ providerProfile = "CARD"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
@@ -117,8 +121,8 @@ if ($LASTEXITCODE -ne 0) {
 Assert-True (Test-Path -LiteralPath $jsonOutputPath) "Commercial integration evidence JSON missing."
 Assert-True (Test-Path -LiteralPath $markdownOutputPath) "Commercial integration evidence markdown missing."
 
-$reportText = Get-Content -Raw -LiteralPath $jsonOutputPath
-$markdown = Get-Content -Raw -LiteralPath $markdownOutputPath
+$reportText = Read-Utf8Text $jsonOutputPath
+$markdown = Read-Utf8Text $markdownOutputPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 $integrations = @($report.integrations)
@@ -157,7 +161,7 @@ Assert-Contains $markdown "# OSMU Commercial Integration Evidence" "commercial i
 Assert-Contains $markdown "Scope Policy" "commercial integration evidence markdown"
 Assert-Contains $markdown "Payment Provider Adapter Readiness" "commercial integration evidence markdown"
 Assert-Contains $markdown "Record passed target evidence" "commercial integration evidence markdown"
-Assert-Contains $report.scopePolicy "does not claim or require native card, bank, tax invoice, or ERP processor API support" "commercial integration evidence JSON"
+Assert-Contains $report.scopePolicy "does not claim vendor-specific fixed SDK/schema card, bank, tax invoice, ERP, or external payment processor implementation" "commercial integration evidence JSON"
 Assert-Contains $report.secretPolicy "does not contain webhook URLs with credentials" "commercial integration evidence JSON"
 Assert-Contains $report.decisionRule "Production/B2B commercial integration readiness requires result=passed" "commercial integration evidence JSON"
 Assert-Contains $report.decisionRule "payment-provider adapter readiness review" "commercial integration evidence JSON"
@@ -339,3 +343,4 @@ Assert-Contains ($stringTypedReadinessOutput | Out-String) "Payment-provider ada
 Write-Host "Commercial integration evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"
 Write-Host "Markdown: $markdownOutputPath"
+exit 0

@@ -5,8 +5,12 @@ $repositoryPath = Join-Path $root "osmu-backend\src\main\java\com\example\osmu\o
 if (-not (Test-Path -LiteralPath $repositoryPath)) {
     throw "Repository source not found: $repositoryPath"
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = [System.IO.Path]::GetFullPath($PathValue)
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 
-$source = Get-Content -Raw -LiteralPath $repositoryPath
+$source = Read-Utf8Text $repositoryPath
 
 function Assert-Count([string] $needle, [int] $expected, [string] $message) {
     $count = ([regex]::Matches($source, [regex]::Escape($needle))).Count

@@ -28,7 +28,7 @@ function Assert-True([bool] $condition, [string] $message) {
 function Read-RequiredFile([string] $path, [string] $label) {
     $resolved = Resolve-ProjectPath $path
     Assert-True (Test-Path -LiteralPath $resolved) "$label not found: $resolved"
-    $content = Get-Content -Raw -LiteralPath $resolved
+    $content = [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
     Assert-True (-not $content.Contains("`t")) "Tabs are not allowed in $label."
     return $content
 }

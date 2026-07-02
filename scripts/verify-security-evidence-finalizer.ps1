@@ -12,12 +12,17 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Assert-FileResultPassed([string] $path, [string] $label, [string] $formatVersion) {
     $resolvedPath = Resolve-ProjectPath $path
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
         throw "$label evidence missing: $resolvedPath"
     }
-    $evidence = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+    $evidence = Read-Utf8Text $resolvedPath | ConvertFrom-Json
     if ($evidence.formatVersion -ne $formatVersion) {
         throw "$label formatVersion mismatch: $($evidence.formatVersion)"
     }
@@ -69,7 +74,7 @@ Assert-FileResultPassed $finalizeJsonPath "Security evidence finalizer" "osmu.se
 Assert-FileResultPassed $promotedImagePath "Promoted image signing" "osmu.image-signing-evidence.v1"
 Assert-FileResultPassed $promotedContainerPath "Promoted container security" "osmu.container-security-evidence.v1"
 
-$markdown = Get-Content -Raw -LiteralPath $finalizeMarkdownPath
+$markdown = Read-Utf8Text $finalizeMarkdownPath
 Assert-Contains $markdown "# OSMU Security Evidence Finalize" "Security evidence finalizer markdown"
 Assert-Contains $markdown "Result: passed" "Security evidence finalizer markdown"
 Assert-Contains $markdown "promoted image signing evidence" "Security evidence finalizer markdown"
@@ -85,7 +90,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "finalize-security-evidence.ps1 synthetic rejection check failed with exit code $LASTEXITCODE."
 }
 
-$rejectedEvidence = Get-Content -Raw -LiteralPath $rejectedJsonPath | ConvertFrom-Json
+$rejectedEvidence = Read-Utf8Text $rejectedJsonPath | ConvertFrom-Json
 if ($rejectedEvidence.result -ne "failed") {
     throw "Synthetic security evidence must be rejected unless -AllowSyntheticEvidence is provided."
 }

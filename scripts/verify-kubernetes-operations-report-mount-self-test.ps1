@@ -11,6 +11,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-Equal($Actual, $Expected, [string] $Message) {
     if ($Actual -ne $Expected) {
@@ -55,6 +59,7 @@ $reportPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-co
 $syncEvidencePath = Join-Path $resolvedOutputDirectory "latest-kubernetes-operations-report-sync.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
 $dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-transition-runbook-evidence.json"
+$dataFlowQueryRetentionBudgetPath = Join-Path $resolvedOutputDirectory "latest-data-flow-query-retention-budget-evidence.json"
 $fakeKubectlPath = Join-Path $resolvedOutputDirectory "fake-kubectl.ps1"
 $evidencePath = Join-Path $resolvedOutputDirectory "mount-evidence.json"
 $planEvidencePath = Join-Path $resolvedOutputDirectory "mount-plan.json"
@@ -169,21 +174,66 @@ Write-JsonFixture $dataFlowStorageTransitionRunbookPath ([ordered]@{
     scopePolicy = "OSMU operations analytics transition runbook only."
 })
 
+Write-JsonFixture $dataFlowQueryRetentionBudgetPath ([ordered]@{
+    formatVersion = "osmu.data-flow-query-retention-budget-evidence.v1"
+    generatedAt = "2026-06-16T00:07:00+09:00"
+    result = "passed"
+    dataFlowStoragePlanSnapshot = [ordered]@{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+        targetP95QueryLatencyMs = 500
+        pendingCount = 0
+    }
+    queryLatencyBudget = [ordered]@{
+        targetP95QueryLatencyMs = 500
+        observedP95QueryLatencyMs = 420
+        observedP99QueryLatencyMs = 470
+        querySampleCount = 120
+        observedQueryWindowDays = 180
+        withinBudget = $true
+    }
+    retentionBudget = [ordered]@{
+        budgetSeconds = 30
+        detailedRetentionObservedSeconds = 20
+        dailyRollupRetentionObservedSeconds = 18
+        monthlyRollupRetentionObservedSeconds = 12
+        withinBudget = $true
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 8
+    }
+    confirmations = [ordered]@{
+        queryLatencyReviewed = $true
+        retentionJobsWithinBudget = $true
+        noObjectKeysInEvidence = $true
+        noRawSqlOrExplain = $true
+        noSecretValues = $true
+    }
+    topFailedChecks = @()
+    scopePolicy = "OSMU operations analytics query/retention budget only."
+})
+
 $fakeKubectlTemplate = @'
 $reportPath = '__REPORT_PATH__'
 $syncPath = '__SYNC_PATH__'
 $dataFlowStoragePlanPath = '__DATA_FLOW_STORAGE_PLAN_PATH__'
 $dataFlowStorageTransitionRunbookPath = '__DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_PATH__'
+$dataFlowQueryRetentionBudgetPath = '__DATA_FLOW_QUERY_RETENTION_BUDGET_PATH__'
 
 function Escape-JsonString([string] $Value) {
     return ($Value | ConvertTo-Json -Compress)
 }
+function Read-Utf8Text([string] $PathValue) {
+    return [System.IO.File]::ReadAllText((Resolve-Path $PathValue), [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 if (($args -contains 'get') -and ($args -contains 'configmap')) {
-    $reportText = Get-Content -Raw -Encoding UTF8 -LiteralPath $reportPath
-    $syncText = Get-Content -Raw -Encoding UTF8 -LiteralPath $syncPath
-    $dataFlowStoragePlanText = Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStoragePlanPath
-    $dataFlowStorageTransitionRunbookText = Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStorageTransitionRunbookPath
+    $reportText = Read-Utf8Text $reportPath
+    $syncText = Read-Utf8Text $syncPath
+    $dataFlowStoragePlanText = Read-Utf8Text $dataFlowStoragePlanPath
+    $dataFlowStorageTransitionRunbookText = Read-Utf8Text $dataFlowStorageTransitionRunbookPath
+    $dataFlowQueryRetentionBudgetText = Read-Utf8Text $dataFlowQueryRetentionBudgetPath
     Write-Output -NoEnumerate (
         '{' +
         '"apiVersion":"v1",' +
@@ -193,7 +243,8 @@ if (($args -contains 'get') -and ($args -contains 'configmap')) {
         '"latest-operations-readiness-convergence.json":' + (Escape-JsonString $reportText) + ',' +
         '"latest-kubernetes-operations-report-sync.json":' + (Escape-JsonString $syncText) + ',' +
         '"latest-data-flow-storage-plan.json":' + (Escape-JsonString $dataFlowStoragePlanText) + ',' +
-        '"latest-data-flow-storage-transition-runbook-evidence.json":' + (Escape-JsonString $dataFlowStorageTransitionRunbookText) +
+        '"latest-data-flow-storage-transition-runbook-evidence.json":' + (Escape-JsonString $dataFlowStorageTransitionRunbookText) + ',' +
+        '"latest-data-flow-query-retention-budget-evidence.json":' + (Escape-JsonString $dataFlowQueryRetentionBudgetText) +
         '}' +
         '}'
     )
@@ -226,19 +277,23 @@ if (($args -contains 'get') -and ($args -contains 'pods')) {
 if ($args -contains 'exec') {
     $path = [string] $args[-1]
     if ($path.EndsWith('latest-operations-readiness-convergence.json')) {
-        Write-Output -NoEnumerate (Get-Content -Raw -Encoding UTF8 -LiteralPath $reportPath)
+        Write-Output -NoEnumerate (Read-Utf8Text $reportPath)
         exit 0
     }
     if ($path.EndsWith('latest-kubernetes-operations-report-sync.json')) {
-        Write-Output -NoEnumerate (Get-Content -Raw -Encoding UTF8 -LiteralPath $syncPath)
+        Write-Output -NoEnumerate (Read-Utf8Text $syncPath)
         exit 0
     }
     if ($path.EndsWith('latest-data-flow-storage-plan.json')) {
-        Write-Output -NoEnumerate (Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStoragePlanPath)
+        Write-Output -NoEnumerate (Read-Utf8Text $dataFlowStoragePlanPath)
         exit 0
     }
     if ($path.EndsWith('latest-data-flow-storage-transition-runbook-evidence.json')) {
-        Write-Output -NoEnumerate (Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStorageTransitionRunbookPath)
+        Write-Output -NoEnumerate (Read-Utf8Text $dataFlowStorageTransitionRunbookPath)
+        exit 0
+    }
+    if ($path.EndsWith('latest-data-flow-query-retention-budget-evidence.json')) {
+        Write-Output -NoEnumerate (Read-Utf8Text $dataFlowQueryRetentionBudgetPath)
         exit 0
     }
     Write-Error "Unexpected mounted path: $path"
@@ -253,7 +308,8 @@ $fakeKubectlScript = $fakeKubectlTemplate.
     Replace("__REPORT_PATH__", (Escape-SingleQuotedPowerShellString $reportPath)).
     Replace("__SYNC_PATH__", (Escape-SingleQuotedPowerShellString $syncEvidencePath)).
     Replace("__DATA_FLOW_STORAGE_PLAN_PATH__", (Escape-SingleQuotedPowerShellString $dataFlowStoragePlanPath)).
-    Replace("__DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_PATH__", (Escape-SingleQuotedPowerShellString $dataFlowStorageTransitionRunbookPath))
+    Replace("__DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_PATH__", (Escape-SingleQuotedPowerShellString $dataFlowStorageTransitionRunbookPath)).
+    Replace("__DATA_FLOW_QUERY_RETENTION_BUDGET_PATH__", (Escape-SingleQuotedPowerShellString $dataFlowQueryRetentionBudgetPath))
 $fakeKubectlScript | Set-Content -LiteralPath $fakeKubectlPath -Encoding UTF8
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -263,17 +319,19 @@ $fakeKubectlScript | Set-Content -LiteralPath $fakeKubectlPath -Encoding UTF8
     -LocalSyncEvidencePath $syncEvidencePath `
     -LocalDataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -LocalDataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
+    -LocalDataFlowQueryRetentionBudgetPath $dataFlowQueryRetentionBudgetPath `
     -EvidencePath $planEvidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "verify-kubernetes-operations-report-mount.ps1 plan check failed with exit code $LASTEXITCODE."
 }
 
-$plan = Get-Content -Raw -LiteralPath $planEvidencePath | ConvertFrom-Json
+$plan = Read-Utf8Text $planEvidencePath | ConvertFrom-Json
 Assert-Equal $plan.formatVersion "osmu.kubernetes-operations-report-mount.v1" "plan formatVersion"
 Assert-Equal $plan.result "planned" "plan result"
 Assert-Equal $plan.podMountChecked $false "plan pod mount checked"
 Assert-Equal $plan.dataFlowStoragePlanChecked $true "plan data-flow storage plan checked"
 Assert-Equal $plan.dataFlowStorageTransitionRunbookChecked $true "plan data-flow storage transition runbook checked"
+Assert-Equal $plan.dataFlowQueryRetentionBudgetChecked $true "plan data-flow query retention budget checked"
 Assert-Equal $plan.failedCount 0 "plan failed count"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -282,24 +340,27 @@ Assert-Equal $plan.failedCount 0 "plan failed count"
     -LocalSyncEvidencePath $syncEvidencePath `
     -LocalDataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -LocalDataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
+    -LocalDataFlowQueryRetentionBudgetPath $dataFlowQueryRetentionBudgetPath `
     -EvidencePath $evidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "verify-kubernetes-operations-report-mount.ps1 mounted check failed with exit code $LASTEXITCODE."
 }
 
-$evidence = Get-Content -Raw -LiteralPath $evidencePath | ConvertFrom-Json
+$evidence = Read-Utf8Text $evidencePath | ConvertFrom-Json
 $checksText = $evidence.checks | ConvertTo-Json -Depth 12
 Assert-Equal $evidence.result "passed" "mount evidence result"
 Assert-Equal $evidence.backendPodName "osmu-backend-fixture-0" "mount evidence backend pod"
 Assert-Equal $evidence.podMountChecked $true "mount evidence pod mount checked"
 Assert-Equal $evidence.dataFlowStoragePlanChecked $true "mount evidence data-flow storage plan checked"
 Assert-Equal $evidence.dataFlowStorageTransitionRunbookChecked $true "mount evidence data-flow storage transition runbook checked"
+Assert-Equal $evidence.dataFlowQueryRetentionBudgetChecked $true "mount evidence data-flow query retention budget checked"
 Assert-Equal $evidence.failedCount 0 "mount evidence failed count"
 Assert-True (-not [string]::IsNullOrWhiteSpace($evidence.configMapReportSha256)) "configmap report hash"
 Assert-Equal $evidence.configMapReportSha256 $evidence.mountedReportSha256 "mounted report hash match"
 Assert-Equal $evidence.configMapSyncEvidenceSha256 $evidence.mountedSyncEvidenceSha256 "mounted sync evidence hash match"
 Assert-Equal $evidence.configMapDataFlowStoragePlanSha256 $evidence.mountedDataFlowStoragePlanSha256 "mounted data-flow storage plan hash match"
 Assert-Equal $evidence.configMapDataFlowStorageTransitionRunbookSha256 $evidence.mountedDataFlowStorageTransitionRunbookSha256 "mounted data-flow storage transition runbook hash match"
+Assert-Equal $evidence.configMapDataFlowQueryRetentionBudgetSha256 $evidence.mountedDataFlowQueryRetentionBudgetSha256 "mounted data-flow query retention budget hash match"
 Assert-Contains $checksText "configmap-sync-evidence-key-present" "configmap sync evidence key check"
 Assert-Contains $checksText "mounted-sync-evidence-readable" "mounted sync evidence readable check"
 Assert-Contains $checksText "mounted-sync-evidence-matches-configmap" "mounted sync evidence match check"
@@ -312,9 +373,14 @@ Assert-Contains $checksText "mounted-data-flow-storage-plan-query-plan-failed-co
 Assert-Contains $checksText "mounted-data-flow-storage-plan-matches-configmap" "mounted data-flow storage plan match check"
 Assert-Contains $checksText "configmap-data-flow-storage-transition-runbook-key-present" "configmap data-flow runbook key check"
 Assert-Contains $checksText "configmap-data-flow-storage-transition-runbook-result" "configmap data-flow runbook result check"
+Assert-Contains $checksText "configmap-data-flow-query-retention-budget-key-present" "configmap data-flow query retention budget key check"
+Assert-Contains $checksText "configmap-data-flow-query-retention-budget-result" "configmap data-flow query retention budget result check"
 Assert-Contains $checksText "mounted-data-flow-storage-transition-runbook-readable" "mounted data-flow runbook readable check"
 Assert-Contains $checksText "mounted-data-flow-storage-transition-runbook-noSecretValues" "mounted data-flow runbook no-secret check"
 Assert-Contains $checksText "mounted-data-flow-storage-transition-runbook-matches-configmap" "mounted data-flow runbook match check"
+Assert-Contains $checksText "mounted-data-flow-query-retention-budget-readable" "mounted data-flow query retention budget readable check"
+Assert-Contains $checksText "mounted-data-flow-query-retention-budget-noSecretValues" "mounted data-flow query retention budget no-secret check"
+Assert-Contains $checksText "mounted-data-flow-query-retention-budget-matches-configmap" "mounted data-flow query retention budget match check"
 Assert-True ($evidence.safetyPolicy.Contains("read-only")) "mount evidence safety policy"
 
 Write-Host "Kubernetes operations report mount verifier self-test passed."

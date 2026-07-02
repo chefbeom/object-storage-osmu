@@ -1,5 +1,6 @@
 param(
-    [string] $OpenApiPath = ".\dev-docs\openapi-mvp.json"
+    [string] $OpenApiPath = ".\dev-docs\openapi-mvp.json",
+    [string] $ApiSpecPath = ".\dev-docs\api-spec.md"
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,6 +11,10 @@ function Resolve-ProjectPath($path) {
         return [System.IO.Path]::GetFullPath($path)
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
+}
+
+function Read-Utf8Text([string] $PathValue) {
+    return [System.IO.File]::ReadAllText($PathValue, [System.Text.Encoding]::UTF8)
 }
 
 function Assert-True([bool] $condition, [string] $message) {
@@ -35,14 +40,37 @@ function Assert-FrontendFunction([string] $source, [string] $functionName) {
 $resolvedOpenApiPath = Resolve-ProjectPath $OpenApiPath
 Assert-True (Test-Path -LiteralPath $resolvedOpenApiPath) "OpenAPI file missing: $resolvedOpenApiPath"
 
-$rawSpec = Get-Content -Raw -LiteralPath $resolvedOpenApiPath
+$rawSpec = Read-Utf8Text $resolvedOpenApiPath
 $spec = $rawSpec | ConvertFrom-Json
+
+$resolvedApiSpecPath = Resolve-ProjectPath $ApiSpecPath
+Assert-True (Test-Path -LiteralPath $resolvedApiSpecPath) "API spec file missing: $resolvedApiSpecPath"
+$apiSpec = Read-Utf8Text $resolvedApiSpecPath
 
 Assert-True ($spec.openapi -like "3.0.*") "OpenAPI version must be 3.0.x."
 Assert-True ($spec.info.title -eq "OSMU MVP API") "OpenAPI title mismatch."
 Assert-True ([bool]$spec.components.securitySchemes.bearerAuth) "bearerAuth security scheme missing."
 Assert-True ([bool]$spec.components.securitySchemes.osmuAccessKey) "osmuAccessKey security scheme missing."
 Assert-True ([bool]$spec.components.securitySchemes.awsSigV4) "awsSigV4 security scheme missing."
+Assert-True ($apiSpec.Contains('per-action `currentDetail`')) "API spec must document operationsEvidencePlan.actions[].currentDetail."
+Assert-True ($apiSpec.Contains('"currentDetail": "result=planned, status=kubernetes-dr-finalize-plan"')) "API spec operationsEvidencePlan example must include currentDetail."
+Assert-True ($apiSpec.Contains('"recommendedCommand": "gh workflow run kubernetes-dr-finalizer-ci.yml')) "API spec operationsEvidencePlan example must include recommendedCommand."
+Assert-True ($apiSpec.Contains('browserWorkflowRunsUrls')) "API spec operationsWorkflowRunIdPlan docs must include browserWorkflowRunsUrls."
+Assert-True ($apiSpec.Contains('"workflowRunIdInputs": [')) "API spec operationsWorkflowRunIdPlan example must include workflowRunIdInputs."
+Assert-True ($apiSpec.Contains('"recommendedCommands": [')) "API spec operationsWorkflowRunIdPlan example must include recommendedCommands."
+Assert-True ($apiSpec.Contains('"runIdParameter": "StorageExpansionRunId"')) "API spec operationsWorkflowRunIdPlan example must include runIdParameter."
+Assert-True ($apiSpec.Contains('securityEvidenceFinalizerRunIdInputs[]')) "API spec operationsWorkflowRunIdPlan docs must include securityEvidenceFinalizerRunIdInputs[]."
+Assert-True ($apiSpec.Contains('securityEvidenceFinalizerRunIdInputHints[]')) "API spec operationsWorkflowRunIdPlan docs must include securityEvidenceFinalizerRunIdInputHints[]."
+Assert-True ($apiSpec.Contains('"securityEvidenceFinalizerRunIdInputHints": [')) "API spec operationsWorkflowRunIdPlan example must include securityEvidenceFinalizerRunIdInputHints."
+Assert-True ($apiSpec.Contains('"securityEvidenceFinalizerMissingRunIdInputs": [')) "API spec operationsWorkflowRunIdPlan example must include securityEvidenceFinalizerMissingRunIdInputs."
+Assert-True ($rawSpec.Contains('"operationsWorkflowRunIdPlan"')) "OpenAPI dashboard readiness schema must expose operationsWorkflowRunIdPlan."
+Assert-True ($rawSpec.Contains('"securityEvidenceFinalizerRunIdInputs"')) "OpenAPI dashboard readiness schema must expose securityEvidenceFinalizerRunIdInputs."
+Assert-True ($rawSpec.Contains('"securityEvidenceFinalizerRunIdInputHints"')) "OpenAPI dashboard readiness schema must expose securityEvidenceFinalizerRunIdInputHints."
+Assert-True ($rawSpec.Contains('"supplementalForSecurityFinalizer"')) "OpenAPI workflow run-id input schema must expose supplementalForSecurityFinalizer."
+Assert-True ($rawSpec.Contains('"securityEvidenceFinalizerMissingRunIdInputs"')) "OpenAPI dashboard readiness schema must expose securityEvidenceFinalizerMissingRunIdInputs."
+Assert-True ($apiSpec.Contains('handoffPostDispatchCommands')) "API spec operationsReadinessConvergence docs must include handoffPostDispatchCommands."
+Assert-True ($apiSpec.Contains('handoffBrowserDispatchDependencyNotes[]')) "API spec operationsReadinessConvergence docs must include handoffBrowserDispatchDependencyNotes[]."
+Assert-True ($rawSpec.Contains('"handoffBrowserDispatchDependencyNotes"')) "OpenAPI dashboard readiness schema must expose handoffBrowserDispatchDependencyNotes."
 
 $requiredOperations = @(
     @("/api/health", "get", "getHealth"),
@@ -79,6 +107,7 @@ $requiredOperations = @(
     @("/api/admin/billing/pricing-policy", "put", "saveBillingPricingPolicy"),
     @("/api/admin/billing/pricing-policy-proposals", "get", "getBillingPricingPolicyProposals"),
     @("/api/admin/billing/pricing-policy-proposals", "post", "createBillingPricingPolicyProposal"),
+    @("/api/admin/billing/pricing-policy-proposals/commercial-approval-summary", "get", "getBillingPricingPolicyCommercialApprovalSummary"),
     @("/api/admin/billing/pricing-policy-proposals/{proposalId}/approve", "post", "approveBillingPricingPolicyProposal"),
     @("/api/admin/billing/pricing-policy-proposals/{proposalId}/commercial-approval", "post", "approveBillingPricingPolicyProposalPriceList"),
     @("/api/admin/billing/chargeback-preview", "get", "getChargebackPreview"),
@@ -93,6 +122,7 @@ $requiredOperations = @(
     @("/api/admin/billing/chargeback-adapter-retry-worker/status", "get", "getChargebackAdapterRetryWorkerStatus"),
     @("/api/admin/billing/chargeback-adapter-retry-worker/run", "post", "runChargebackAdapterRetryWorker"),
     @("/api/admin/billing/payment-provider-adapter-readiness", "get", "getChargebackPaymentProviderAdapterReadiness"),
+    @("/api/admin/billing/chargeback-closeout-summary", "get", "getChargebackCloseoutSummary"),
     @("/api/admin/billing/chargeback-invoice-drafts", "get", "getChargebackInvoiceDrafts"),
     @("/api/admin/billing/chargeback-invoice-drafts", "post", "createChargebackInvoiceDrafts"),
     @("/api/admin/billing/chargeback-invoice-drafts/{invoiceId}/approve", "post", "approveChargebackInvoiceDraft"),
@@ -183,6 +213,8 @@ $requiredOperations = @(
     @("/api/access-keys/{keyId}", "delete", "deleteAccessKey"),
     @("/api/access-keys/{keyId}/rotate", "post", "rotateAccessKey"),
     @("/api/admin/usage", "get", "getUsage"),
+    @("/api/admin/dashboard/summary", "get", "getDashboardSummary"),
+    @("/api/admin/dashboard/readiness", "get", "getDashboardReadiness"),
     @("/api/admin/monitoring/data-flow", "get", "getDataFlowMonitoring"),
     @("/api/admin/monitoring/data-flow/storage-status", "get", "getDataFlowStorageStatus"),
     @("/api/admin/monitoring/data-flow/retention/status", "get", "getDataFlowRetentionStatus"),
@@ -252,7 +284,7 @@ $duplicates = $operationIds | Group-Object | Where-Object { $_.Count -gt 1 } | S
 Assert-True (-not $duplicates) "Duplicate OpenAPI operationId values: $($duplicates -join ', ')"
 
 $frontendSourcePath = Join-Path $root "osmu-frontend\src\services\api.js"
-$frontendSource = Get-Content -Raw -LiteralPath $frontendSourcePath
+$frontendSource = Read-Utf8Text $frontendSourcePath
 $frontendFunctions = @(
     "getHealth",
     "getStorageHealth",

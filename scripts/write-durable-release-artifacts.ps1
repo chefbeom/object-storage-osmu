@@ -26,6 +26,10 @@ function Resolve-ProjectPath($path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Invoke-ProjectScript([string] $ScriptName, [string[]] $Arguments = @()) {
     $scriptPath = Join-Path $PSScriptRoot $ScriptName
@@ -55,7 +59,7 @@ function Read-OptionalJsonReport([string] $Path) {
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
         return $null
     }
-    return Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+    return Read-Utf8Text $resolvedPath | ConvertFrom-Json
 }
 
 function Test-ReportCheckPassed($Report, [string] $Name) {
@@ -71,7 +75,7 @@ if (-not (Test-Path -LiteralPath $resolvedDurableGateReportPath)) {
     throw "Durable gate report not found: $resolvedDurableGateReportPath"
 }
 
-$durableGate = Get-Content -Raw -LiteralPath $resolvedDurableGateReportPath | ConvertFrom-Json
+$durableGate = Read-Utf8Text $resolvedDurableGateReportPath | ConvertFrom-Json
 $durableReady = $durableGate.result -eq "ready" -and $durableGate.currentDemoStatus -eq "docker-durable-demo-verified"
 if (-not $durableReady) {
     throw "Durable gate report is not ready: result=$($durableGate.result), currentDemoStatus=$($durableGate.currentDemoStatus)"

@@ -797,9 +797,9 @@ function nativeAdapterSummary(profile = {}) {
     return 'Native API ready'
   }
   if (profile.nativeApiSupported) {
-    return 'Native API configured later'
+    return 'Native API configuration required'
   }
-  return 'Native API not implemented'
+  return 'Native API bridge unavailable'
 }
 
 function costBreakdown(organization) {

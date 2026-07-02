@@ -54,11 +54,14 @@ services:
     container_name: osmu-minio-init
     volumes:
       - ./minio-cors.json:/etc/osmu/minio-cors.json:ro
+      - osmu_mc_tools:/opt/osmu-tools
     depends_on:
       minio:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
+      cp "$$(command -v mc)" /opt/osmu-tools/mc;
+      chmod 0555 /opt/osmu-tools/mc;
       mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
       for bucket in $$(echo ${MINIO_DEFAULT_BUCKETS:-osmu-default} | tr ',' ' '); do
         mc mb --ignore-existing local/$$bucket;
@@ -78,6 +81,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      create-minio-buckets:
+        condition: service_completed_successfully
     environment:
       SPRING_PROFILES_ACTIVE: local
       SERVER_PORT: 8080
@@ -111,7 +116,7 @@ services:
       OSMU_OBJECT_RETENTION_BATCH_SIZE: ${OSMU_OBJECT_RETENTION_BATCH_SIZE:-100}
       OSMU_ACCESS_KEY_PROVISIONING_MODE: ${OSMU_ACCESS_KEY_PROVISIONING_MODE:-minio}
       OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY: ${OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY:-local-dev-access-key-secret-encryption-key-change-me}
-      OSMU_ACCESS_KEY_MC_PATH: ${OSMU_ACCESS_KEY_MC_PATH:-mc}
+      OSMU_ACCESS_KEY_MC_PATH: ${OSMU_ACCESS_KEY_MC_PATH:-/opt/osmu-tools/mc}
       OSMU_ACCESS_KEY_MINIO_ALIAS: ${OSMU_ACCESS_KEY_MINIO_ALIAS:-osmu-minio}
       OSMU_S3_PUBLIC_ENDPOINT: ${OSMU_S3_PUBLIC_ENDPOINT:-http://localhost:8080}
       OSMU_S3_SIGV4_CLOCK_SKEW_SECONDS: ${OSMU_S3_SIGV4_CLOCK_SKEW_SECONDS:-900}
@@ -120,10 +125,12 @@ services:
       OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH: ${OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH:-.osmu-run/latest-operations-readiness-convergence.json}
       OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH: ${OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH:-.osmu-run/latest-kubernetes-operations-report-sync.json}
       OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH: ${OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH:-.osmu-run/latest-data-flow-storage-plan.json}
+      OSMU_OPERATIONS_READINESS_DATA_FLOW_QUERY_RETENTION_BUDGET_REPORT_PATH: ${OSMU_OPERATIONS_READINESS_DATA_FLOW_QUERY_RETENTION_BUDGET_REPORT_PATH:-.osmu-run/latest-data-flow-query-retention-budget-evidence.json}
       OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REPORT_PATH: ${OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REPORT_PATH:-.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     volumes:
+      - osmu_mc_tools:/opt/osmu-tools:ro
       - ../../.osmu-run:/app/.osmu-run:ro
     healthcheck:
       test:
@@ -158,3 +165,4 @@ services:
 volumes:
   osmu_mariadb_data:
   osmu_minio_data:
+  osmu_mc_tools:

@@ -16,6 +16,9 @@ param(
     [string] $ReportPath = ".\.osmu-run\latest-durable-mvp-finalize.json",
     [string] $SummaryPath = ".\.osmu-run\latest-durable-mvp-finalize.md",
     [switch] $NoBuild,
+    [switch] $EnableRealMultipartEvidence,
+    [string] $BrowserMultipartResumeEvidenceJsonPath = ".\.osmu-run\latest-browser-multipart-resume-evidence.json",
+    [string] $BrowserMultipartResumeEvidenceMarkdownPath = ".\.osmu-run\latest-browser-multipart-resume-evidence.md",
     [switch] $PlanOnly,
     [switch] $NoReport
 )
@@ -104,6 +107,18 @@ function New-BackendCommandEntry() {
     }
 }
 
+$planOnlyUsesDefaultReportPath = $PlanOnly -and (-not $PSBoundParameters.ContainsKey("ReportPath"))
+$planOnlyUsesDefaultSummaryPath = $PlanOnly -and (-not $PSBoundParameters.ContainsKey("SummaryPath"))
+
+if ($PlanOnly) {
+    if ($planOnlyUsesDefaultReportPath) {
+        $ReportPath = ".\.osmu-run\latest-durable-mvp-finalize-plan.json"
+    }
+    if ($planOnlyUsesDefaultSummaryPath) {
+        $SummaryPath = ".\.osmu-run\latest-durable-mvp-finalize-plan.md"
+    }
+}
+
 $resolvedDurablePreflightReportPath = Resolve-ProjectPath $DurablePreflightReportPath
 $resolvedDurableGateReportPath = Resolve-ProjectPath $DurableGateReportPath
 $resolvedReleaseReportPath = Resolve-ProjectPath $ReleaseReportPath
@@ -130,6 +145,13 @@ $gateArgs = @(
 )
 if ($NoBuild) {
     $gateArgs += "-NoBuild"
+}
+if ($EnableRealMultipartEvidence) {
+    $gateArgs += "-EnableRealMultipartEvidence"
+    $gateArgs += "-BrowserMultipartResumeEvidenceJsonPath"
+    $gateArgs += $BrowserMultipartResumeEvidenceJsonPath
+    $gateArgs += "-BrowserMultipartResumeEvidenceMarkdownPath"
+    $gateArgs += $BrowserMultipartResumeEvidenceMarkdownPath
 }
 
 $releaseArgs = @(
@@ -165,6 +187,12 @@ $report = [ordered]@{
     currentDemoStatus = if ($PlanOnly) { "durable-mvp-finalize-plan" } else { "durable-mvp-finalize-running" }
     selectedS3Client = $S3Client
     noBuild = [bool] $NoBuild
+    browserMultipartResumeEvidenceRequested = [bool] $EnableRealMultipartEvidence
+    browserMultipartResumeEvidencePath = Resolve-ProjectPath $BrowserMultipartResumeEvidenceJsonPath
+    browserMultipartResumeEvidenceMarkdownPath = Resolve-ProjectPath $BrowserMultipartResumeEvidenceMarkdownPath
+    planOnlyUsesDefaultReportPath = [bool] $planOnlyUsesDefaultReportPath
+    planOnlyUsesDefaultSummaryPath = [bool] $planOnlyUsesDefaultSummaryPath
+    latestReadyFinalizerEvidencePreservedByDefault = [bool] ($PlanOnly -and $planOnlyUsesDefaultReportPath -and $planOnlyUsesDefaultSummaryPath)
     durablePreflightReportPath = $resolvedDurablePreflightReportPath
     durableGateReportPath = $resolvedDurableGateReportPath
     releaseReportPath = $resolvedReleaseReportPath
@@ -217,11 +245,14 @@ $summaryLines = @(
     "Result: $($report.result)",
     "Current demo status: $($report.currentDemoStatus)",
     "Selected S3 client: $($report.selectedS3Client)",
+    "Browser multipart resume evidence requested: $($report.browserMultipartResumeEvidenceRequested)",
     "",
     "## Artifact Paths",
     "",
     "- Durable preflight: $($report.durablePreflightReportPath)",
     "- Durable gate: $($report.durableGateReportPath)",
+    "- Browser multipart resume evidence: $($report.browserMultipartResumeEvidencePath)",
+    "- Browser multipart resume evidence summary: $($report.browserMultipartResumeEvidenceMarkdownPath)",
     "- Release report: $($report.releaseReportPath)",
     "- MVP audit: $($report.auditPath)",
     "- Release decision: $($report.decisionPath)",
@@ -235,6 +266,18 @@ $summaryLines = @(
 
 foreach ($command in $commands) {
     $summaryLines += "- $($command.name): ``$($command.command)``"
+}
+
+if ($PlanOnly) {
+    $summaryLines += @(
+        "",
+        "## Plan-only Evidence Hygiene",
+        "",
+        "- Latest ready finalizer evidence preserved by default: $($report.latestReadyFinalizerEvidencePreservedByDefault)",
+        "- Default plan report path used: $($report.planOnlyUsesDefaultReportPath)",
+        "- Default plan summary path used: $($report.planOnlyUsesDefaultSummaryPath)",
+        "- Full evidence refresh command after Docker is ready: ``.\scripts\finalize-durable-mvp-demo.ps1 -S3Client $S3Client -EnableRealMultipartEvidence``"
+    )
 }
 
 $summary = $summaryLines -join [Environment]::NewLine

@@ -15,6 +15,11 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Assert-Contains([string] $text, [string] $expected, [string] $label) {
     if (-not $text.Contains($expected)) {
         throw "$label does not contain expected text: $expected"
@@ -57,12 +62,12 @@ foreach ($path in @($resolvedJsonOutputPath, $resolvedMarkdownOutputPath, $resol
     }
 }
 
-$reportText = Get-Content -Raw -LiteralPath $resolvedJsonOutputPath
+$reportText = Read-Utf8Text $resolvedJsonOutputPath
 $report = $reportText | ConvertFrom-Json
-$markdown = Get-Content -Raw -LiteralPath $resolvedMarkdownOutputPath
-$planText = Get-Content -Raw -LiteralPath $resolvedPlanJsonOutputPath
+$markdown = Read-Utf8Text $resolvedMarkdownOutputPath
+$planText = Read-Utf8Text $resolvedPlanJsonOutputPath
 $planReport = $planText | ConvertFrom-Json
-$planMarkdown = Get-Content -Raw -LiteralPath $resolvedPlanMarkdownOutputPath
+$planMarkdown = Read-Utf8Text $resolvedPlanMarkdownOutputPath
 
 if ($report.formatVersion -ne "osmu.iam-rbac-finalize.v1") {
     throw "Unexpected IAM/RBAC finalizer formatVersion: $($report.formatVersion)"

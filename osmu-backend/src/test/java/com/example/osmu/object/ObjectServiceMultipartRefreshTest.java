@@ -94,6 +94,46 @@ class ObjectServiceMultipartRefreshTest {
     }
 
     @Test
+    void uploadMetadataFailureDeletesStoredObjectAndRevertsQuota() {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        StoredObjectRecord uploaded = new StoredObjectRecord(
+                "docs/rollback.txt",
+                4L,
+                "text/plain",
+                OffsetDateTime.now(),
+                Map.of()
+        );
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "docs/rollback.txt")).thenReturn(Optional.empty());
+        when(storageAdapter.putObject(
+                eq("bucket"),
+                eq("docs/rollback.txt"),
+                any(InputStream.class),
+                eq(4L),
+                eq("text/plain"),
+                eq(Map.of())
+        )).thenReturn(uploaded);
+        when(objectMetadataRepository.save(eq("bucket"), any(StoredObjectRecord.class)))
+                .thenThrow(new IllegalStateException("metadata db down"));
+        when(storageAdapter.deleteObject("bucket", "docs/rollback.txt")).thenReturn(uploaded);
+
+        assertThatThrownBy(() -> objectService.upload(
+                "bucket",
+                "docs/rollback.txt",
+                null,
+                new ByteArrayInputStream("fail".getBytes(StandardCharsets.UTF_8)),
+                4L,
+                "text/plain",
+                user
+        ))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("metadata db down");
+
+        verify(bucketService).applyObjectChange("bucket", 4L, 1L);
+        verify(bucketService).applyObjectChange("bucket", -4L, -1L);
+        verify(storageAdapter).deleteObject("bucket", "docs/rollback.txt");
+    }
+    @Test
     void presignedOverwriteUploadsToStagingKeyAndSnapshotsOnComplete() {
         BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 10L, 1L, OffsetDateTime.now());
         StoredObjectRecord previous = new StoredObjectRecord(

@@ -14,6 +14,10 @@ function Resolve-ProjectPath($path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -23,7 +27,7 @@ function Assert-True([bool] $condition, [string] $message) {
 function Read-RequiredFile([string] $path, [string] $label) {
     $resolved = Resolve-ProjectPath $path
     Assert-True (Test-Path -LiteralPath $resolved) "$label not found: $resolved"
-    $content = Get-Content -Raw -LiteralPath $resolved
+    $content = Read-Utf8Text $resolved
     Assert-True (-not $content.Contains("`t")) "Tabs are not allowed in $label."
     return $content
 }

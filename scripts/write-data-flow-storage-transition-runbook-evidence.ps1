@@ -38,6 +38,10 @@ function Resolve-ProjectPath([string] $path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-SafeText([string] $Value, [string] $Label) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -125,6 +129,21 @@ function Get-PropertyInt([object] $Object, [string] $Name) {
     return 0
 }
 
+function Get-PropertyBool([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return $false
+    }
+    if ($value -is [bool]) {
+        return [bool] $value
+    }
+    $parsed = $false
+    if ([bool]::TryParse(([string] $value), [ref] $parsed)) {
+        return $parsed
+    }
+    return $false
+}
+
 function New-Check([string] $Id, [string] $Name, [string] $Status, [string] $Detail) {
     return [ordered]@{
         id = $Id
@@ -154,6 +173,20 @@ function Read-DataFlowStoragePlan([string] $Path) {
         pendingCount = 0
         checkCount = 0
         queryPlanEvidenceResult = ""
+        queryPlanEvidence = [ordered]@{
+            provided = $false
+            path = ""
+            parsed = $false
+            formatVersion = ""
+            expectedFormatVersion = ""
+            validFormatVersion = $false
+            result = ""
+            mode = ""
+            checkCount = 0
+            passedCount = 0
+            failedCount = 0
+            detail = ""
+        }
         detail = "No data-flow storage plan JSON supplied."
     }
     if ([string]::IsNullOrWhiteSpace($Path)) {
@@ -166,7 +199,7 @@ function Read-DataFlowStoragePlan([string] $Path) {
         $summary["detail"] = "Data-flow storage plan JSON not found."
         return $summary
     }
-    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    $raw = Read-Utf8Text $resolvedPath
     Assert-SanitizedPlanJson $raw
     try {
         $payload = $raw | ConvertFrom-Json
@@ -185,8 +218,28 @@ function Read-DataFlowStoragePlan([string] $Path) {
     $summary["expectedQueryWindowDays"] = Get-PropertyInt $payload "expectedQueryWindowDays"
     $summary["pendingCount"] = Get-PropertyInt $payload "pendingCount"
     $summary["checkCount"] = Get-PropertyInt $payload "checkCount"
-    $summary["queryPlanEvidenceResult"] = Get-PropertyText $queryPlanEvidence "result"
-    $summary["detail"] = "formatVersion=$($summary["formatVersion"]); result=$($summary["result"]); candidateStore=$($summary["candidateStore"]); pending=$($summary["pendingCount"]); targetP95QueryLatencyMs=$($summary["targetP95QueryLatencyMs"])"
+    if ($null -ne $queryPlanEvidence) {
+        $providedProperty = Get-PropertyValue $queryPlanEvidence "provided"
+        $parsedProperty = Get-PropertyValue $queryPlanEvidence "parsed"
+        $validFormatVersionProperty = Get-PropertyValue $queryPlanEvidence "validFormatVersion"
+        $queryPlanSummary = [ordered]@{
+            provided = if ($null -ne $providedProperty) { Get-PropertyBool $queryPlanEvidence "provided" } else { $true }
+            path = Get-PropertyText $queryPlanEvidence "path"
+            parsed = if ($null -ne $parsedProperty) { Get-PropertyBool $queryPlanEvidence "parsed" } else { $true }
+            formatVersion = Get-PropertyText $queryPlanEvidence "formatVersion"
+            expectedFormatVersion = Get-PropertyText $queryPlanEvidence "expectedFormatVersion"
+            validFormatVersion = if ($null -ne $validFormatVersionProperty) { Get-PropertyBool $queryPlanEvidence "validFormatVersion" } else { $false }
+            result = Get-PropertyText $queryPlanEvidence "result"
+            mode = Get-PropertyText $queryPlanEvidence "mode"
+            checkCount = Get-PropertyInt $queryPlanEvidence "checkCount"
+            passedCount = Get-PropertyInt $queryPlanEvidence "passedCount"
+            failedCount = Get-PropertyInt $queryPlanEvidence "failedCount"
+            detail = Get-PropertyText $queryPlanEvidence "detail"
+        }
+        $summary["queryPlanEvidence"] = $queryPlanSummary
+        $summary["queryPlanEvidenceResult"] = $queryPlanSummary["result"]
+    }
+    $summary["detail"] = "formatVersion=$($summary["formatVersion"]); result=$($summary["result"]); candidateStore=$($summary["candidateStore"]); pending=$($summary["pendingCount"]); targetP95QueryLatencyMs=$($summary["targetP95QueryLatencyMs"]); queryPlanEvidenceResult=$($summary["queryPlanEvidenceResult"]); queryPlanEvidenceFailed=$($summary["queryPlanEvidence"]["failedCount"])"
     return $summary
 }
 
@@ -213,6 +266,18 @@ $planPassed = [bool] $planSummary["provided"] -and
     $planSummary["formatVersion"] -eq "osmu.data-flow-storage-plan.v1" -and
     "passed".Equals([string] $planSummary["result"], [System.StringComparison]::OrdinalIgnoreCase) -and
     [int] $planSummary["pendingCount"] -eq 0
+$candidateNeedsQueryPlanEvidence = @("MARIADB_PARTITION", "DUAL_WRITE") -contains [string] $planSummary["candidateStore"]
+$queryPlanEvidenceSummary = $planSummary["queryPlanEvidence"]
+$queryPlanEvidenceTyped = -not $candidateNeedsQueryPlanEvidence -or (
+    [bool] $queryPlanEvidenceSummary["provided"] -and
+    [bool] $queryPlanEvidenceSummary["parsed"] -and
+    "osmu.mariadb-query-plan-evidence.v1".Equals([string] $queryPlanEvidenceSummary["expectedFormatVersion"], [System.StringComparison]::OrdinalIgnoreCase) -and
+    [bool] $queryPlanEvidenceSummary["validFormatVersion"] -and
+    "passed".Equals([string] $queryPlanEvidenceSummary["result"], [System.StringComparison]::OrdinalIgnoreCase) -and
+    [int] $queryPlanEvidenceSummary["checkCount"] -gt 0 -and
+    [int] $queryPlanEvidenceSummary["passedCount"] -ge [int] $queryPlanEvidenceSummary["checkCount"] -and
+    [int] $queryPlanEvidenceSummary["failedCount"] -eq 0
+)
 $reviewStartedAtParsed = Get-ParsedDateText $ReviewStartedAt
 $reviewCompletedAtParsed = Get-ParsedDateText $ReviewCompletedAt
 $reviewWindowOrdered = $null -ne $reviewStartedAtParsed -and $null -ne $reviewCompletedAtParsed -and $reviewCompletedAtParsed -ge $reviewStartedAtParsed
@@ -227,6 +292,7 @@ Add-Check "review-window-order" "Review window order valid" $reviewWindowOrdered
 Add-Check "change-approval-ref" "Change approval reference recorded" (-not [string]::IsNullOrWhiteSpace($ChangeApprovalRef)) "changeApprovalRef=$ChangeApprovalRef"
 Add-Check "data-flow-storage-plan-evidence-ref" "Data-flow storage plan evidence reference recorded" (-not [string]::IsNullOrWhiteSpace($DataFlowStoragePlanEvidenceRef)) "dataFlowStoragePlanEvidenceRef=$DataFlowStoragePlanEvidenceRef"
 Add-Check "data-flow-storage-plan-passed" "Data-flow storage plan snapshot passed" $planPassed $planSummary["detail"]
+Add-Check "data-flow-storage-plan-query-plan-snapshot" "Data-flow storage plan query-plan snapshot typed" $queryPlanEvidenceTyped "required=$candidateNeedsQueryPlanEvidence; result=$($queryPlanEvidenceSummary["result"]); passed=$($queryPlanEvidenceSummary["passedCount"]); failed=$($queryPlanEvidenceSummary["failedCount"]); checks=$($queryPlanEvidenceSummary["checkCount"])"
 Add-Check "backfill-evidence-ref" "Backfill rehearsal evidence reference recorded" (-not [string]::IsNullOrWhiteSpace($BackfillEvidenceRef)) "backfillEvidenceRef=$BackfillEvidenceRef"
 Add-Check "dual-write-or-partition-toggle-evidence-ref" "Dual-write or partition toggle evidence reference recorded" (-not [string]::IsNullOrWhiteSpace($DualWriteOrPartitionToggleEvidenceRef)) "dualWriteOrPartitionToggleEvidenceRef=$DualWriteOrPartitionToggleEvidenceRef"
 Add-Check "rollback-evidence-ref" "Rollback rehearsal evidence reference recorded" (-not [string]::IsNullOrWhiteSpace($RollbackEvidenceRef)) "rollbackEvidenceRef=$RollbackEvidenceRef"
@@ -312,6 +378,7 @@ $markdownLines = @(
     "- Data-flow storage plan: $DataFlowStoragePlanEvidenceRef",
     "- Candidate store: $($planSummary["candidateStore"])",
     "- Target p95 query latency ms: $($planSummary["targetP95QueryLatencyMs"])",
+    "- Query-plan evidence: result=$($queryPlanEvidenceSummary["result"]); mode=$($queryPlanEvidenceSummary["mode"]); passed=$($queryPlanEvidenceSummary["passedCount"])/$($queryPlanEvidenceSummary["checkCount"]); failed=$($queryPlanEvidenceSummary["failedCount"])",
     "",
     "## Checks"
 )

@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -66,8 +70,8 @@ if ($LASTEXITCODE -ne 0) {
 Assert-True (Test-Path -LiteralPath $jsonOutputPath) "Enterprise auth smoke JSON missing."
 Assert-True (Test-Path -LiteralPath $markdownOutputPath) "Enterprise auth smoke markdown missing."
 
-$reportText = Get-Content -Raw -LiteralPath $jsonOutputPath
-$markdown = Get-Content -Raw -LiteralPath $markdownOutputPath
+$reportText = Read-Utf8Text $jsonOutputPath
+$markdown = Read-Utf8Text $markdownOutputPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 $endpoints = ($checks | ForEach-Object { [string] $_.endpoint }) -join "`n"
@@ -136,8 +140,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-enterprise-auth-smoke-plan.ps1 scope-out mode failed with exit code $LASTEXITCODE."
 }
 
-$scopeOutReportText = Get-Content -Raw -LiteralPath $scopeOutJsonOutputPath
-$scopeOutMarkdown = Get-Content -Raw -LiteralPath $scopeOutMarkdownOutputPath
+$scopeOutReportText = Read-Utf8Text $scopeOutJsonOutputPath
+$scopeOutMarkdown = Read-Utf8Text $scopeOutMarkdownOutputPath
 $scopeOutReport = $scopeOutReportText | ConvertFrom-Json
 $scopeOutChecks = @($scopeOutReport.checks)
 
@@ -167,3 +171,4 @@ Assert-Contains ($invalidScopeOutOutput | Out-String) "ScopeOutReason appears to
 Write-Host "Enterprise auth smoke plan verified."
 Write-Host "JSON: $jsonOutputPath"
 Write-Host "Markdown: $markdownOutputPath"
+exit 0

@@ -30,13 +30,17 @@ function Resolve-ProjectPath([string] $path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Read-JsonFile([string] $path, [string] $label) {
     $resolved = Resolve-ProjectPath $path
     if (-not (Test-Path -LiteralPath $resolved)) {
         throw "$label not found: $resolved"
     }
-    return Get-Content -Raw -Encoding UTF8 -LiteralPath $resolved | ConvertFrom-Json
+    return Read-Utf8Text $resolved | ConvertFrom-Json
 }
 
 function Convert-BackupTimestampToIso([string] $value) {

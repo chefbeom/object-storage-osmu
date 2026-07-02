@@ -94,6 +94,10 @@ on:
         description: Optional base64-encoded latest-data-flow-storage-plan.json evidence to use in the final readiness gate. MariaDB/dual-write plans must include passed sanitized query-plan evidence.
         required: false
         default: ""
+      data_flow_query_retention_budget_json_base64:
+        description: Optional base64-encoded latest-data-flow-query-retention-budget-evidence.json evidence to use in the final readiness gate. Must be sanitized and result=passed.
+        required: false
+        default: ""
       data_flow_storage_transition_runbook_json_base64:
         description: Optional base64-encoded latest-data-flow-storage-transition-runbook-evidence.json evidence to use in the final readiness gate. Must be sanitized and result=passed.
         required: false
@@ -152,6 +156,68 @@ jobs:
             }
           }
 
+      - name: Restore data-flow query/retention budget evidence
+        if: ${{ inputs.data_flow_query_retention_budget_json_base64 != '' }}
+        shell: pwsh
+        env:
+          OSMU_DATA_FLOW_QUERY_RETENTION_BUDGET_JSON_BASE64: ${{ inputs.data_flow_query_retention_budget_json_base64 }}
+        run: |
+          New-Item -ItemType Directory -Force -Path ./.osmu-run | Out-Null
+          $budgetPath = ".osmu-run/latest-data-flow-query-retention-budget-evidence.json"
+          [IO.File]::WriteAllBytes($budgetPath, [Convert]::FromBase64String($env:OSMU_DATA_FLOW_QUERY_RETENTION_BUDGET_JSON_BASE64))
+          $raw = Get-Content -Raw -LiteralPath $budgetPath
+          $budget = $raw | ConvertFrom-Json
+          if ($budget.formatVersion -ne "osmu.data-flow-query-retention-budget-evidence.v1") {
+            throw "Unexpected data-flow query/retention budget formatVersion: $($budget.formatVersion)"
+          }
+          if ($budget.result -ne "passed") {
+            throw "data-flow query/retention budget evidence must be result=passed for operations readiness finalizer input."
+          }
+          if ($budget.dataFlowStoragePlanSnapshot.result -ne "passed") {
+            throw "data-flow query/retention budget must embed dataFlowStoragePlanSnapshot.result=passed."
+          }
+          if (-not ($budget.summary.failureCount -is [int] -or $budget.summary.failureCount -is [long]) -or [int64] $budget.summary.failureCount -ne 0) {
+            throw "data-flow query/retention budget summary.failureCount must be typed integer 0."
+          }
+          $latency = $budget.queryLatencyBudget
+          $retention = $budget.retentionBudget
+          if (-not ($latency.withinBudget -is [bool]) -or -not $latency.withinBudget) {
+            throw "data-flow query latency must be within budget."
+          }
+          if (-not ($retention.withinBudget -is [bool]) -or -not $retention.withinBudget) {
+            throw "data-flow retention jobs must be within budget."
+          }
+          foreach ($name in @("targetP95QueryLatencyMs", "observedP95QueryLatencyMs", "querySampleCount")) {
+            if (-not ($latency.$name -is [int] -or $latency.$name -is [long]) -or [int64] $latency.$name -le 0) {
+              throw "data-flow query latency metric $name must be a positive typed integer."
+            }
+          }
+          foreach ($name in @("budgetSeconds", "detailedRetentionObservedSeconds", "dailyRollupRetentionObservedSeconds", "monthlyRollupRetentionObservedSeconds")) {
+            if (-not ($retention.$name -is [int] -or $retention.$name -is [long]) -or [int64] $retention.$name -lt 0) {
+              throw "data-flow retention metric $name must be a non-negative typed integer."
+            }
+          }
+          if ([int64] $latency.observedP95QueryLatencyMs -gt [int64] $latency.targetP95QueryLatencyMs) {
+            throw "observedP95QueryLatencyMs must be at or below targetP95QueryLatencyMs."
+          }
+          foreach ($name in @("detailedRetentionObservedSeconds", "dailyRollupRetentionObservedSeconds", "monthlyRollupRetentionObservedSeconds")) {
+            if ([int64] $retention.$name -gt [int64] $retention.budgetSeconds) {
+              throw "data-flow retention metric $name must be at or below retention budgetSeconds."
+            }
+          }
+          foreach ($confirmationName in @("queryLatencyReviewed", "retentionJobsWithinBudget", "noObjectKeysInEvidence", "noRawSqlOrExplain", "noSecretValues")) {
+            $value = $budget.confirmations.$confirmationName
+            if (-not ($value -is [bool]) -or -not $value) {
+              throw "data-flow query/retention confirmation $confirmationName must be boolean true."
+            }
+          }
+          $forbiddenPropertyPattern = '(?i)"(sql|rawSql|raw_sql|queryText|query_text|explain|explainJson|explain_json|rawExplain|raw_explain|rawEventMessage|raw_event_message|objectKey|object_key|password|passwd|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:'
+          $credentialPattern = '(?i)\b(password|passwd|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+'
+          $rawSqlPattern = '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b'
+          $rawExplainPattern = '(?i)\bEXPLAIN\b[\s\S]{0,200}\bFORMAT\b'
+          if ($raw -match $forbiddenPropertyPattern -or $raw -match $credentialPattern -or $raw -match $rawSqlPattern -or $raw -match $rawExplainPattern) {
+            throw "query/retention evidence must not contain raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content."
+          }
       - name: Restore data-flow storage transition runbook evidence
         if: ${{ inputs.data_flow_storage_transition_runbook_json_base64 != '' }}
         shell: pwsh
@@ -207,6 +273,7 @@ jobs:
             "-ApiBase", "${{ inputs.api_base }}",
             "-AdminLoginId", "${{ inputs.admin_login_id }}",
             "-DataFlowStoragePlanPath", "./.osmu-run/latest-data-flow-storage-plan.json",
+            "-DataFlowQueryRetentionBudgetEvidencePath", "./.osmu-run/latest-data-flow-query-retention-budget-evidence.json",
             "-DataFlowStorageTransitionRunbookEvidencePath", "./.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json",
             "-PowerShellCommand", "pwsh"
           )
@@ -287,6 +354,7 @@ jobs:
             "-ApiBase", "${{ inputs.api_base }}",
             "-AdminLoginId", "${{ inputs.admin_login_id }}",
             "-DataFlowStoragePlanPath", "./.osmu-run/latest-data-flow-storage-plan.json",
+            "-DataFlowQueryRetentionBudgetEvidencePath", "./.osmu-run/latest-data-flow-query-retention-budget-evidence.json",
             "-DataFlowStorageTransitionRunbookEvidencePath", "./.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json",
             "-PowerShellCommand", "pwsh"
           )
@@ -337,6 +405,8 @@ jobs:
             .osmu-run/latest-operations-readiness.json
             .osmu-run/latest-operations-readiness.md
             .osmu-run/latest-data-flow-storage-plan.json
+            .osmu-run/latest-data-flow-query-retention-budget-evidence.json
+            .osmu-run/latest-data-flow-query-retention-budget-evidence.md
             .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json
             .osmu-run/latest-storage-expansion-finalize.json
             .osmu-run/latest-storage-expansion-finalize.md

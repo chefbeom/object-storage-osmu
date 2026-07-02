@@ -14,9 +14,8 @@ FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends wget \
-    && wget -q https://dl.min.io/client/mc/release/linux-amd64/archive/mc.RELEASE.2025-05-21T01-59-54Z -O /usr/local/bin/mc \
-    && chmod +x /usr/local/bin/mc \
     && groupadd --system --gid 10001 osmu \
     && useradd --system --uid 10001 --gid osmu --home-dir /home/osmu --create-home --shell /usr/sbin/nologin osmu \
     && chown -R osmu:osmu /app /home/osmu \
