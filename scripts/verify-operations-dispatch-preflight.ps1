@@ -373,14 +373,22 @@ if ($LASTEXITCODE -ne 0) {
 
 $defaultBranchMissingReport = Read-Utf8Text $defaultBranchMissingJsonPath | ConvertFrom-Json
 $defaultBranchMissingMarkdown = Read-Utf8Text $defaultBranchMissingMarkdownPath
-Assert-Equal $defaultBranchMissingReport.result "action-required" "default branch missing result"
 Assert-Equal $defaultBranchMissingReport.defaultBranchRef "origin/main" "default branch ref"
 Assert-Equal $defaultBranchMissingReport.workflowFiles[0].workflow "manual-chargeback-closeout-evidence.yml" "default branch missing workflow"
 Assert-True $defaultBranchMissingReport.workflowFiles[0].exists "branch-only workflow should exist locally"
-Assert-True (-not $defaultBranchMissingReport.workflowFiles[0].existsOnDefaultBranch) "branch-only workflow should be missing on default branch"
 Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "default branch check code"
-Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "workflow_dispatch requires" "default branch check message"
-Assert-Contains $defaultBranchMissingMarkdown "defaultBranchFile=missing" "default branch markdown"
+if ($defaultBranchMissingReport.defaultBranchRefAvailable) {
+    Assert-Equal $defaultBranchMissingReport.result "action-required" "default branch missing result"
+    Assert-True (-not $defaultBranchMissingReport.workflowFiles[0].existsOnDefaultBranch) "branch-only workflow should be missing on default branch"
+    Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "workflow_dispatch requires" "default branch check message"
+    Assert-Contains $defaultBranchMissingMarkdown "defaultBranchFile=missing" "default branch markdown"
+}
+else {
+    Assert-Equal $defaultBranchMissingReport.result "ready" "default branch unavailable result"
+    Assert-True $defaultBranchMissingReport.workflowFiles[0].existsOnDefaultBranch "branch-only workflow should use local presence when default branch ref is unavailable"
+    Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "is not available in this checkout" "default branch unavailable check message"
+    Assert-Contains $defaultBranchMissingMarkdown "defaultBranchFile=present" "default branch unavailable markdown"
+}
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -UnblockPlanPath $unblockPlanPath `
