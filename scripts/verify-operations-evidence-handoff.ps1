@@ -389,6 +389,54 @@ if ($LASTEXITCODE -ne 0) {
 
 $blockedReport = Read-Utf8Text $blockedJsonPath | ConvertFrom-Json
 $blockedMarkdown = Read-Utf8Text $blockedMarkdownPath
+
+$inputFreeOnlyDispatchPreflightPath = Join-Path $resolvedOutputDirectory "input-free-only-dispatch-preflight.json"
+$inputFreeOnlyJsonPath = Join-Path $resolvedOutputDirectory "input-free-only-handoff.json"
+$inputFreeOnlyMarkdownPath = Join-Path $resolvedOutputDirectory "input-free-only-handoff.md"
+Write-JsonFixture $inputFreeOnlyDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    result = "action-required"
+    githubRepository = "chefbeom/object-storage-osmu"
+    selectedActionCount = 3
+    missingInputCount = 2
+    requiredInputCount = 2
+    requiredGitHubSecrets = @("OSMU_KUBECONFIG_BASE64", "GITHUB_TOKEN")
+    defaultBranchRef = "origin/main"
+    workflowFiles = @(
+        [ordered]@{ workflow = "storage-expansion-finalizer-ci.yml"; requiredSecrets = @("OSMU_KUBECONFIG_BASE64"); defaultBranchRef = "origin/main"; existsOnDefaultBranch = $true; actionOrder = 1; actionOrders = @(1) },
+        [ordered]@{ workflow = "container-security-ci.yml"; requiredSecrets = @("GITHUB_TOKEN"); defaultBranchRef = "origin/main"; existsOnDefaultBranch = $true; actionOrder = 2; actionOrders = @(2) },
+        [ordered]@{ workflow = "kubernetes-dr-finalizer-ci.yml"; requiredSecrets = @("OSMU_KUBECONFIG_BASE64"); defaultBranchRef = "origin/main"; existsOnDefaultBranch = $true; actionOrder = 3; actionOrders = @(3) }
+    )
+    inputTemplates = @(
+        [ordered]@{ actionOrder = 1; name = "Storage expansion finalizer live evidence"; workflow = "storage-expansion-finalizer-ci.yml"; requiredSecrets = @("OSMU_KUBECONFIG_BASE64"); readyToDispatch = $false; missingInputCount = 0; unsafeInputCount = 0; invalidInputCount = 0; workflowInputNames = @(); missingInputParameters = @() },
+        [ordered]@{ actionOrder = 2; name = "Container scan/SBOM evidence"; workflow = "container-security-ci.yml"; requiredSecrets = @("GITHUB_TOKEN"); readyToDispatch = $false; missingInputCount = 0; unsafeInputCount = 0; invalidInputCount = 0; workflowInputNames = @(); missingInputParameters = @() },
+        [ordered]@{ actionOrder = 3; name = "Kubernetes DR finalizer live evidence"; workflow = "kubernetes-dr-finalizer-ci.yml"; requiredSecrets = @("OSMU_KUBECONFIG_BASE64"); readyToDispatch = $false; missingInputCount = 2; unsafeInputCount = 0; invalidInputCount = 0; workflowInputNames = @("backup_timestamp", "api_base"); missingInputParameters = @("BackupTimestamp", "RestoreApiBase") }
+    )
+})
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $blockedReadinessPath `
+    -EvidencePlanPath $blockedPlanPath `
+    -InvocationReportPath $blockedInvocationPath `
+    -InvocationUnblockPlanPath $blockedUnblockPath `
+    -DispatchPreflightReportPath $inputFreeOnlyDispatchPreflightPath `
+    -OperatorInputWorksheetReportPath $blockedWorksheetPath `
+    -OperatorInputValuesCheckReportPath $blockedCheckPath `
+    -WorkflowRunIdPlanPath $blockedRunIdPath `
+    -ArtifactCollectionPlanPath $blockedCollectionPath `
+    -ArtifactImportReportPath $blockedImportPath `
+    -OperationsReadinessFinalizeReportPath $blockedFinalizePath `
+    -JsonOutputPath $inputFreeOnlyJsonPath `
+    -MarkdownOutputPath $inputFreeOnlyMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 input-free-only check failed with exit code $LASTEXITCODE."
+}
+$inputFreeOnlyReport = Read-Utf8Text $inputFreeOnlyJsonPath | ConvertFrom-Json
+$inputFreeOnlyMarkdown = Read-Utf8Text $inputFreeOnlyMarkdownPath
+Assert-Equal $inputFreeOnlyReport.nextStep.code "confirm-input-free-blockers" "input-free-only next step"
+Assert-Contains $inputFreeOnlyReport.nextStep.command "-ActionOrder 1" "input-free-only next step command"
+Assert-Contains $inputFreeOnlyReport.nextStep.reason "require no operator input values" "input-free-only next step reason"
+Assert-Contains $inputFreeOnlyReport.nextStep.note "Execute after confirming operator approval" "input-free-only execute note"
+Assert-Contains $inputFreeOnlyMarkdown "Confirm input-free blocked actions" "input-free-only markdown next step"
 Assert-Equal $blockedReport.result "blocked" "blocked result"
 Assert-Equal $blockedReport.nextStep.code "dispatch-ready-subset" "blocked next step"
 Assert-Contains $blockedReport.nextStep.command "-ActionOrder 2" "blocked ready subset command"

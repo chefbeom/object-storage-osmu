@@ -24,9 +24,9 @@ Last updated: 2026-06-30 KST
 - Operations evidence plan remediation coverage: source=19, entries=19, actions=19, missing=0, ready=true.
 - Operations workflow run-id security finalizer hints: count=2, inputs=ImageSigningRunId/ContainerSecurityRunId, supplemental=ContainerSecurityRunId.
 - Operations artifact collection latest verification: result=action-required, selectedActions=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19, securityEvidenceFinalizerReady=false, securityFinalizerInputRows=2, missingSecurityFinalizerInputs=ImageSigningRunId/ContainerSecurityRunId.
-- Operations evidence handoff latest verification: result=blocked, bottleneck=resolve-invocation-blockers, missingWorkflowRunCount=19.
+- Operations evidence handoff latest verification: result=blocked, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19.
 - Operations evidence handoff browser dispatch checklist: count=0, actionOrders=none, workflows=none, runIdParameters=none.
-- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=resolve-invocation-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
+- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
 - S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
 - Prototype status verifier output: `.osmu-run/latest-prototype-status.json` records the reduced snapshot, durable preflight handoff, total/check counts, source readiness pending category summary/counts, pending remediation count, workflow run-id security finalizer hint summary, artifact collection security finalizer input checklist, handoff browser dispatch checklist, convergence, and evidence cross-check.
 - B2B product estimate remains about 45% because the remaining work is target evidence, not local feature wiring.

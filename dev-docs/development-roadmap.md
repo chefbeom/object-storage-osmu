@@ -41,9 +41,9 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 - Operations evidence plan remediation coverage: source=19, entries=19, actions=19, missing=0, ready=true.
 - Operations workflow run-id security finalizer hints: count=2, inputs=ImageSigningRunId/ContainerSecurityRunId, supplemental=ContainerSecurityRunId.
 - Operations artifact collection latest verification: result=action-required, selectedActions=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19, securityEvidenceFinalizerReady=false, securityFinalizerInputRows=2, missingSecurityFinalizerInputs=ImageSigningRunId/ContainerSecurityRunId.
-- Operations evidence handoff latest verification: result=blocked, bottleneck=resolve-invocation-blockers, missingWorkflowRunCount=19.
+- Operations evidence handoff latest verification: result=blocked, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19.
 - Operations evidence handoff browser dispatch checklist: count=0, actionOrders=none, workflows=none, runIdParameters=none.
-- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=resolve-invocation-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
+- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
 - S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
 - 로컬 durable MVP demo는 Docker/MariaDB/MinIO/backend/frontend/Browser E2E/Dockerized MinIO Client 기준 `docker-durable-demo-verified` 상태다. 단, 현재 `.osmu-run/latest-durable-mvp-finalize.json`은 plan-only 실행으로 `result=planned`라서 최신 MVP completion report는 Docker-ready finalize 재실행 전까지 `pending`으로 남긴다.
 - MVP demo 완성도는 `90-95%`이며, 로컬 demo GO와 production/B2B readiness는 분리한다.
