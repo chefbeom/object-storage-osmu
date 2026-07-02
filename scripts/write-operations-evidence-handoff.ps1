@@ -145,7 +145,7 @@ function Get-CountOrArrayCount([object] $Object, [string] $CountName, [string] $
 
 function New-UnblockActionSummary([object] $Action) {
     $order = Get-Int $Action "order"
-    $reviewCommand = if ($order -gt 0) { "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder $order" } else { "" }
+    $reviewCommand = if ($order -gt 0) { "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder $order -NoWrite" } else { "" }
     return [ordered]@{
         actionOrder = $order
         name = Get-Text $Action "name"
@@ -274,6 +274,7 @@ function New-InputFreeBlockedInvokeCommand([object[]] $Actions, [bool] $Execute,
     $parts.Add("-ActionOrder $(Join-IntList @($orders | Sort-Object -Unique))")
     if ($IncludeConfirmations -and $needsKubeconfigSecret) { $parts.Add("-KubeconfigSecretConfirmed") }
     if ($IncludeConfirmations -and $needsOperatorApproval) { $parts.Add("-ConfirmOperatorApproval") }
+    if (-not $IncludeConfirmations -and -not $Execute) { $parts.Add("-NoWrite") }
     if ($Execute) { $parts.Add("-Execute") }
     return $parts -join " "
 }
