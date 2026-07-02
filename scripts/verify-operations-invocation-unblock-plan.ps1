@@ -52,6 +52,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 
 $scriptPath = Resolve-ProjectPath ".\scripts\write-operations-invocation-unblock-plan.ps1"
 $blockedInvocationPath = Join-Path $resolvedOutputDirectory "blocked-invocation.json"
+$blockedDispatchPreflightPath = Join-Path $resolvedOutputDirectory "blocked-dispatch-preflight.json"
 $blockedJsonPath = Join-Path $resolvedOutputDirectory "blocked-unblock-plan.json"
 $blockedMarkdownPath = Join-Path $resolvedOutputDirectory "blocked-unblock-plan.md"
 $readyInvocationPath = Join-Path $resolvedOutputDirectory "ready-invocation.json"
@@ -141,10 +142,21 @@ Write-JsonFixture $blockedInvocationPath ([ordered]@{
         }
     )
 })
+Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    generatedAt = "2026-06-16T07:31:00+09:00"
+    result = "action-required"
+    inputTemplates = @(
+        [ordered]@{ actionOrder = 1; requiredSecrets = @("OSMU_KUBECONFIG_BASE64") },
+        [ordered]@{ actionOrder = 2; requiredSecrets = @("OSMU_KUBECONFIG_BASE64") },
+        [ordered]@{ actionOrder = 3; requiredSecrets = @() },
+        [ordered]@{ actionOrder = 4; requiredSecrets = @() }
+    )
+})
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -InvocationReportPath $blockedInvocationPath `
-    -DispatchPreflightReportPath (Join-Path $resolvedOutputDirectory "missing-dispatch-preflight.json") `
+    -DispatchPreflightReportPath $blockedDispatchPreflightPath `
     -JsonOutputPath $blockedJsonPath `
     -MarkdownOutputPath $blockedMarkdownPath | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -174,6 +186,17 @@ Assert-Contains $blockedReport.confirmedPlanCommand "-RestoreApiBase <restore-ap
 Assert-Contains $blockedReport.confirmedPlanCommand "-Placeholder '<run-id>=<run-id>'" "confirmed command"
 Assert-Contains $blockedReport.plannedOnlyCommand "-ActionOrder 4" "planned-only command"
 Assert-True $blockedReport.actions[0].requiresOperatorApproval "storage expansion live action should require operator approval"
+Assert-Equal $blockedReport.actions[0].blockReasonCount 2 "storage expansion block reason count"
+Assert-Equal $blockedReport.actions[0].requiredInputCount 0 "storage expansion required input count"
+Assert-Equal $blockedReport.actions[0].requiredSecretCount 1 "storage expansion required secret count"
+Assert-True (@($blockedReport.actions[0].requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64") "storage expansion required secret name"
+Assert-Equal $blockedReport.actions[1].blockReasonCount 3 "DR finalizer block reason count"
+Assert-Equal $blockedReport.actions[1].unresolvedPlaceholderCount 4 "DR finalizer unresolved placeholder count"
+Assert-Equal $blockedReport.actions[1].requiredInputCount 4 "DR finalizer required input count"
+Assert-Equal $blockedReport.actions[1].requiredSecretCount 1 "DR finalizer required secret count"
+Assert-Equal $blockedReport.actions[2].blockReasonCount 1 "security finalizer block reason count"
+Assert-Equal $blockedReport.actions[2].requiredInputCount 2 "security finalizer required input count"
+Assert-Equal $blockedReport.actions[2].requiredSecretCount 0 "security finalizer required secret count"
 $operatorApprovalGroup = @($blockedReport.confirmationGroups | Where-Object { $_.kind -eq "operator-approval" })[0]
 $kubeconfigGroup = @($blockedReport.confirmationGroups | Where-Object { $_.kind -eq "kubeconfig-secret" })[0]
 Assert-Equal $operatorApprovalGroup.actionCount 2 "operator approval group action count"
@@ -197,6 +220,8 @@ $securityRunIdInput = @(@($blockedReport.actions[2].requiredInputs) | Where-Obje
 Assert-True (@($securityRunIdInput.workflowInputs) -contains "image_signing_run_id") "expected image signing run id workflow input mapping"
 Assert-True (@($securityRunIdInput.workflowInputs) -contains "container_security_run_id") "expected container security run id workflow input mapping"
 Assert-Contains $blockedMarkdown "workflow inputs: image_signing_run_id, container_security_run_id" "blocked markdown workflow inputs"
+Assert-Contains $blockedMarkdown "[blocked] 1. Storage expansion finalizer live evidence (blockers=2, inputs=0, secrets=1)" "blocked markdown action counts"
+Assert-Contains $blockedMarkdown "Required GitHub secrets: OSMU_KUBECONFIG_BASE64" "blocked markdown required secrets"
 Assert-Contains $blockedMarkdown "Source counts: passed=36 pending=6 total=42 checks=42" "blocked markdown source counts"
 Assert-Contains $blockedMarkdown "## Unblock Groups" "blocked markdown groups"
 Assert-Contains $blockedMarkdown "Confirmation: Operator approval" "blocked markdown confirmation group"
@@ -255,6 +280,9 @@ Assert-Equal $readyReport.blockedCount 0 "ready blocked count"
 Assert-Equal $readyReport.requiredPlaceholderCount 0 "ready placeholder count"
 Assert-Equal $readyReport.confirmationGroupCount 0 "ready confirmation group count"
 Assert-Equal $readyReport.requiredInputGroupCount 0 "ready required input group count"
+Assert-Equal $readyReport.actions[0].blockReasonCount 0 "ready action block reason count"
+Assert-Equal $readyReport.actions[0].requiredInputCount 0 "ready action required input count"
+Assert-Equal $readyReport.actions[0].requiredSecretCount 0 "ready action required secret count"
 Assert-Contains $readyReport.plannedOnlyCommand "-ActionOrder 1" "ready planned-only command"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown"
 
@@ -385,6 +413,9 @@ Assert-Equal $invalidReport.result "action-required" "invalid result"
 Assert-Equal $invalidReport.requiredPlaceholderCount 1 "invalid required placeholder count"
 Assert-Equal $invalidReport.confirmationGroupCount 0 "invalid confirmation group count"
 Assert-Equal $invalidReport.requiredInputGroupCount 1 "invalid required input group count"
+Assert-Equal $invalidReport.actions[0].blockReasonCount 1 "invalid action block reason count"
+Assert-Equal $invalidReport.actions[0].invalidPlaceholderCount 1 "invalid action invalid placeholder count"
+Assert-Equal $invalidReport.actions[0].requiredInputCount 1 "invalid action required input count"
 Assert-Contains $invalidReport.confirmedPlanCommand "-BackupTimestamp <YYYYMMDDTHHMMSSZ>" "invalid confirmed command"
 Assert-True (@($invalidReport.actions)[0].invalidPlaceholders -contains "<YYYYMMDDTHHMMSSZ>") "invalid action should carry invalid placeholder"
 Assert-Contains $invalidMarkdown "<YYYYMMDDTHHMMSSZ> via BackupTimestamp" "invalid markdown"

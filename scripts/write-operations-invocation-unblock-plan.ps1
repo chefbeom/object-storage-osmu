@@ -98,6 +98,23 @@ function Get-TextArray([object] $Object, [string] $Name) {
     return @([string] $value)
 }
 
+function Get-ArrayValue([object] $Value) {
+    if ($null -eq $Value) { return @() }
+    if ($Value -is [System.Array]) { return @($Value) }
+    if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) { return @($Value) }
+    return @($Value)
+}
+
+function Get-DispatchTemplateByAction([object] $DispatchReport) {
+    $map = @{}
+    if ($null -eq $DispatchReport) { return $map }
+    foreach ($template in @(Get-ArrayValue (Get-JsonProperty $DispatchReport "inputTemplates"))) {
+        $order = Get-Int $template "actionOrder"
+        if ($order -gt 0) { $map[$order] = $template }
+    }
+    return $map
+}
+
 function Get-PlaceholderParameter([string] $Placeholder) {
     switch ($Placeholder) {
         "<YYYYMMDDTHHMMSSZ>" { return "BackupTimestamp" }
@@ -395,6 +412,7 @@ if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1")
     throw "Unexpected operations evidence invocation formatVersion: $($invocation.formatVersion)"
 }
 $dispatchPreflight = Read-OptionalJson $DispatchPreflightReportPath
+$dispatchTemplateByAction = Get-DispatchTemplateByAction $dispatchPreflight.json
 $defaultBranchWorkflowGroups = @(Get-DefaultBranchWorkflowGroups $dispatchPreflight.json)
 $defaultBranchWorkflowMissingOrders = New-Object System.Collections.Generic.List[int]
 foreach ($group in $defaultBranchWorkflowGroups) {
@@ -472,6 +490,11 @@ foreach ($action in @($invocation.actions)) {
     foreach ($placeholder in $invalidPlaceholders) {
         Add-UniqueString $actionPlaceholderValues $placeholder
     }
+    $dispatchTemplate = if ($dispatchTemplateByAction.ContainsKey($order)) { $dispatchTemplateByAction[$order] } else { $null }
+    $requiredSecrets = @()
+    if ($null -ne $dispatchTemplate) {
+        $requiredSecrets = @(Get-ArrayValue (Get-JsonProperty $dispatchTemplate "requiredSecrets") | ForEach-Object { [string] $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
     $actionPlanCommand = New-InvokeCommand `
         -Orders @($order) `
         -NeedKubeconfig $needsActionKubeconfig `
@@ -487,15 +510,21 @@ foreach ($action in @($invocation.actions)) {
         status = $status
         commandMode = (Get-Text $action "commandMode")
         command = $command
+        blockReasonCount = $blockReasons.Count
         blockReasons = $blockReasons
+        unresolvedPlaceholderCount = $placeholders.Count
         unresolvedPlaceholders = $placeholders
+        invalidPlaceholderCount = $invalidPlaceholders.Count
         invalidPlaceholders = $invalidPlaceholders
         requiresOperatorApproval = $requiresOperatorApproval
         requiresKubeconfigSecret = $requiresKubeconfigSecret
         needsOperatorApprovalConfirmation = $needsActionApproval
         needsKubeconfigSecretConfirmation = $needsActionKubeconfig
         defaultBranchWorkflowMissing = $defaultBranchMissingForAction
+        requiredInputCount = @($requiredInputs).Count
         requiredInputs = @($requiredInputs)
+        requiredSecretCount = $requiredSecrets.Count
+        requiredSecrets = @($requiredSecrets)
         ambiguousRepeatedPlaceholders = $actionHasAmbiguousPlaceholders
         planCommand = $actionPlanCommand
     }) | Out-Null
@@ -653,9 +682,12 @@ $markdownLines += @(
     ""
 )
 foreach ($action in $actionPlans) {
-    $markdownLines += "- [$($action.status)] $($action.order). $($action.name)"
+    $markdownLines += "- [$($action.status)] $($action.order). $($action.name) (blockers=$($action.blockReasonCount), inputs=$($action.requiredInputCount), secrets=$($action.requiredSecretCount))"
     if (@($action.blockReasons).Count -gt 0) {
         $markdownLines += "  - Blocked by: $(@($action.blockReasons) -join '; ')"
+    }
+    if (@($action.requiredSecrets).Count -gt 0) {
+        $markdownLines += "  - Required GitHub secrets: $(@($action.requiredSecrets) -join ', ')"
     }
     if (@($action.requiredInputs).Count -gt 0) {
         $inputSummaries = @($action.requiredInputs | ForEach-Object {
