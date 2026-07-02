@@ -107,6 +107,8 @@ Write-JsonFixture $actionHandoffPath ([ordered]@{
     stageCount = 7
     readyStageCount = 5
     blockedActionCount = 0
+    inputFreeBlockedActionCount = 2
+    inputFreeBlockedActionOrders = @(1, 5)
     missingWorkflowRunCount = 0
     missingRequiredArtifactCount = 0
     failedImportCount = 0
@@ -142,12 +144,15 @@ Assert-Equal $actionReport.result "action-required" "action result"
 Assert-Equal $actionReport.currentBottleneck.code "run-operations-finalizer" "action bottleneck"
 Assert-Equal $actionReport.stageCount 7 "action stage count"
 Assert-Equal $actionReport.readyStageCount 5 "action ready stage count"
+Assert-Equal $actionReport.handoffInputFreeBlockedActionCount 2 "action input-free blocked action count"
+Assert-Equal (@($actionReport.handoffInputFreeBlockedActionOrders) -join ",") "1,5" "action input-free blocked action orders"
 Assert-Equal $actionReport.readinessSummary "passed=36 pending=6" "action readiness summary"
 Assert-Equal $actionReport.readinessPassedCount 36 "action readiness passed count"
 Assert-Equal $actionReport.readinessPendingCount 6 "action readiness pending count"
 Assert-Equal $actionReport.readinessTotalCount 42 "action readiness total count"
 Assert-Equal $actionReport.readinessCheckCount 42 "action readiness check count"
 Assert-Contains $actionMarkdown "Readiness counts: passed=36 pending=6 total=42 checks=42" "action markdown readiness counts"
+Assert-Contains $actionMarkdown "Input-free blocked action orders: 1,5" "action markdown input-free action orders"
 Assert-Contains $actionReport.recommendedCommands[0].command "finalize-operations-readiness.ps1" "action recommended command"
 Assert-Contains $actionMarkdown "Run operations readiness finalizer" "action markdown command"
 

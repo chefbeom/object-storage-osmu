@@ -363,6 +363,9 @@ $nextCommand = Get-Text $nextStep "command"
 $nextStepDispatchUrls = if ($nextCode -like "dispatch-ready-subset*") { Get-ReadyDispatchUrls $handoff.json } else { @() }
 $handoffBrowserDispatchDependencyNotes = if ($nextCode -like "dispatch-ready-subset*") { Get-BrowserDispatchDependencyNotes $handoff.json } else { @() }
 $handoffSecurityEvidenceFinalizerRunIdInputHints = @(Get-Array (Get-JsonProperty $handoff.json "securityEvidenceFinalizerRunIdInputHints"))
+$handoffInputFreeBlockedActionCount = Get-Int $handoff.json "inputFreeBlockedActionCount"
+$handoffInputFreeBlockedActionOrders = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedActionOrders") | ForEach-Object { try { [int] $_ } catch { 0 } } | Where-Object { $_ -gt 0 })
+$handoffInputFreeBlockedActionOrdersText = if ($handoffInputFreeBlockedActionOrders.Count -gt 0) { $handoffInputFreeBlockedActionOrders -join "," } else { "none" }
 $handoffBrowserDispatchDependencyNote = Join-NoteParts $handoffBrowserDispatchDependencyNotes
 $nextStepNote = Join-NoteParts @((Get-Text $nextStep "note"), $handoffBrowserDispatchDependencyNote)
 $handoffPostDispatchCommands = @(Get-Array (Get-JsonProperty $handoff.json "postDispatchCommands") | ForEach-Object {
@@ -556,6 +559,8 @@ $report = [ordered]@{
     stageCount = Get-Int $handoff.json "stageCount"
     readyStageCount = Get-Int $handoff.json "readyStageCount"
     blockedActionCount = Get-Int $handoff.json "blockedActionCount"
+    handoffInputFreeBlockedActionCount = $handoffInputFreeBlockedActionCount
+    handoffInputFreeBlockedActionOrders = @($handoffInputFreeBlockedActionOrders)
     missingWorkflowRunCount = Get-Int $handoff.json "missingWorkflowRunCount"
     missingRequiredArtifactCount = Get-Int $handoff.json "missingRequiredArtifactCount"
     failedImportCount = Get-Int $handoff.json "failedImportCount"
@@ -604,6 +609,8 @@ $markdownLines = @(
     "- Kubernetes report sync freshness reason: $($report.kubernetesReportSyncFreshnessReason)",
     "- Stages: $($report.readyStageCount)/$($report.stageCount) ready",
     "- Blocked actions: $($report.blockedActionCount)",
+    "- Input-free blocked actions: $($report.handoffInputFreeBlockedActionCount)",
+    "- Input-free blocked action orders: $handoffInputFreeBlockedActionOrdersText",
     "- Missing workflow runs: $($report.missingWorkflowRunCount)",
     "- Handoff security finalizer run-id hints: $($report.handoffSecurityEvidenceFinalizerRunIdInputHintCount)",
     "- Missing required artifacts: $($report.missingRequiredArtifactCount)",
