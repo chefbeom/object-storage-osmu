@@ -670,6 +670,7 @@ if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1")
 $branchName = Get-CurrentBranch
 $effectiveCommitSha = Get-CurrentCommitSha
 $githubRepositorySlug = Resolve-GitHubRepositorySlug $GitHubRepository
+$githubApiTokenPresent = -not [string]::IsNullOrWhiteSpace($env:GH_TOKEN) -or -not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)
 if ($Execute -and $UseGitHubApi) {
     throw "Use either -Execute or -UseGitHubApi, not both."
 }
@@ -944,6 +945,8 @@ $reportObject = [ordered]@{
     branch = $branchName
     githubRepository = $githubRepositorySlug
     queryMode = $queryMode
+    githubApiTokenPresent = [bool] $githubApiTokenPresent
+    githubApiUnauthenticated = [bool] ($UseGitHubApi -and -not $githubApiTokenPresent)
     runListJsonDirectory = $runListJsonDirectoryForHandoff
     runListJsonDirectoryCommand = $runListJsonDirectoryCommand
     githubApiRunListCommand = $githubApiRunListCommand
@@ -985,6 +988,8 @@ $markdownLines = @(
     "Branch: $branchName",
     "GitHub repository: $(if ([string]::IsNullOrWhiteSpace($githubRepositorySlug)) { 'unknown' } else { $githubRepositorySlug })",
     "Query mode: $queryMode",
+    "GitHub API token present: $githubApiTokenPresent",
+    "GitHub API unauthenticated: $($UseGitHubApi -and -not $githubApiTokenPresent)",
     "Run-list JSON directory: $runListJsonDirectoryForHandoff",
     "Run-list JSON file pattern: $runListJsonFilePattern",
     "Browser workflow runs URLs: $(if ($browserWorkflowRunsUrls.Count -gt 0) { $browserWorkflowRunsUrls -join ', ' } else { 'none' })",
