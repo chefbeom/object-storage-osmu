@@ -2550,7 +2550,7 @@
 - 검증 기록:
   - `Select-String -Path osmu-frontend\README.md,infra\local\README.md -Pattern '[^\x00-\x7F]'` 결과 없음.
   - `git diff --check -- osmu-frontend/README.md infra/local/README.md` 통과. CRLF 변환 warning만 확인.
-  - `rg -n "template|Recommended IDE|濡|\?\?|�" osmu-frontend\README.md infra\local\README.md README.md dev-docs\document-index.md` 결과 없음.
+  - Ran an `rg` scan for template boilerplate, default IDE wording, and mojibake markers across the frontend, infra, README, and document index files; no matches were found.
   - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend` 통과. Frontend unit 6 pass, frontend build 통과.
 - 코드 리뷰: 문서만 변경했고 실행 코드에는 영향이 없다. 기존 Vite template 문구와 깨진 인코딩 문서를 제거해 프로토타입 진입 비용을 줄였다.
 - 결과: root/frontend/infra README가 모두 프로토타입 실행 문서로 정리됐다.

@@ -39,6 +39,14 @@ on:
         description: Optional base64 latest data-flow storage plan JSON snapshot
         required: false
         default: ""
+      data_flow_query_retention_budget_evidence_ref:
+        description: Optional data-flow query/retention budget evidence reference
+        required: false
+        default: ""
+      data_flow_query_retention_budget_json_base64:
+        description: Optional base64 latest data-flow query/retention budget evidence JSON snapshot
+        required: false
+        default: ""
       data_flow_storage_transition_runbook_json_base64:
         description: Optional base64 latest data-flow storage transition runbook evidence JSON snapshot
         required: false
@@ -71,6 +79,10 @@ on:
         description: Optional base64 latest monitoring threshold evidence JSON snapshot
         required: false
         default: ""
+      hardening_evidence_json_payload_base64:
+        description: Optional base64 JSON containing cluster/Helm hardening snapshot base64 fields
+        required: false
+        default: ""
       handoff_evidence_payload_json_base64:
         description: Optional base64 JSON containing deployment, readiness, security, support refs, and handoff confirmations
         required: false
@@ -80,6 +92,11 @@ on:
         required: true
         type: boolean
         default: true
+      confirm_data_flow_query_retention_budget_reviewed:
+        description: Confirm data-flow query/retention budget evidence reviewed
+        required: true
+        type: boolean
+        default: false
       require_operations_snapshot_evidence:
         description: Require readiness and convergence JSON snapshots
         required: true
@@ -120,6 +137,9 @@ jobs:
           OSMU_OPERATIONS_READINESS_JSON_BASE64: ${{ inputs.operations_readiness_json_base64 }}
           OSMU_OPERATIONS_CONVERGENCE_JSON_BASE64: ${{ inputs.operations_convergence_json_base64 }}
           OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64: ${{ inputs.data_flow_storage_plan_json_base64 }}
+          OSMU_DATA_FLOW_QUERY_RETENTION_BUDGET_EVIDENCE_REF: ${{ inputs.data_flow_query_retention_budget_evidence_ref }}
+          OSMU_DATA_FLOW_QUERY_RETENTION_BUDGET_JSON_BASE64: ${{ inputs.data_flow_query_retention_budget_json_base64 }}
+          OSMU_CONFIRM_DATA_FLOW_QUERY_RETENTION_BUDGET_REVIEWED: ${{ inputs.confirm_data_flow_query_retention_budget_reviewed }}
           OSMU_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_JSON_BASE64: ${{ inputs.data_flow_storage_transition_runbook_json_base64 }}
           OSMU_SECRET_ROTATION_JSON_BASE64: ${{ inputs.secret_rotation_json_base64 }}
           OSMU_COMMERCIAL_INTEGRATION_JSON_BASE64: ${{ inputs.commercial_integration_json_base64 }}
@@ -128,6 +148,7 @@ jobs:
           OSMU_ENTERPRISE_AUTH_JSON_BASE64: ${{ inputs.enterprise_auth_json_base64 }}
           OSMU_ENTERPRISE_AUTH_JIT_ROLLBACK_JSON_BASE64: ${{ inputs.enterprise_auth_jit_rollback_json_base64 }}
           OSMU_MONITORING_THRESHOLD_JSON_BASE64: ${{ inputs.monitoring_threshold_json_base64 }}
+          OSMU_HARDENING_EVIDENCE_JSON_PAYLOAD_BASE64: ${{ inputs.hardening_evidence_json_payload_base64 }}
           OSMU_HANDOFF_EVIDENCE_PAYLOAD_JSON_BASE64: ${{ inputs.handoff_evidence_payload_json_base64 }}
           OSMU_REQUIRE_PRODUCTION_EVIDENCE: ${{ inputs.require_production_evidence }}
           OSMU_REQUIRE_OPERATIONS_SNAPSHOT_EVIDENCE: ${{ inputs.require_operations_snapshot_evidence }}
@@ -137,6 +158,12 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:OSMU_HANDOFF_EVIDENCE_PAYLOAD_JSON_BASE64)) {
             $payloadText = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:OSMU_HANDOFF_EVIDENCE_PAYLOAD_JSON_BASE64))
             $payload = $payloadText | ConvertFrom-Json
+          }
+
+          $hardeningPayload = [pscustomobject]@{}
+          if (-not [string]::IsNullOrWhiteSpace($env:OSMU_HARDENING_EVIDENCE_JSON_PAYLOAD_BASE64)) {
+            $hardeningPayloadText = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:OSMU_HARDENING_EVIDENCE_JSON_PAYLOAD_BASE64))
+            $hardeningPayload = $hardeningPayloadText | ConvertFrom-Json
           }
 
           function Get-DispatchString([string] $Name, [string] $Default = "") {
@@ -156,6 +183,14 @@ jobs:
               return [bool] $property.Value
             }
             return [string] $property.Value -eq "true"
+          }
+
+          function Get-HardeningDispatchString([string] $Name) {
+            $property = $hardeningPayload.PSObject.Properties[$Name]
+            if ($null -ne $property -and $null -ne $property.Value) {
+              return [string] $property.Value
+            }
+            return Get-DispatchString $Name
           }
 
           New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
@@ -180,6 +215,7 @@ jobs:
             "-OperationsReadinessRef", (Get-DispatchString "operations_readiness_ref"),
             "-OperationsConvergenceRef", (Get-DispatchString "operations_convergence_ref"),
             "-DataFlowStoragePlanEvidenceRef", (Get-DispatchString "data_flow_storage_plan_evidence_ref"),
+            "-DataFlowQueryRetentionBudgetEvidenceRef", (Get-DispatchString "data_flow_query_retention_budget_evidence_ref" $env:OSMU_DATA_FLOW_QUERY_RETENTION_BUDGET_EVIDENCE_REF),
             "-DataFlowStorageTransitionRunbookEvidenceRef", (Get-DispatchString "data_flow_storage_transition_runbook_evidence_ref"),
             "-SecretRotationEvidenceRef", (Get-DispatchString "secret_rotation_evidence_ref"),
             "-CommercialIntegrationEvidenceRef", (Get-DispatchString "commercial_integration_evidence_ref"),
@@ -190,6 +226,8 @@ jobs:
             "-BackupRestoreEvidenceRef", (Get-DispatchString "backup_restore_evidence_ref"),
             "-HaDrEvidenceRef", (Get-DispatchString "ha_dr_evidence_ref"),
             "-MonitoringEvidenceRef", (Get-DispatchString "monitoring_evidence_ref"),
+            "-ClusterNetworkAccessReviewEvidenceRef", (Get-DispatchString "cluster_network_access_review_evidence_ref"),
+            "-HelmValuesHardeningEvidenceRef", (Get-DispatchString "helm_values_hardening_evidence_ref"),
             "-SecurityEvidenceRef", (Get-DispatchString "security_evidence_ref"),
             "-IamRbacEvidenceRef", (Get-DispatchString "iam_rbac_evidence_ref"),
             "-RunbookReviewRef", (Get-DispatchString "runbook_review_ref"),
@@ -204,6 +242,7 @@ jobs:
           Add-Base64SnapshotArgument (Get-DispatchString "operations_readiness_json_base64" $env:OSMU_OPERATIONS_READINESS_JSON_BASE64) ".osmu-run/operations-readiness-handoff-snapshot.json" "-OperationsReadinessJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "operations_convergence_json_base64" $env:OSMU_OPERATIONS_CONVERGENCE_JSON_BASE64) ".osmu-run/operations-convergence-handoff-snapshot.json" "-OperationsConvergenceJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "data_flow_storage_plan_json_base64" $env:OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64) ".osmu-run/data-flow-storage-plan-handoff-snapshot.json" "-DataFlowStoragePlanJsonPath"
+          Add-Base64SnapshotArgument (Get-DispatchString "data_flow_query_retention_budget_json_base64" $env:OSMU_DATA_FLOW_QUERY_RETENTION_BUDGET_JSON_BASE64) ".osmu-run/data-flow-query-retention-budget-handoff-snapshot.json" "-DataFlowQueryRetentionBudgetJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "data_flow_storage_transition_runbook_json_base64" $env:OSMU_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_JSON_BASE64) ".osmu-run/data-flow-storage-transition-runbook-handoff-snapshot.json" "-DataFlowStorageTransitionRunbookJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "secret_rotation_json_base64" $env:OSMU_SECRET_ROTATION_JSON_BASE64) ".osmu-run/secret-rotation-handoff-snapshot.json" "-SecretRotationJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "commercial_integration_json_base64" $env:OSMU_COMMERCIAL_INTEGRATION_JSON_BASE64) ".osmu-run/commercial-integration-handoff-snapshot.json" "-CommercialIntegrationJsonPath"
@@ -212,6 +251,8 @@ jobs:
           Add-Base64SnapshotArgument (Get-DispatchString "enterprise_auth_json_base64" $env:OSMU_ENTERPRISE_AUTH_JSON_BASE64) ".osmu-run/enterprise-auth-handoff-snapshot.json" "-EnterpriseAuthJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "enterprise_auth_jit_rollback_json_base64" $env:OSMU_ENTERPRISE_AUTH_JIT_ROLLBACK_JSON_BASE64) ".osmu-run/enterprise-auth-jit-rollback-handoff-snapshot.json" "-EnterpriseAuthJitRollbackJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "monitoring_threshold_json_base64" $env:OSMU_MONITORING_THRESHOLD_JSON_BASE64) ".osmu-run/monitoring-threshold-handoff-snapshot.json" "-MonitoringThresholdJsonPath"
+          Add-Base64SnapshotArgument (Get-HardeningDispatchString "cluster_network_access_review_json_base64") ".osmu-run/cluster-network-access-review-handoff-snapshot.json" "-ClusterNetworkAccessReviewJsonPath"
+          Add-Base64SnapshotArgument (Get-HardeningDispatchString "helm_values_hardening_json_base64") ".osmu-run/helm-values-hardening-handoff-snapshot.json" "-HelmValuesHardeningJsonPath"
 
           if (Test-DispatchTrue "confirm_runbook_reviewed") { $packageArgs += "-ConfirmRunbookReviewed" }
           if (Test-DispatchTrue "confirm_troubleshooting_reviewed") { $packageArgs += "-ConfirmTroubleshootingReviewed" }
@@ -221,6 +262,7 @@ jobs:
           if (Test-DispatchTrue "confirm_operations_readiness_snapshot_reviewed") { $packageArgs += "-ConfirmOperationsReadinessSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_operations_convergence_snapshot_reviewed") { $packageArgs += "-ConfirmOperationsConvergenceSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_data_flow_storage_plan_reviewed") { $packageArgs += "-ConfirmDataFlowStoragePlanReviewed" }
+          if (Test-DispatchTrue "confirm_data_flow_query_retention_budget_reviewed" ($env:OSMU_CONFIRM_DATA_FLOW_QUERY_RETENTION_BUDGET_REVIEWED -eq "true")) { $packageArgs += "-ConfirmDataFlowQueryRetentionBudgetReviewed" }
           if (Test-DispatchTrue "confirm_data_flow_storage_transition_runbook_reviewed") { $packageArgs += "-ConfirmDataFlowStorageTransitionRunbookReviewed" }
           if (Test-DispatchTrue "confirm_secret_rotation_snapshot_reviewed") { $packageArgs += "-ConfirmSecretRotationSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_commercial_integration_snapshot_reviewed") { $packageArgs += "-ConfirmCommercialIntegrationSnapshotReviewed" }
@@ -229,6 +271,8 @@ jobs:
           if (Test-DispatchTrue "confirm_enterprise_auth_smoke_snapshot_reviewed") { $packageArgs += "-ConfirmEnterpriseAuthSmokeSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_enterprise_auth_jit_rollback_snapshot_reviewed") { $packageArgs += "-ConfirmEnterpriseAuthJitRollbackSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_monitoring_threshold_reviewed") { $packageArgs += "-ConfirmMonitoringThresholdReviewed" }
+          if (Test-DispatchTrue "confirm_cluster_network_access_review_reviewed") { $packageArgs += "-ConfirmClusterNetworkAccessReviewReviewed" }
+          if (Test-DispatchTrue "confirm_helm_values_hardening_reviewed") { $packageArgs += "-ConfirmHelmValuesHardeningReviewed" }
           if (Test-DispatchTrue "confirm_no_secret_values") { $packageArgs += "-ConfirmNoSecretValues" }
           if (Test-DispatchTrue "require_production_evidence" ($env:OSMU_REQUIRE_PRODUCTION_EVIDENCE -eq "true")) { $packageArgs += "-RequireProductionEvidence" }
           if (Test-DispatchTrue "require_operations_snapshot_evidence" ($env:OSMU_REQUIRE_OPERATIONS_SNAPSHOT_EVIDENCE -eq "true")) { $packageArgs += "-RequireOperationsSnapshotEvidence" }

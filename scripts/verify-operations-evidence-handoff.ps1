@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-Equal($Actual, $Expected, [string] $Message) {
     if ($Actual -ne $Expected) {
         throw "$Message. Expected '$Expected' but got '$Actual'."
@@ -74,13 +78,88 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 missing-report check failed with exit code $LASTEXITCODE."
 }
 
-$missingReport = Get-Content -Raw -LiteralPath $missingJsonPath | ConvertFrom-Json
-$missingMarkdown = Get-Content -Raw -LiteralPath $missingMarkdownPath
+$missingReport = Read-Utf8Text $missingJsonPath | ConvertFrom-Json
+$missingMarkdown = Read-Utf8Text $missingMarkdownPath
 Assert-Equal $missingReport.formatVersion "osmu.operations-evidence-handoff.v1" "missing formatVersion"
 Assert-Equal $missingReport.result "action-required" "missing result"
 Assert-Equal $missingReport.nextStep.code "write-readiness" "missing next step"
+Assert-Equal $missingReport.currentBottleneck.code "write-readiness" "missing current bottleneck"
 Assert-Equal $missingReport.stageCount 8 "missing stage count"
+Assert-Contains $missingMarkdown "## Current Bottleneck" "missing markdown current bottleneck"
 Assert-Contains $missingMarkdown "Generate operations readiness report" "missing markdown next step"
+
+$staleInvocationReadinessPath = Join-Path $resolvedOutputDirectory "stale-invocation-readiness.json"
+$staleInvocationPlanPath = Join-Path $resolvedOutputDirectory "stale-invocation-plan.json"
+$staleInvocationInvocationPath = Join-Path $resolvedOutputDirectory "stale-invocation-invocation.json"
+$staleInvocationDispatchPreflightPath = Join-Path $resolvedOutputDirectory "stale-invocation-dispatch-preflight.json"
+$staleInvocationRunIdPath = Join-Path $resolvedOutputDirectory "stale-invocation-run-ids.json"
+$staleInvocationCollectionPath = Join-Path $resolvedOutputDirectory "stale-invocation-collection.json"
+$staleInvocationImportPath = Join-Path $resolvedOutputDirectory "stale-invocation-import.json"
+$staleInvocationFinalizePath = Join-Path $resolvedOutputDirectory "stale-invocation-finalize.json"
+$staleInvocationJsonPath = Join-Path $resolvedOutputDirectory "stale-invocation-handoff.json"
+$staleInvocationMarkdownPath = Join-Path $resolvedOutputDirectory "stale-invocation-handoff.md"
+
+Write-JsonFixture $staleInvocationReadinessPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness.v1"
+    generatedAt = "2026-06-27T10:00:00+09:00"
+    result = "pending"
+    summary = "passed=82 pending=20"
+    passedCount = 82
+    pendingCount = 20
+    totalCount = 102
+    checkCount = 102
+})
+Write-JsonFixture $staleInvocationPlanPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan.v1"
+    generatedAt = "2026-06-27T10:05:00+09:00"
+    result = "action-required"
+    pendingCount = 20
+    actionCount = 20
+    unplannedCount = 0
+})
+Write-JsonFixture $staleInvocationInvocationPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    generatedAt = "2026-06-27T09:30:00+09:00"
+    result = "planned"
+    selectedActionCount = 6
+    plannedCount = 6
+    blockedCount = 0
+    executedCount = 0
+    failedCount = 0
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $staleInvocationReadinessPath `
+    -EvidencePlanPath $staleInvocationPlanPath `
+    -InvocationReportPath $staleInvocationInvocationPath `
+    -DispatchPreflightReportPath $staleInvocationDispatchPreflightPath `
+    -WorkflowRunIdPlanPath $staleInvocationRunIdPath `
+    -ArtifactCollectionPlanPath $staleInvocationCollectionPath `
+    -ArtifactImportReportPath $staleInvocationImportPath `
+    -OperationsReadinessFinalizeReportPath $staleInvocationFinalizePath `
+    -JsonOutputPath $staleInvocationJsonPath `
+    -MarkdownOutputPath $staleInvocationMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 stale-invocation check failed with exit code $LASTEXITCODE."
+}
+
+$staleInvocationReport = Read-Utf8Text $staleInvocationJsonPath | ConvertFrom-Json
+$staleInvocationMarkdown = Read-Utf8Text $staleInvocationMarkdownPath
+Assert-Equal $staleInvocationReport.result "action-required" "stale invocation result"
+Assert-Equal $staleInvocationReport.nextStep.code "refresh-invocation" "stale invocation next step"
+Assert-Equal $staleInvocationReport.currentBottleneck.code "refresh-invocation" "stale invocation current bottleneck"
+Assert-Equal $staleInvocationReport.invocationStale $true "stale invocation flag"
+Assert-Equal $staleInvocationReport.dispatchPreflightStale $false "stale dispatch flag"
+Assert-Equal $staleInvocationReport.staleReportCount 1 "stale report count"
+Assert-Equal $staleInvocationReport.readinessSummary "passed=82 pending=20" "stale invocation readiness summary"
+Assert-Equal $staleInvocationReport.readinessPassedCount 82 "stale invocation readiness passed count"
+Assert-Equal $staleInvocationReport.readinessPendingCount 20 "stale invocation readiness pending count"
+Assert-Equal $staleInvocationReport.readinessTotalCount 102 "stale invocation readiness total count"
+Assert-Equal $staleInvocationReport.readinessCheckCount 102 "stale invocation readiness check count"
+Assert-Contains $staleInvocationMarkdown "Counts: passed=82 pending=20 total=102 checks=102" "stale invocation markdown readiness counts"
+Assert-Contains $staleInvocationReport.nextStep.reason "older than the latest operations evidence plan" "stale invocation reason"
+Assert-Contains @($staleInvocationReport.stages)[2].summary "stale=true" "stale invocation stage summary"
+Assert-Contains $staleInvocationMarkdown "Stale reports: 1" "stale invocation markdown count"
 
 $blockedReadinessPath = Join-Path $resolvedOutputDirectory "blocked-readiness.json"
 $blockedPlanPath = Join-Path $resolvedOutputDirectory "blocked-plan.json"
@@ -126,10 +205,12 @@ Write-JsonFixture $blockedRunIdPath ([ordered]@{
 Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
     formatVersion = "osmu.operations-dispatch-preflight.v1"
     result = "action-required"
+    githubRepository = "chefbeom/object-storage-osmu"
     selectedActionCount = 3
     missingInputCount = 2
     readySubsetPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2"
     readySubsetExecuteCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2 -Execute"
+    readySubsetApiExecuteCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -GitHubRef main -Execute"
     inputTemplates = @(
         [ordered]@{
             actionOrder = 1
@@ -146,6 +227,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
             actionOrder = 2
             name = "Container scan/SBOM evidence"
             workflow = "container-security-ci.yml"
+            dispatchUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"
             readyToDispatch = $true
             missingInputCount = 0
             unsafeInputCount = 0
@@ -157,6 +239,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
             actionOrder = 3
             name = "Kubernetes DR finalizer live evidence"
             workflow = "kubernetes-dr-finalizer-ci.yml"
+            dispatchUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml"
             readyToDispatch = $false
             missingInputCount = 2
             unsafeInputCount = 0
@@ -190,13 +273,18 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 blocked-report check failed with exit code $LASTEXITCODE."
 }
 
-$blockedReport = Get-Content -Raw -LiteralPath $blockedJsonPath | ConvertFrom-Json
-$blockedMarkdown = Get-Content -Raw -LiteralPath $blockedMarkdownPath
+$blockedReport = Read-Utf8Text $blockedJsonPath | ConvertFrom-Json
+$blockedMarkdown = Read-Utf8Text $blockedMarkdownPath
 Assert-Equal $blockedReport.result "blocked" "blocked result"
 Assert-Equal $blockedReport.nextStep.code "dispatch-ready-subset" "blocked next step"
 Assert-Contains $blockedReport.nextStep.command "-ActionOrder 2" "blocked ready subset command"
 Assert-Contains $blockedReport.nextStep.reason "1 action(s) are ready" "blocked ready subset reason"
 Assert-Contains $blockedReport.nextStep.note "remaining blocked actions" "blocked ready subset note"
+Assert-Contains $blockedReport.nextStep.note "Web dispatch URL(s) for ready templates" "blocked ready subset dispatch URL hint"
+Assert-Contains $blockedReport.nextStep.note "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked ready subset dispatch URL hint value"
+Assert-Equal @($blockedReport.nextStep.dispatchUrls).Count 1 "blocked ready subset structured dispatch URL count"
+Assert-Equal @($blockedReport.nextStep.dispatchUrls)[0] "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked ready subset structured dispatch URL"
+Assert-Equal $blockedReport.dispatchGithubRepository "chefbeom/object-storage-osmu" "blocked dispatch github repository"
 Assert-Equal $blockedReport.blockedActionCount 5 "blocked count"
 Assert-Equal $blockedReport.missingWorkflowRunCount 6 "blocked missing workflow run count"
 Assert-Equal @($blockedReport.readyDispatchWorkflows).Count 1 "blocked ready dispatch workflow count"
@@ -204,9 +292,13 @@ Assert-Equal @($blockedReport.blockedDispatchWorkflows).Count 2 "blocked blocked
 Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].actionOrder 2 "blocked ready dispatch workflow action order"
 Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].workflow "container-security-ci.yml" "blocked ready dispatch workflow name"
 Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].name "Container scan/SBOM evidence" "blocked ready dispatch action name"
+Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked ready dispatch workflow url"
 Assert-Equal @($blockedReport.blockedDispatchWorkflows)[1].missingInputCount 2 "blocked workflow missing input count"
+Assert-Equal @($blockedReport.blockedDispatchWorkflows)[1].dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml" "blocked workflow dispatch url"
 Assert-Contains $blockedMarkdown "Plan ready dispatch subset" "blocked markdown next step"
+Assert-Contains $blockedMarkdown "GitHub repository: chefbeom/object-storage-osmu" "blocked markdown repository"
 Assert-Contains $blockedMarkdown "ready action 2: container-security-ci.yml" "blocked markdown ready workflow"
+Assert-Contains $blockedMarkdown "dispatchUrl=https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked markdown ready dispatch url"
 Assert-Contains $blockedMarkdown "blocked action 3: kubernetes-dr-finalizer-ci.yml" "blocked markdown blocked workflow"
 
 $preflightBlockReadinessPath = Join-Path $resolvedOutputDirectory "preflight-block-readiness.json"
@@ -244,6 +336,7 @@ Write-JsonFixture $preflightBlockInvocationPath ([ordered]@{
 Write-JsonFixture $preflightBlockDispatchPreflightPath ([ordered]@{
     formatVersion = "osmu.operations-dispatch-preflight.v1"
     result = "action-required"
+    githubRepository = "chefbeom/object-storage-osmu"
     selectedActionCount = 1
     selectedActionOrders = @(2)
     readyActionCount = 1
@@ -254,6 +347,8 @@ Write-JsonFixture $preflightBlockDispatchPreflightPath ([ordered]@{
     failedCheckCount = 1
     warningCheckCount = 0
     githubCliPath = "C:\tools\gh.exe"
+    readySubsetPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:\tools\gh.exe -ActionOrder 2"
+    readySubsetApiExecuteCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:\tools\gh.exe -ActionOrder 2 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -GitHubRef main -Execute"
     checks = @(
         [ordered]@{
             code = "GITHUB_CLI_AVAILABLE"
@@ -266,6 +361,7 @@ Write-JsonFixture $preflightBlockDispatchPreflightPath ([ordered]@{
             actionOrder = 2
             name = "Container scan/SBOM evidence"
             workflow = "container-security-ci.yml"
+            dispatchUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"
             readyToDispatch = $true
             missingInputCount = 0
             unsafeInputCount = 0
@@ -282,6 +378,55 @@ Write-JsonFixture $preflightBlockRunIdPath ([ordered]@{
     readyWorkflowCount = 0
     missingWorkflowCount = 1
     staleWorkflowCount = 0
+    sourceActionOrders = @(2)
+
+    branch = "main"
+    runListJsonDirectoryCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory .\.osmu-run\workflow-run-lists"
+    githubApiRunListCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1"
+    artifactCollectionPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1"
+    manualArtifactCollectionPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1 -ContainerSecurityRunId <ContainerSecurityRunId>"
+    workflowRunIdInputs = @(
+        [ordered]@{
+            workflow = "container-security-ci.yml"
+            actionOrders = @(2)
+            runIdParameter = "ContainerSecurityRunId"
+            artifactName = "osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68"
+            runsUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"
+            runListJsonPath = ".\.osmu-run\workflow-run-lists\container-security-ci.yml.json"
+        }
+    )
+    securityEvidenceFinalizerRunIdInputHints = @(
+        [ordered]@{
+            workflow = "image-publish-sign-ci.yml"
+            group = "image-signing-source"
+            actionOrders = @()
+            runIdParameter = "ImageSigningRunId"
+            artifactName = "osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68"
+            runsUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml"
+            runListJsonPath = ".\.osmu-run\workflow-run-lists\image-publish-sign-ci.yml.json"
+            queryCommand = "gh run list --workflow image-publish-sign-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle"
+            sourceSelected = $false
+            supplementalForSecurityFinalizer = $true
+        },
+        [ordered]@{
+            workflow = "container-security-ci.yml"
+            group = "container-security-source"
+            actionOrders = @(2)
+            runIdParameter = "ContainerSecurityRunId"
+            artifactName = "osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68"
+            runsUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"
+            runListJsonPath = ".\.osmu-run\workflow-run-lists\container-security-ci.yml.json"
+            queryCommand = "gh run list --workflow container-security-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle"
+            sourceSelected = $true
+            supplementalForSecurityFinalizer = $false
+        }
+    )
+    workflows = @(
+        [ordered]@{
+            workflow = "container-security-ci.yml"
+            runsUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"
+        }
+    )
 })
 Write-JsonFixture $preflightBlockCollectionPath ([ordered]@{
     formatVersion = "osmu.operations-artifact-collection-plan.v1"
@@ -289,6 +434,16 @@ Write-JsonFixture $preflightBlockCollectionPath ([ordered]@{
     artifactCount = 1
     readyArtifactCount = 0
     missingRequiredArtifactCount = 1
+    sourceActionOrders = @(2)
+    securityEvidenceFinalizerInputs = @(
+        [ordered]@{
+            name = "ImageSigningRunId"
+        },
+        [ordered]@{
+            name = "ContainerSecurityRunId"
+        }
+    )
+    securityEvidenceFinalizerMissingRunIdInputs = @("ImageSigningRunId", "ContainerSecurityRunId")
 })
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -306,16 +461,556 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 preflight-block check failed with exit code $LASTEXITCODE."
 }
 
-$preflightBlockReport = Get-Content -Raw -LiteralPath $preflightBlockJsonPath | ConvertFrom-Json
-$preflightBlockMarkdown = Get-Content -Raw -LiteralPath $preflightBlockMarkdownPath
+$preflightBlockReport = Read-Utf8Text $preflightBlockJsonPath | ConvertFrom-Json
+$preflightBlockMarkdown = Read-Utf8Text $preflightBlockMarkdownPath
 Assert-Equal $preflightBlockReport.result "action-required" "preflight-block result"
-Assert-Equal $preflightBlockReport.nextStep.code "fix-dispatch-preflight" "preflight-block next step"
+Assert-Equal $preflightBlockReport.nextStep.code "dispatch-ready-subset-browser" "preflight-block next step"
 Assert-Contains $preflightBlockReport.nextStep.command "-ActionOrder 2" "preflight-block command action order"
 Assert-Contains $preflightBlockReport.nextStep.command "-GitHubCliPath C:\tools\gh.exe" "preflight-block command github cli path"
-Assert-Contains $preflightBlockReport.nextStep.command "-CheckGitHubCli" "preflight-block command gh check"
-Assert-Contains $preflightBlockReport.nextStep.reason "dispatch preflight is action-required" "preflight-block reason"
+Assert-Contains $preflightBlockReport.nextStep.reason "only failed because GitHub CLI is unavailable" "preflight-block reason"
 Assert-Contains $preflightBlockReport.nextStep.note "GITHUB_CLI_AVAILABLE" "preflight-block note"
-Assert-Contains $preflightBlockMarkdown "Fix dispatch preflight before execution" "preflight-block markdown next step"
+Assert-Contains $preflightBlockReport.nextStep.note "Web dispatch URL(s) for ready templates" "preflight-block dispatch URL hint"
+Assert-Contains $preflightBlockReport.nextStep.note "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "preflight-block dispatch URL hint value"
+Assert-Equal @($preflightBlockReport.nextStep.dispatchUrls).Count 1 "preflight-block structured dispatch URL count"
+Assert-Equal @($preflightBlockReport.nextStep.dispatchUrls)[0] "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "preflight-block structured dispatch URL"
+Assert-Equal $preflightBlockReport.dispatchGithubRepository "chefbeom/object-storage-osmu" "preflight-block dispatch github repository"
+Assert-Equal @($preflightBlockReport.workflowRunIdPlanActionOrders)[0] 2 "preflight-block workflow run id source action order"
+Assert-Equal @($preflightBlockReport.artifactCollectionActionOrders)[0] 2 "preflight-block artifact collection source action order"
+Assert-Equal $preflightBlockReport.workflowRunIdPlanScopeMismatch $false "preflight-block workflow run id scope mismatch"
+Assert-Equal $preflightBlockReport.artifactCollectionScopeMismatch $false "preflight-block artifact collection scope mismatch"
+Assert-Equal @($preflightBlockReport.readyDispatchWorkflows)[0].dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "preflight-block ready dispatch workflow url"
+Assert-Equal $preflightBlockReport.browserDispatchChecklistCount 1 "preflight-block browser dispatch checklist count"
+Assert-Equal @($preflightBlockReport.browserDispatchChecklist).Count 1 "preflight-block browser dispatch checklist array count"
+Assert-Equal @($preflightBlockReport.browserDispatchChecklist)[0].workflow "container-security-ci.yml" "preflight-block browser checklist workflow"
+Assert-Equal @($preflightBlockReport.browserDispatchChecklist)[0].runIdParameter "ContainerSecurityRunId" "preflight-block browser checklist run id parameter"
+Assert-Equal @($preflightBlockReport.browserDispatchChecklist)[0].artifactName "osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68" "preflight-block browser checklist artifact name"
+Assert-Equal @($preflightBlockReport.browserDispatchChecklist)[0].runListJsonPath ".\.osmu-run\workflow-run-lists\container-security-ci.yml.json" "preflight-block browser checklist run-list path"
+Assert-Contains @($preflightBlockReport.browserDispatchChecklist)[0].manualArtifactCollectionCommand "-ContainerSecurityRunId <ContainerSecurityRunId>" "preflight-block browser checklist manual command"
+Assert-Contains @($preflightBlockReport.browserDispatchChecklist)[0].steps[0] "select branch main" "preflight-block browser checklist branch step"
+Assert-Contains @($preflightBlockReport.browserDispatchChecklist)[0].steps[3] "ContainerSecurityRunId" "preflight-block browser checklist run id step"
+Assert-Contains (@(@($preflightBlockReport.browserDispatchChecklist)[0].securityFinalizerRunIdInputs) -join ",") "ContainerSecurityRunId" "preflight-block browser checklist security finalizer input"
+Assert-Contains (@(@($preflightBlockReport.browserDispatchChecklist)[0].securityFinalizerMissingRunIdInputs) -join ",") "ImageSigningRunId" "preflight-block browser checklist security finalizer missing input"
+Assert-Contains @($preflightBlockReport.browserDispatchChecklist)[0].securityFinalizerDependencyNote "also collect ImageSigningRunId" "preflight-block browser checklist security finalizer note"
+Assert-Contains (@(@($preflightBlockReport.browserDispatchChecklist)[0].steps) -join " ") "security-evidence-finalizer-ci.yml" "preflight-block browser checklist finalizer step"
+Assert-Equal $preflightBlockReport.securityEvidenceFinalizerRunIdInputHintCount 2 "preflight-block security finalizer hint count"
+Assert-Equal @($preflightBlockReport.securityEvidenceFinalizerRunIdInputHints).Count 2 "preflight-block security finalizer hint array count"
+$preflightBlockImageHint = @($preflightBlockReport.securityEvidenceFinalizerRunIdInputHints | Where-Object { $_.runIdParameter -eq "ImageSigningRunId" } | Select-Object -First 1)
+$preflightBlockContainerHint = @($preflightBlockReport.securityEvidenceFinalizerRunIdInputHints | Where-Object { $_.runIdParameter -eq "ContainerSecurityRunId" } | Select-Object -First 1)
+Assert-Equal $preflightBlockImageHint.workflow "image-publish-sign-ci.yml" "preflight-block image signing hint workflow"
+Assert-Equal ([bool] $preflightBlockImageHint.supplementalForSecurityFinalizer) $true "preflight-block image signing hint supplemental flag"
+Assert-Equal $preflightBlockContainerHint.workflow "container-security-ci.yml" "preflight-block container hint workflow"
+Assert-Equal ([bool] $preflightBlockContainerHint.sourceSelected) $true "preflight-block container hint selected flag"
+Assert-Equal @($preflightBlockReport.postDispatchCommands).Count 5 "preflight-block post-dispatch command count"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[0].command "-RunListJsonDirectory <run-list-json-dir>" "preflight-block post-dispatch fixture command"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[0].note "GitHub CLI is unavailable" "preflight-block post-dispatch fixture note"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[1].name "GitHub REST API" "preflight-block post-dispatch github api command name"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[1].command "-UseGitHubApi" "preflight-block post-dispatch github api command"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[1].note "repository Actions API" "preflight-block post-dispatch github api note"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[2].command "write-operations-workflow-run-id-plan.ps1 -Execute" "preflight-block post-dispatch gh command"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[3].command "-ContainerSecurityRunId <ContainerSecurityRunId>" "preflight-block post-dispatch browser run id artifact collection command"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[3].note "workflow run page URL" "preflight-block post-dispatch browser run id note"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[3].note "full workflow run URLs" "preflight-block post-dispatch browser run id URL note"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[4].command "write-operations-artifact-collection-plan.ps1" "preflight-block post-dispatch artifact collection command"
+Assert-Contains @($preflightBlockReport.postDispatchCommands)[4].note "selected-action scope" "preflight-block post-dispatch artifact collection note"
+$preflightBlockWorkflowRunStage = @($preflightBlockReport.stages | Where-Object { $_.name -eq "workflow-run-ids" } | Select-Object -First 1)
+Assert-Contains $preflightBlockWorkflowRunStage.command "-UseGitHubApi" "preflight-block workflow run stage github api command"
+Assert-Contains $preflightBlockWorkflowRunStage.note "GitHub REST API" "preflight-block workflow run stage github api note"
+Assert-Contains $preflightBlockWorkflowRunStage.note "Browser workflow runs URL(s)" "preflight-block workflow run stage runs URL hint"
+Assert-Contains $preflightBlockWorkflowRunStage.note "container-security-ci.yml" "preflight-block workflow run stage workflow label"
+Assert-Contains $preflightBlockMarkdown "Open browser or API dispatch for ready subset" "preflight-block markdown next step"
+Assert-Contains $preflightBlockReport.nextStep.note "API dispatch" "preflight-block API dispatch note"
+Assert-Contains $preflightBlockReport.nextStep.note "GH_TOKEN" "preflight-block API token note"
+Assert-Contains $preflightBlockMarkdown "Browser workflow runs URL(s): container-security-ci.yml: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "preflight-block markdown workflow runs URL hint"
+Assert-Contains $preflightBlockMarkdown "dispatchUrl=https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "preflight-block markdown dispatch url"
+Assert-Contains $preflightBlockMarkdown "## Browser Dispatch Checklist" "preflight-block markdown browser checklist section"
+Assert-Contains $preflightBlockMarkdown "runIdParameter=ContainerSecurityRunId" "preflight-block markdown browser checklist run id parameter"
+Assert-Contains $preflightBlockMarkdown "Run-list JSON path: .\.osmu-run\workflow-run-lists\container-security-ci.yml.json" "preflight-block markdown browser checklist run-list path"
+Assert-Contains $preflightBlockMarkdown "Step: Copy the numeric run id or full workflow run URL into ContainerSecurityRunId." "preflight-block markdown browser checklist run id step"
+Assert-Contains $preflightBlockMarkdown "Security finalizer missing run-id inputs: ImageSigningRunId, ContainerSecurityRunId" "preflight-block markdown browser checklist security missing inputs"
+Assert-Contains $preflightBlockMarkdown "Security finalizer note: Security finalizer dependency: this dispatch can supply ContainerSecurityRunId; also collect ImageSigningRunId before running security-evidence-finalizer-ci.yml." "preflight-block markdown browser checklist security finalizer note"
+Assert-Contains $preflightBlockMarkdown "## Security Finalizer Run-id Hints" "preflight-block markdown security finalizer hints section"
+Assert-Contains $preflightBlockMarkdown "ImageSigningRunId: workflow=image-publish-sign-ci.yml / source=supplemental" "preflight-block markdown image signing hint"
+Assert-Contains $preflightBlockMarkdown "ContainerSecurityRunId: workflow=container-security-ci.yml / source=selected" "preflight-block markdown container hint"
+Assert-Contains $preflightBlockMarkdown "## Post Dispatch Handoff" "preflight-block markdown post-dispatch section"
+Assert-Contains $preflightBlockMarkdown "-RunListJsonDirectory <run-list-json-dir>" "preflight-block markdown post-dispatch fixture command"
+Assert-Contains $preflightBlockMarkdown "-UseGitHubApi" "preflight-block markdown post-dispatch github api command"
+Assert-Contains $preflightBlockMarkdown "write-operations-workflow-run-id-plan.ps1 -Execute" "preflight-block markdown post-dispatch gh command"
+Assert-Contains $preflightBlockMarkdown "Regenerate artifact collection plan with browser run ids" "preflight-block markdown browser run id artifact command"
+Assert-Contains $preflightBlockMarkdown "-ContainerSecurityRunId <ContainerSecurityRunId>" "preflight-block markdown browser run id artifact parameter"
+Assert-Contains $preflightBlockMarkdown "Regenerate artifact collection plan after run id collection" "preflight-block markdown post-dispatch artifact command"
+
+$scopeMismatchReadinessPath = Join-Path $resolvedOutputDirectory "scope-mismatch-readiness.json"
+$scopeMismatchPlanPath = Join-Path $resolvedOutputDirectory "scope-mismatch-plan.json"
+$scopeMismatchInvocationPath = Join-Path $resolvedOutputDirectory "scope-mismatch-invocation.json"
+$scopeMismatchDispatchPreflightPath = Join-Path $resolvedOutputDirectory "scope-mismatch-dispatch-preflight.json"
+$scopeMismatchRunIdPath = Join-Path $resolvedOutputDirectory "scope-mismatch-run-ids.json"
+$scopeMismatchCollectionPath = Join-Path $resolvedOutputDirectory "scope-mismatch-collection.json"
+$scopeMismatchImportPath = Join-Path $resolvedOutputDirectory "scope-mismatch-import.json"
+$scopeMismatchFinalizePath = Join-Path $resolvedOutputDirectory "scope-mismatch-finalize.json"
+$scopeMismatchJsonPath = Join-Path $resolvedOutputDirectory "scope-mismatch-handoff.json"
+$scopeMismatchMarkdownPath = Join-Path $resolvedOutputDirectory "scope-mismatch-handoff.md"
+
+Write-JsonFixture $scopeMismatchReadinessPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness.v1"
+    result = "pending"
+    summary = "passed=36 pending=1"
+})
+Write-JsonFixture $scopeMismatchPlanPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan.v1"
+    result = "action-required"
+    pendingCount = 1
+    actionCount = 1
+    unplannedCount = 0
+})
+Write-JsonFixture $scopeMismatchInvocationPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    result = "planned"
+    selectedActionCount = 1
+    plannedCount = 1
+    blockedCount = 0
+    executedCount = 0
+    failedCount = 0
+    actions = @(
+        [ordered]@{
+            order = 2
+            name = "Container scan/SBOM evidence"
+            status = "planned"
+        }
+    )
+})
+Write-JsonFixture $scopeMismatchDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    result = "action-required"
+    githubRepository = "chefbeom/object-storage-osmu"
+    selectedActionCount = 3
+    selectedActionOrders = @(1, 2, 3)
+    readyActionCount = 1
+    readyActionOrders = @(2)
+    blockedActionCount = 2
+    blockedActionOrders = @(1, 3)
+    missingInputCount = 0
+    failedCheckCount = 1
+    warningCheckCount = 0
+    githubCliPath = "C:\tools\gh.exe"
+    readySubsetPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:\tools\gh.exe -ActionOrder 2"
+    readySubsetApiExecuteCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:\tools\gh.exe -ActionOrder 2 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -GitHubRef main -Execute"
+    checks = @(
+        [ordered]@{
+            code = "GITHUB_CLI_AVAILABLE"
+            status = "fail"
+            message = "GitHub CLI was not found on PATH."
+        }
+    )
+    inputTemplates = @(
+        [ordered]@{
+            actionOrder = 2
+            name = "Container scan/SBOM evidence"
+            workflow = "container-security-ci.yml"
+            dispatchUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"
+            readyToDispatch = $true
+            missingInputCount = 0
+            unsafeInputCount = 0
+            invalidInputCount = 0
+            workflowInputNames = @()
+            missingInputParameters = @()
+        }
+    )
+})
+Write-JsonFixture $scopeMismatchRunIdPath ([ordered]@{
+    formatVersion = "osmu.operations-workflow-run-id-plan.v1"
+    result = "query-required"
+    workflowCount = 1
+    readyWorkflowCount = 0
+    missingWorkflowCount = 1
+    staleWorkflowCount = 0
+})
+Write-JsonFixture $scopeMismatchCollectionPath ([ordered]@{
+    formatVersion = "osmu.operations-artifact-collection-plan.v1"
+    result = "action-required"
+    artifactCount = 1
+    readyArtifactCount = 0
+    missingRequiredArtifactCount = 1
+    sourceActionOrders = @(2)
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $scopeMismatchReadinessPath `
+    -EvidencePlanPath $scopeMismatchPlanPath `
+    -InvocationReportPath $scopeMismatchInvocationPath `
+    -DispatchPreflightReportPath $scopeMismatchDispatchPreflightPath `
+    -WorkflowRunIdPlanPath $scopeMismatchRunIdPath `
+    -ArtifactCollectionPlanPath $scopeMismatchCollectionPath `
+    -ArtifactImportReportPath $scopeMismatchImportPath `
+    -OperationsReadinessFinalizeReportPath $scopeMismatchFinalizePath `
+    -JsonOutputPath $scopeMismatchJsonPath `
+    -MarkdownOutputPath $scopeMismatchMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 scope-mismatch check failed with exit code $LASTEXITCODE."
+}
+
+$scopeMismatchReport = Read-Utf8Text $scopeMismatchJsonPath | ConvertFrom-Json
+$scopeMismatchMarkdown = Read-Utf8Text $scopeMismatchMarkdownPath
+Assert-Equal $scopeMismatchReport.result "action-required" "scope mismatch result"
+Assert-Equal $scopeMismatchReport.nextStep.code "refresh-dispatch-preflight" "scope mismatch next step"
+Assert-Contains $scopeMismatchReport.nextStep.command "-ActionOrder 2" "scope mismatch refresh command action order"
+Assert-Contains $scopeMismatchReport.nextStep.reason "do not match the latest invocation selected action orders" "scope mismatch reason"
+Assert-Equal $scopeMismatchReport.dispatchPreflightScopeMismatch $true "scope mismatch flag"
+Assert-Equal $scopeMismatchReport.staleReportCount 1 "scope mismatch stale count"
+Assert-Contains (@($scopeMismatchReport.stages)[3].summary) "scopeMismatch=true" "scope mismatch stage summary"
+Assert-Contains $scopeMismatchMarkdown "Refresh dispatch preflight" "scope mismatch markdown next step"
+Assert-Contains $scopeMismatchMarkdown "Stale reports: 1" "scope mismatch markdown stale count"
+$runIdScopeMismatchReadinessPath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-readiness.json"
+$runIdScopeMismatchPlanPath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-plan.json"
+$runIdScopeMismatchInvocationPath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-invocation.json"
+$runIdScopeMismatchDispatchPreflightPath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-dispatch-preflight.json"
+$runIdScopeMismatchRunIdPath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-run-ids.json"
+$runIdScopeMismatchCollectionPath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-collection.json"
+$runIdScopeMismatchImportPath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-import.json"
+$runIdScopeMismatchFinalizePath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-finalize.json"
+$runIdScopeMismatchJsonPath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-handoff.json"
+$runIdScopeMismatchMarkdownPath = Join-Path $resolvedOutputDirectory "run-id-scope-mismatch-handoff.md"
+
+Write-JsonFixture $runIdScopeMismatchReadinessPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness.v1"
+    result = "pending"
+    summary = "passed=36 pending=1"
+})
+Write-JsonFixture $runIdScopeMismatchPlanPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan.v1"
+    result = "action-required"
+    pendingCount = 1
+    actionCount = 1
+    unplannedCount = 0
+})
+Write-JsonFixture $runIdScopeMismatchInvocationPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    result = "planned"
+    selectedActionOrders = @(2)
+    selectedActionCount = 1
+    plannedCount = 1
+    blockedCount = 0
+    executedCount = 1
+    failedCount = 0
+    actions = @(
+        [ordered]@{
+            order = 2
+            name = "Container scan/SBOM evidence"
+            status = "planned"
+        }
+    )
+})
+Write-JsonFixture $runIdScopeMismatchDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    result = "ready"
+    githubRepository = "chefbeom/object-storage-osmu"
+    selectedActionCount = 1
+    selectedActionOrders = @(2)
+    readyActionCount = 1
+    readyActionOrders = @(2)
+    blockedActionCount = 0
+    blockedActionOrders = @()
+    missingInputCount = 0
+    failedCheckCount = 0
+    warningCheckCount = 0
+    inputTemplates = @(
+        [ordered]@{
+            actionOrder = 2
+            name = "Container scan/SBOM evidence"
+            workflow = "container-security-ci.yml"
+            readyToDispatch = $true
+            missingInputCount = 0
+            unsafeInputCount = 0
+            invalidInputCount = 0
+            workflowInputNames = @()
+            missingInputParameters = @()
+        }
+    )
+})
+Write-JsonFixture $runIdScopeMismatchRunIdPath ([ordered]@{
+    formatVersion = "osmu.operations-workflow-run-id-plan.v1"
+    result = "ready"
+    workflowCount = 2
+    readyWorkflowCount = 2
+    missingWorkflowCount = 0
+    staleWorkflowCount = 0
+    sourceActionOrders = @(1, 2)
+    artifactCollectionPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1"
+})
+Write-JsonFixture $runIdScopeMismatchCollectionPath ([ordered]@{
+    formatVersion = "osmu.operations-artifact-collection-plan.v1"
+    result = "ready"
+    artifactCount = 1
+    readyArtifactCount = 1
+    missingRequiredArtifactCount = 0
+    sourceActionOrders = @(2)
+    operationsArtifactFinalizerCommand = "gh workflow run operations-readiness-artifact-finalizer-ci.yml"
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $runIdScopeMismatchReadinessPath `
+    -EvidencePlanPath $runIdScopeMismatchPlanPath `
+    -InvocationReportPath $runIdScopeMismatchInvocationPath `
+    -DispatchPreflightReportPath $runIdScopeMismatchDispatchPreflightPath `
+    -WorkflowRunIdPlanPath $runIdScopeMismatchRunIdPath `
+    -ArtifactCollectionPlanPath $runIdScopeMismatchCollectionPath `
+    -ArtifactImportReportPath $runIdScopeMismatchImportPath `
+    -OperationsReadinessFinalizeReportPath $runIdScopeMismatchFinalizePath `
+    -JsonOutputPath $runIdScopeMismatchJsonPath `
+    -MarkdownOutputPath $runIdScopeMismatchMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 run-id scope mismatch check failed with exit code $LASTEXITCODE."
+}
+
+$runIdScopeMismatchReport = Read-Utf8Text $runIdScopeMismatchJsonPath | ConvertFrom-Json
+$runIdScopeMismatchMarkdown = Read-Utf8Text $runIdScopeMismatchMarkdownPath
+$runIdScopeMismatchStage = @($runIdScopeMismatchReport.stages | Where-Object { $_.name -eq "workflow-run-ids" })[0]
+Assert-Equal $runIdScopeMismatchReport.result "action-required" "run-id scope mismatch result"
+Assert-Equal $runIdScopeMismatchReport.nextStep.code "refresh-run-id-plan" "run-id scope mismatch next step"
+Assert-Contains $runIdScopeMismatchReport.nextStep.reason "do not match the latest invocation selected action orders" "run-id scope mismatch reason"
+Assert-Equal $runIdScopeMismatchReport.workflowRunIdPlanScopeMismatch $true "run-id scope mismatch flag"
+Assert-Equal $runIdScopeMismatchReport.artifactCollectionScopeMismatch $false "run-id scope mismatch artifact flag"
+Assert-Equal $runIdScopeMismatchReport.staleReportCount 1 "run-id scope mismatch stale count"
+Assert-Equal @($runIdScopeMismatchReport.workflowRunIdPlanActionOrders).Count 2 "run-id scope mismatch action order count"
+Assert-Equal @($runIdScopeMismatchReport.workflowRunIdPlanActionOrders)[0] 1 "run-id scope mismatch first action order"
+Assert-Equal @($runIdScopeMismatchReport.workflowRunIdPlanActionOrders)[1] 2 "run-id scope mismatch second action order"
+Assert-Contains $runIdScopeMismatchStage.summary "scopeMismatch=true" "run-id scope mismatch stage summary"
+Assert-Contains $runIdScopeMismatchMarkdown "Refresh workflow run id plan" "run-id scope mismatch markdown next step"
+Assert-Contains $runIdScopeMismatchMarkdown "Stale reports: 1" "run-id scope mismatch markdown stale count"
+
+$artifactScopeMismatchReadinessPath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-readiness.json"
+$artifactScopeMismatchPlanPath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-plan.json"
+$artifactScopeMismatchInvocationPath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-invocation.json"
+$artifactScopeMismatchDispatchPreflightPath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-dispatch-preflight.json"
+$artifactScopeMismatchRunIdPath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-run-ids.json"
+$artifactScopeMismatchCollectionPath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-collection.json"
+$artifactScopeMismatchImportPath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-import.json"
+$artifactScopeMismatchFinalizePath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-finalize.json"
+$artifactScopeMismatchJsonPath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-handoff.json"
+$artifactScopeMismatchMarkdownPath = Join-Path $resolvedOutputDirectory "artifact-scope-mismatch-handoff.md"
+
+Write-JsonFixture $artifactScopeMismatchReadinessPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness.v1"
+    result = "pending"
+    summary = "passed=36 pending=1"
+})
+Write-JsonFixture $artifactScopeMismatchPlanPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan.v1"
+    result = "action-required"
+    pendingCount = 1
+    actionCount = 1
+    unplannedCount = 0
+})
+Write-JsonFixture $artifactScopeMismatchInvocationPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    result = "planned"
+    selectedActionOrders = @(2)
+    selectedActionCount = 1
+    plannedCount = 1
+    blockedCount = 0
+    executedCount = 1
+    failedCount = 0
+    actions = @(
+        [ordered]@{
+            order = 2
+            name = "Container scan/SBOM evidence"
+            status = "planned"
+        }
+    )
+})
+Write-JsonFixture $artifactScopeMismatchDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    result = "ready"
+    githubRepository = "chefbeom/object-storage-osmu"
+    selectedActionCount = 1
+    selectedActionOrders = @(2)
+    readyActionCount = 1
+    readyActionOrders = @(2)
+    blockedActionCount = 0
+    blockedActionOrders = @()
+    missingInputCount = 0
+    failedCheckCount = 0
+    warningCheckCount = 0
+    inputTemplates = @(
+        [ordered]@{
+            actionOrder = 2
+            name = "Container scan/SBOM evidence"
+            workflow = "container-security-ci.yml"
+            readyToDispatch = $true
+            missingInputCount = 0
+            unsafeInputCount = 0
+            invalidInputCount = 0
+            workflowInputNames = @()
+            missingInputParameters = @()
+        }
+    )
+})
+Write-JsonFixture $artifactScopeMismatchRunIdPath ([ordered]@{
+    formatVersion = "osmu.operations-workflow-run-id-plan.v1"
+    result = "ready"
+    workflowCount = 1
+    readyWorkflowCount = 1
+    missingWorkflowCount = 0
+    staleWorkflowCount = 0
+    sourceActionOrders = @(2)
+    artifactCollectionPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1"
+})
+Write-JsonFixture $artifactScopeMismatchCollectionPath ([ordered]@{
+    formatVersion = "osmu.operations-artifact-collection-plan.v1"
+    result = "ready"
+    artifactCount = 2
+    readyArtifactCount = 2
+    missingRequiredArtifactCount = 0
+    sourceActionOrders = @(1, 2)
+    operationsArtifactFinalizerCommand = "gh workflow run operations-readiness-artifact-finalizer-ci.yml"
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $artifactScopeMismatchReadinessPath `
+    -EvidencePlanPath $artifactScopeMismatchPlanPath `
+    -InvocationReportPath $artifactScopeMismatchInvocationPath `
+    -DispatchPreflightReportPath $artifactScopeMismatchDispatchPreflightPath `
+    -WorkflowRunIdPlanPath $artifactScopeMismatchRunIdPath `
+    -ArtifactCollectionPlanPath $artifactScopeMismatchCollectionPath `
+    -ArtifactImportReportPath $artifactScopeMismatchImportPath `
+    -OperationsReadinessFinalizeReportPath $artifactScopeMismatchFinalizePath `
+    -JsonOutputPath $artifactScopeMismatchJsonPath `
+    -MarkdownOutputPath $artifactScopeMismatchMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 artifact scope mismatch check failed with exit code $LASTEXITCODE."
+}
+
+$artifactScopeMismatchReport = Read-Utf8Text $artifactScopeMismatchJsonPath | ConvertFrom-Json
+$artifactScopeMismatchMarkdown = Read-Utf8Text $artifactScopeMismatchMarkdownPath
+$artifactScopeMismatchStage = @($artifactScopeMismatchReport.stages | Where-Object { $_.name -eq "artifact-collection" })[0]
+Assert-Equal $artifactScopeMismatchReport.result "action-required" "artifact scope mismatch result"
+Assert-Equal $artifactScopeMismatchReport.nextStep.code "refresh-artifact-collection-plan" "artifact scope mismatch next step"
+Assert-Contains $artifactScopeMismatchReport.nextStep.command "write-operations-artifact-collection-plan.ps1" "artifact scope mismatch refresh command"
+Assert-Contains $artifactScopeMismatchReport.nextStep.reason "do not match the latest invocation selected action orders" "artifact scope mismatch reason"
+Assert-Equal $artifactScopeMismatchReport.workflowRunIdPlanScopeMismatch $false "artifact scope mismatch run-id flag"
+Assert-Equal $artifactScopeMismatchReport.artifactCollectionScopeMismatch $true "artifact scope mismatch flag"
+Assert-Equal $artifactScopeMismatchReport.staleReportCount 1 "artifact scope mismatch stale count"
+Assert-Equal @($artifactScopeMismatchReport.artifactCollectionActionOrders).Count 2 "artifact scope mismatch action order count"
+Assert-Equal @($artifactScopeMismatchReport.artifactCollectionActionOrders)[0] 1 "artifact scope mismatch first action order"
+Assert-Equal @($artifactScopeMismatchReport.artifactCollectionActionOrders)[1] 2 "artifact scope mismatch second action order"
+Assert-Contains $artifactScopeMismatchStage.summary "scopeMismatch=true" "artifact scope mismatch stage summary"
+Assert-Contains $artifactScopeMismatchMarkdown "Refresh artifact collection plan" "artifact scope mismatch markdown next step"
+Assert-Contains $artifactScopeMismatchMarkdown "Stale reports: 1" "artifact scope mismatch markdown stale count"
+
+$securityOnlyReadinessPath = Join-Path $resolvedOutputDirectory "security-only-readiness.json"
+$securityOnlyPlanPath = Join-Path $resolvedOutputDirectory "security-only-plan.json"
+$securityOnlyInvocationPath = Join-Path $resolvedOutputDirectory "security-only-invocation.json"
+$securityOnlyDispatchPreflightPath = Join-Path $resolvedOutputDirectory "security-only-dispatch-preflight.json"
+$securityOnlyRunIdPath = Join-Path $resolvedOutputDirectory "security-only-run-ids.json"
+$securityOnlyCollectionPath = Join-Path $resolvedOutputDirectory "security-only-collection.json"
+$securityOnlyImportPath = Join-Path $resolvedOutputDirectory "security-only-import.json"
+$securityOnlyFinalizePath = Join-Path $resolvedOutputDirectory "security-only-finalize.json"
+$securityOnlyJsonPath = Join-Path $resolvedOutputDirectory "security-only-handoff.json"
+$securityOnlyMarkdownPath = Join-Path $resolvedOutputDirectory "security-only-handoff.md"
+$securityOnlyCommand = "gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=104 -f container_security_run_id=105"
+
+Write-JsonFixture $securityOnlyReadinessPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness.v1"
+    result = "pending"
+    summary = "passed=36 pending=1"
+})
+Write-JsonFixture $securityOnlyPlanPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan.v1"
+    result = "action-required"
+    pendingCount = 1
+    actionCount = 1
+    unplannedCount = 0
+})
+Write-JsonFixture $securityOnlyInvocationPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    result = "planned"
+    selectedActionOrders = @(2)
+    selectedActionCount = 1
+    plannedCount = 1
+    blockedCount = 0
+    executedCount = 1
+    failedCount = 0
+    actions = @(
+        [ordered]@{
+            order = 2
+            name = "Container scan/SBOM evidence"
+            status = "planned"
+        }
+    )
+})
+Write-JsonFixture $securityOnlyDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    result = "ready"
+    githubRepository = "chefbeom/object-storage-osmu"
+    selectedActionCount = 1
+    selectedActionOrders = @(2)
+    readyActionCount = 1
+    readyActionOrders = @(2)
+    blockedActionCount = 0
+    blockedActionOrders = @()
+    missingInputCount = 0
+    failedCheckCount = 0
+    warningCheckCount = 0
+    inputTemplates = @(
+        [ordered]@{
+            actionOrder = 2
+            name = "Container scan/SBOM evidence"
+            workflow = "container-security-ci.yml"
+            dispatchUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"
+            readyToDispatch = $true
+            missingInputCount = 0
+            unsafeInputCount = 0
+            invalidInputCount = 0
+            workflowInputNames = @()
+            missingInputParameters = @()
+        }
+    )
+})
+Write-JsonFixture $securityOnlyRunIdPath ([ordered]@{
+    formatVersion = "osmu.operations-workflow-run-id-plan.v1"
+    result = "ready"
+    workflowCount = 1
+    readyWorkflowCount = 1
+    missingWorkflowCount = 0
+    staleWorkflowCount = 0
+    sourceActionOrders = @(2)
+    artifactCollectionPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1 -ImageSigningRunId 104 -ContainerSecurityRunId 105"
+})
+Write-JsonFixture $securityOnlyCollectionPath ([ordered]@{
+    formatVersion = "osmu.operations-artifact-collection-plan.v1"
+    result = "no-readiness-artifacts"
+    artifactCount = 0
+    readyArtifactCount = 0
+    missingRequiredArtifactCount = 0
+    sourceActionOrders = @(2)
+    securityEvidenceFinalizerCommand = $securityOnlyCommand
+    operationsArtifactFinalizerCommand = ""
+    localImportCommand = ""
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $securityOnlyReadinessPath `
+    -EvidencePlanPath $securityOnlyPlanPath `
+    -InvocationReportPath $securityOnlyInvocationPath `
+    -DispatchPreflightReportPath $securityOnlyDispatchPreflightPath `
+    -WorkflowRunIdPlanPath $securityOnlyRunIdPath `
+    -ArtifactCollectionPlanPath $securityOnlyCollectionPath `
+    -ArtifactImportReportPath $securityOnlyImportPath `
+    -OperationsReadinessFinalizeReportPath $securityOnlyFinalizePath `
+    -JsonOutputPath $securityOnlyJsonPath `
+    -MarkdownOutputPath $securityOnlyMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 security-only collection check failed with exit code $LASTEXITCODE."
+}
+
+$securityOnlyReport = Read-Utf8Text $securityOnlyJsonPath | ConvertFrom-Json
+$securityOnlyMarkdown = Read-Utf8Text $securityOnlyMarkdownPath
+$securityOnlyStage = @($securityOnlyReport.stages | Where-Object { $_.name -eq "artifact-collection" })[0]
+Assert-Equal $securityOnlyReport.result "action-required" "security-only result"
+Assert-Equal $securityOnlyReport.nextStep.code "complete-artifact-collection-plan" "security-only next step"
+Assert-Equal $securityOnlyStage.ready $false "security-only artifact stage ready"
+Assert-Equal $securityOnlyStage.command $securityOnlyCommand "security-only artifact stage command"
+Assert-Contains $securityOnlyMarkdown "security-evidence-finalizer-ci.yml" "security-only markdown stage command"
+
 $finalizerReadinessPath = Join-Path $resolvedOutputDirectory "finalizer-readiness.json"
 $finalizerPlanPath = Join-Path $resolvedOutputDirectory "finalizer-plan.json"
 $finalizerInvocationPath = Join-Path $resolvedOutputDirectory "finalizer-invocation.json"
@@ -380,8 +1075,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 finalizer-report check failed with exit code $LASTEXITCODE."
 }
 
-$finalizerReport = Get-Content -Raw -LiteralPath $finalizerJsonPath | ConvertFrom-Json
-$finalizerMarkdown = Get-Content -Raw -LiteralPath $finalizerMarkdownPath
+$finalizerReport = Read-Utf8Text $finalizerJsonPath | ConvertFrom-Json
+$finalizerMarkdown = Read-Utf8Text $finalizerMarkdownPath
 Assert-Equal $finalizerReport.result "action-required" "finalizer result"
 Assert-Equal $finalizerReport.nextStep.code "run-artifact-finalizer" "finalizer next step"
 Assert-Equal $finalizerReport.missingRequiredArtifactCount 0 "finalizer missing artifact count"
@@ -460,8 +1155,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 operations-finalizer missing check failed with exit code $LASTEXITCODE."
 }
 
-$operationsFinalizeReport = Get-Content -Raw -LiteralPath $operationsFinalizeJsonPath | ConvertFrom-Json
-$operationsFinalizeMarkdown = Get-Content -Raw -LiteralPath $operationsFinalizeMarkdownPath
+$operationsFinalizeReport = Read-Utf8Text $operationsFinalizeJsonPath | ConvertFrom-Json
+$operationsFinalizeMarkdown = Read-Utf8Text $operationsFinalizeMarkdownPath
 Assert-Equal $operationsFinalizeReport.result "action-required" "operations finalizer result"
 Assert-Equal $operationsFinalizeReport.nextStep.code "run-operations-finalizer" "operations finalizer next step"
 Assert-Equal $operationsFinalizeReport.stageCount 8 "operations finalizer stage count"
@@ -495,7 +1190,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 operations-finalizer pending check failed with exit code $LASTEXITCODE."
 }
 
-$pendingReport = Get-Content -Raw -LiteralPath $pendingHandoffPath | ConvertFrom-Json
+$pendingReport = Read-Utf8Text $pendingHandoffPath | ConvertFrom-Json
 Assert-Equal $pendingReport.nextStep.code "fix-operations-finalizer" "pending finalizer next step"
 Assert-Equal $pendingReport.finalizerGapCount 1 "pending finalizer gap count"
 Assert-Contains $pendingReport.nextStep.reason "readiness=pending" "pending finalizer reason"
@@ -527,7 +1222,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 operations-finalizer gap-ready check failed with exit code $LASTEXITCODE."
 }
 
-$gapReadyReport = Get-Content -Raw -LiteralPath $gapReadyHandoffPath | ConvertFrom-Json
+$gapReadyReport = Read-Utf8Text $gapReadyHandoffPath | ConvertFrom-Json
 $gapReadyStage = @($gapReadyReport.stages | Where-Object { $_.name -eq "operations-finalizer" })[0]
 Assert-Equal $gapReadyReport.result "action-required" "gap-ready finalizer result"
 Assert-Equal $gapReadyReport.nextStep.code "fix-operations-finalizer" "gap-ready finalizer next step"
@@ -568,8 +1263,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 ready-without-finalizer check failed with exit code $LASTEXITCODE."
 }
 
-$readyMissingFinalizeReport = Get-Content -Raw -LiteralPath $readyMissingFinalizeHandoffPath | ConvertFrom-Json
-$readyMissingFinalizeMarkdown = Get-Content -Raw -LiteralPath $readyMissingFinalizeMarkdownPath
+$readyMissingFinalizeReport = Read-Utf8Text $readyMissingFinalizeHandoffPath | ConvertFrom-Json
+$readyMissingFinalizeMarkdown = Read-Utf8Text $readyMissingFinalizeMarkdownPath
 Assert-Equal $readyMissingFinalizeReport.result "action-required" "ready missing finalizer result"
 Assert-Equal $readyMissingFinalizeReport.nextStep.code "run-operations-finalizer" "ready missing finalizer next step"
 Assert-Contains $readyMissingFinalizeReport.nextStep.reason "finalizer report is missing" "ready missing finalizer reason"
@@ -599,7 +1294,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 ready-with-gap-finalizer check failed with exit code $LASTEXITCODE."
 }
 
-$readyGapReport = Get-Content -Raw -LiteralPath $readyGapHandoffPath | ConvertFrom-Json
+$readyGapReport = Read-Utf8Text $readyGapHandoffPath | ConvertFrom-Json
 $readyGapStage = @($readyGapReport.stages | Where-Object { $_.name -eq "operations-finalizer" })[0]
 Assert-Equal $readyGapReport.result "action-required" "ready gap finalizer result"
 Assert-Equal $readyGapReport.nextStep.code "fix-operations-finalizer" "ready gap finalizer next step"
@@ -632,7 +1327,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-evidence-handoff.ps1 ready-with-finalizer check failed with exit code $LASTEXITCODE."
 }
 
-$readyReport = Get-Content -Raw -LiteralPath $readyHandoffPath | ConvertFrom-Json
+$readyReport = Read-Utf8Text $readyHandoffPath | ConvertFrom-Json
 Assert-Equal $readyReport.result "ready" "ready handoff result"
 Assert-Equal $readyReport.nextStep.code "none" "ready handoff next step"
 Assert-Equal $readyReport.readyStageCount 2 "ready handoff stage count"
@@ -641,6 +1336,10 @@ Assert-Contains $readyReport.nextStep.reason "operations finalizer reports are r
 Write-Host "Operations evidence handoff verified."
 Write-Host "Missing report: $missingJsonPath"
 Write-Host "Blocked report: $blockedJsonPath"
+Write-Host "Dispatch preflight scope mismatch report: $scopeMismatchJsonPath"
+Write-Host "Workflow run id scope mismatch report: $runIdScopeMismatchJsonPath"
+Write-Host "Artifact collection scope mismatch report: $artifactScopeMismatchJsonPath"
+Write-Host "Security-only artifact collection report: $securityOnlyJsonPath"
 Write-Host "Finalizer report: $finalizerJsonPath"
 Write-Host "Operations finalizer report: $operationsFinalizeJsonPath"
 Write-Host "Pending finalizer report: $pendingHandoffPath"

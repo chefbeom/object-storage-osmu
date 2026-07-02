@@ -21,6 +21,11 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -49,7 +54,7 @@ function Add-Impersonation([string[]] $Arguments) {
 }
 
 function New-EffectiveManifest([string] $sourcePath) {
-    $content = Get-Content -Raw -LiteralPath $sourcePath
+    $content = Read-Utf8Text $sourcePath
     Assert-True $content.Contains("apiVersion: minio.min.io/v2") "Storage expansion manifest must target MinIO Tenant apiVersion minio.min.io/v2."
     Assert-True $content.Contains("kind: Tenant") "Storage expansion manifest must define a MinIO Tenant."
     Assert-True $content.Contains("name: $TenantName") "Storage expansion manifest must target Tenant name: $TenantName."

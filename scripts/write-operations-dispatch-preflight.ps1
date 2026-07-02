@@ -13,6 +13,9 @@ param(
     [switch] $KubeconfigSecretConfirmed,
     [switch] $CheckGitHubCli,
     [string] $GitHubCliPath = "",
+    [string] $GitHubRepository = "",
+    [string] $GitHubRef = "main",
+    [switch] $CheckGitRefSafety,
     [switch] $NoWrite
 )
 
@@ -26,6 +29,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Get-JsonProperty([object] $Object, [string] $Name) {
     if ($null -eq $Object) {
         return $null
@@ -235,11 +242,175 @@ function Get-WorkflowName([string] $Command) {
     return $workflow
 }
 
+function Normalize-GitHubRepositorySlug([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+    $trimmed = $Value.Trim()
+    if ($trimmed -match '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
+        if ($trimmed.EndsWith(".git", [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $trimmed.Substring(0, $trimmed.Length - 4)
+        }
+        return $trimmed
+    }
+    if ($trimmed -match '^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?$') {
+        return $matches[1]
+    }
+    if ($trimmed -match '^git@github\.com:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?$') {
+        return $matches[1]
+    }
+    return ""
+}
+
+function Resolve-GitHubRepositorySlug([string] $ExplicitRepository) {
+    $explicit = Normalize-GitHubRepositorySlug $ExplicitRepository
+    if (-not [string]::IsNullOrWhiteSpace($explicit)) {
+        return $explicit
+    }
+    $environmentRepository = Normalize-GitHubRepositorySlug $env:GITHUB_REPOSITORY
+    if (-not [string]::IsNullOrWhiteSpace($environmentRepository)) {
+        return $environmentRepository
+    }
+    try {
+        $remote = git -C $root config --get remote.origin.url 2>$null
+        return Normalize-GitHubRepositorySlug ([string] $remote)
+    }
+    catch {
+        return ""
+    }
+}
+
+function Invoke-GitText([string[]] $Arguments) {
+    try {
+        $output = & git -C $root @Arguments 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            return @()
+        }
+        return @($output)
+    }
+    catch {
+        return @()
+    }
+}
+
+function Normalize-GitRefName([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+    $trimmed = $Value.Trim()
+    if ($trimmed.StartsWith("refs/heads/", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $trimmed.Substring("refs/heads/".Length)
+    }
+    return $trimmed
+}
+
+function Get-GitRefSafetyReport([string] $ExpectedGitHubRef, [bool] $Enabled) {
+    $report = [ordered]@{
+        checked = [bool] $Enabled
+        status = "skipped"
+        githubRef = $ExpectedGitHubRef
+        currentBranch = ""
+        commitSha = ""
+        shortCommitSha = ""
+        upstreamRef = ""
+        upstreamCommitSha = ""
+        aheadCount = 0
+        behindCount = 0
+        workingTreeDirty = $false
+        githubRefMatchesCurrentBranch = $false
+        githubRefLikelyContainsCommit = $false
+        suggestedGitHubRef = ""
+        suggestedPushCommand = ""
+        note = "Git ref safety check skipped."
+    }
+    if (-not $Enabled) {
+        return $report
+    }
+    if ($null -eq (Get-Command git -ErrorAction SilentlyContinue)) {
+        $report.status = "review-required"
+        $report.note = "Git executable was not found; verify the GitHub ref manually before dispatch."
+        return $report
+    }
+
+    $branch = [string] ((Invoke-GitText @("branch", "--show-current") | Select-Object -First 1))
+    $commit = [string] ((Invoke-GitText @("rev-parse", "HEAD") | Select-Object -First 1))
+    $upstream = [string] ((Invoke-GitText @("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}") | Select-Object -First 1))
+    $upstreamCommit = if ([string]::IsNullOrWhiteSpace($upstream)) { "" } else { [string] ((Invoke-GitText @("rev-parse", $upstream) | Select-Object -First 1)) }
+    $dirty = @(Invoke-GitText @("status", "--porcelain")).Count -gt 0
+    $ahead = 0
+    $behind = 0
+    if (-not [string]::IsNullOrWhiteSpace($upstream)) {
+        $countLine = [string] ((Invoke-GitText @("rev-list", "--left-right", "--count", "$upstream...HEAD") | Select-Object -First 1))
+        if ($countLine -match '^\s*(\d+)\s+(\d+)\s*$') {
+            $behind = [int] $matches[1]
+            $ahead = [int] $matches[2]
+        }
+    }
+    $shortSha = if ($commit.Length -ge 8) { $commit.Substring(0, 8) } else { $commit }
+    $expectedRef = Normalize-GitRefName $ExpectedGitHubRef
+    $refMatchesBranch = -not [string]::IsNullOrWhiteSpace($branch) -and $expectedRef -eq $branch
+    $suggestedRef = if ([string]::IsNullOrWhiteSpace($shortSha)) { "codex/operations-readiness" } else { "codex/operations-readiness-$shortSha" }
+
+    $report.currentBranch = $branch
+    $report.commitSha = $commit
+    $report.shortCommitSha = $shortSha
+    $report.upstreamRef = $upstream
+    $report.upstreamCommitSha = $upstreamCommit
+    $report.aheadCount = $ahead
+    $report.behindCount = $behind
+    $report.workingTreeDirty = $dirty
+    $report.githubRefMatchesCurrentBranch = $refMatchesBranch
+    $report.githubRefLikelyContainsCommit = $refMatchesBranch -and -not [string]::IsNullOrWhiteSpace($upstream) -and $ahead -eq 0
+    $report.suggestedGitHubRef = $suggestedRef
+    if (-not $dirty) {
+        $report.suggestedPushCommand = "git push origin HEAD:refs/heads/$suggestedRef"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($commit)) {
+        $report.status = "review-required"
+        $report.note = "Could not resolve the local HEAD commit; verify the GitHub ref manually before dispatch."
+    }
+    elseif ([string]::IsNullOrWhiteSpace($branch)) {
+        $report.status = "review-required"
+        $report.note = "Detached HEAD detected; push the commit to a named branch and pass that branch with -GitHubRef before dispatch. Suggested ref: $suggestedRef."
+    }
+    elseif (-not $refMatchesBranch) {
+        $report.status = "review-required"
+        $report.note = "GitHubRef '$ExpectedGitHubRef' does not match current branch '$branch'. Ensure the selected ref contains commit $shortSha before dispatch. Suggested ref: $suggestedRef."
+    }
+    elseif ($dirty) {
+        $report.status = "action-required"
+        $aheadNote = if ($ahead -gt 0 -and -not [string]::IsNullOrWhiteSpace($upstream)) { " Current branch '$branch' is also $ahead commit(s) ahead of '$upstream'." } else { "" }
+        $report.note = "Working tree has uncommitted changes; GitHub Actions will only run committed content from GitHubRef '$ExpectedGitHubRef', not local dirty files.$aheadNote Commit or intentionally exclude the changes, rerun preflight, then push a branch and dispatch that ref. Suggested ref after commit: $suggestedRef."
+    }
+    elseif ([string]::IsNullOrWhiteSpace($upstream)) {
+        $report.status = "review-required"
+        $report.note = "Current branch '$branch' has no upstream; push the commit before dispatch. Suggested command: $($report.suggestedPushCommand)."
+    }
+    elseif ($ahead -gt 0) {
+        $report.status = "action-required"
+        $report.note = "Current branch '$branch' is $ahead commit(s) ahead of '$upstream'; GitHubRef '$ExpectedGitHubRef' may not contain commit $shortSha yet. Push a branch and rerun preflight with that -GitHubRef before dispatch. Suggested command: $($report.suggestedPushCommand)."
+    }
+    else {
+        $report.status = "ready"
+        $report.githubRefLikelyContainsCommit = $true
+        $report.note = "GitHubRef '$ExpectedGitHubRef' appears aligned with local commit $shortSha."
+    }
+    return $report
+}
+
+function Get-GitHubWorkflowDispatchUrl([string] $RepositorySlug, [string] $WorkflowName) {
+    if ([string]::IsNullOrWhiteSpace($RepositorySlug) -or [string]::IsNullOrWhiteSpace($WorkflowName)) {
+        return ""
+    }
+    return "https://github.com/$RepositorySlug/actions/workflows/$WorkflowName"
+}
+
 function Get-WorkflowSecrets([string] $WorkflowPath) {
     if (-not (Test-Path -LiteralPath $WorkflowPath)) {
         return @()
     }
-    $content = Get-Content -Raw -LiteralPath $WorkflowPath
+    $content = Read-Utf8Text $WorkflowPath
     $secrets = New-Object System.Collections.Generic.List[string]
     foreach ($match in [regex]::Matches($content, "secrets\.([A-Za-z_][A-Za-z0-9_]*)")) {
         Add-UniqueString $secrets $match.Groups[1].Value
@@ -346,7 +517,7 @@ if (-not (Test-Path -LiteralPath $resolvedUnblockPlanPath)) {
     throw "Operations invocation unblock plan not found: $resolvedUnblockPlanPath"
 }
 
-$unblockPlan = Get-Content -Raw -LiteralPath $resolvedUnblockPlanPath | ConvertFrom-Json
+$unblockPlan = Read-Utf8Text $resolvedUnblockPlanPath | ConvertFrom-Json
 if ($unblockPlan.formatVersion -ne "osmu.operations-invocation-unblock-plan.v1") {
     throw "Unexpected operations invocation unblock plan formatVersion: $($unblockPlan.formatVersion)"
 }
@@ -359,6 +530,8 @@ $requiredSecrets = New-Object System.Collections.Generic.List[string]
 $placeholderMap = New-PlaceholderMap
 $resolvedGitHubCliPath = Resolve-GitHubCliCandidate $GitHubCliPath
 $hasExplicitGitHubCliPath = -not [string]::IsNullOrWhiteSpace($resolvedGitHubCliPath)
+$githubRepositorySlug = Resolve-GitHubRepositorySlug $GitHubRepository
+$gitRefSafety = Get-GitRefSafetyReport $GitHubRef ([bool] $CheckGitRefSafety)
 $hasActionOrderFilter = $ActionOrder -and $ActionOrder.Count -gt 0
 
 foreach ($action in @(Get-Array $unblockPlan "actions")) {
@@ -404,6 +577,7 @@ foreach ($action in @($selectedActions)) {
         $workflowPath = Resolve-ProjectPath ".\.github\workflows\$workflowName"
         $workflowExists = Test-Path -LiteralPath $workflowPath
         $secrets = @(Get-RequiredWorkflowSecrets $workflowName (Get-Text $action "command") $action $workflowPath)
+        $dispatchUrl = Get-GitHubWorkflowDispatchUrl $githubRepositorySlug $workflowName
         foreach ($secret in $secrets) {
             Add-UniqueString $requiredSecrets $secret
         }
@@ -412,6 +586,7 @@ foreach ($action in @($selectedActions)) {
             workflow = $workflowName
             path = $workflowPath
             exists = $workflowExists
+            dispatchUrl = $dispatchUrl
             requiredSecrets = $secrets
         }) | Out-Null
     }
@@ -461,6 +636,7 @@ foreach ($action in @($selectedActions)) {
         $workflowName = [string] $workflowFile.workflow
         $workflowSecrets = @($workflowFile.requiredSecrets | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_) } | ForEach-Object { [string] $_ })
     }
+    $workflowDispatchUrl = if ($workflowFile) { [string] $workflowFile.dispatchUrl } else { "" }
 
     $actionInputs = New-Object System.Collections.ArrayList
     foreach ($input in @($requiredInputs | Where-Object { $_.actionOrder -eq $order })) {
@@ -533,6 +709,7 @@ foreach ($action in @($selectedActions)) {
         actionType = Get-Text $action "actionType"
         commandMode = Get-Text $action "commandMode"
         workflow = $workflowName
+        dispatchUrl = $workflowDispatchUrl
         needsOperatorApprovalConfirmation = Get-Bool $action "needsOperatorApprovalConfirmation"
         needsKubeconfigSecretConfirmation = Get-Bool $action "needsKubeconfigSecretConfirmation"
         requiredSecrets = @($workflowSecrets)
@@ -667,6 +844,18 @@ else {
     Add-Check $checks "AMBIGUOUS_PLACEHOLDERS" "pass" "No repeated generic placeholder inputs detected."
 }
 
+if ($gitRefSafety.checked) {
+    if ($gitRefSafety.status -eq "action-required") {
+        Add-Check $checks "GITHUB_REF_SYNC" "fail" $gitRefSafety.note
+    }
+    elseif ($gitRefSafety.status -eq "ready") {
+        Add-Check $checks "GITHUB_REF_SYNC" "pass" $gitRefSafety.note
+    }
+    else {
+        Add-Check $checks "GITHUB_REF_SYNC" "warn" $gitRefSafety.note
+    }
+}
+
 $failedCheckCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
 $warningCheckCount = @($checks | Where-Object { $_.status -eq "warn" }).Count
 $result = if ($failedCheckCount -gt 0) { "action-required" } else { "ready" }
@@ -675,6 +864,8 @@ $executeCommand = if ($failedCheckCount -eq 0) { "$readyPlanCommand -Execute" } 
 $readySubsetPlanCommand = if ($readyActionOrders.Count -gt 0) { $readySubsetCommandParts -join " " } else { "" }
 $githubCliUnavailable = @($checks | Where-Object { $_.code -eq "GITHUB_CLI_AVAILABLE" -and $_.status -eq "fail" }).Count -gt 0
 $readySubsetExecuteCommand = if (-not [string]::IsNullOrWhiteSpace($readySubsetPlanCommand) -and -not $githubCliUnavailable) { "$readySubsetPlanCommand -Execute" } else { "" }
+$apiExecuteCommand = if (-not [string]::IsNullOrWhiteSpace($readyPlanCommand) -and -not [string]::IsNullOrWhiteSpace($githubRepositorySlug)) { "$readyPlanCommand -UseGitHubApi -GitHubRepository $githubRepositorySlug -GitHubRef $GitHubRef -Execute" } else { "" }
+$readySubsetApiExecuteCommand = if (-not [string]::IsNullOrWhiteSpace($readySubsetPlanCommand) -and -not [string]::IsNullOrWhiteSpace($githubRepositorySlug)) { "$readySubsetPlanCommand -UseGitHubApi -GitHubRepository $githubRepositorySlug -GitHubRef $GitHubRef -Execute" } else { "" }
 $generatedAt = [DateTimeOffset]::Now.ToString("o")
 
 $report = [ordered]@{
@@ -683,6 +874,10 @@ $report = [ordered]@{
     result = $result
     sourceUnblockPlan = $resolvedUnblockPlanPath
     sourceResult = Get-Text $unblockPlan "result"
+    sourcePassedCount = Get-Int $unblockPlan "sourcePassedCount"
+    sourcePendingCount = Get-Int $unblockPlan "sourcePendingCount"
+    sourceTotalCount = Get-Int $unblockPlan "sourceTotalCount"
+    sourceCheckCount = Get-Int $unblockPlan "sourceCheckCount"
     selectedActionCount = $selectedActions.Count
     selectedActionOrders = @($selectedOrders | ForEach-Object { [int] $_ })
     readyActionCount = $readyActionOrders.Count
@@ -698,17 +893,22 @@ $report = [ordered]@{
     invalidInputCount = $invalidInputCount
     requiredGitHubSecrets = @($requiredSecrets)
     githubCliPath = $resolvedGitHubCliPath
+    githubRepository = $githubRepositorySlug
+    githubRef = $GitHubRef
+    gitRefSafety = $gitRefSafety
     workflowFiles = @($workflowFiles)
     checks = @($checks)
     failedCheckCount = $failedCheckCount
     warningCheckCount = $warningCheckCount
     readyPlanCommand = $readyPlanCommand
     executeCommand = $executeCommand
+    apiExecuteCommand = $apiExecuteCommand
     readySubsetPlanCommand = $readySubsetPlanCommand
     readySubsetExecuteCommand = $readySubsetExecuteCommand
+    readySubsetApiExecuteCommand = $readySubsetApiExecuteCommand
     requiredInputs = @($requiredInputs)
     inputTemplates = @($inputTemplates)
-    decisionRule = "Run the ready plan command first without -Execute. Use the execute command only after this preflight is ready, GitHub CLI/auth is verified, and operator-approved live dispatch is intended. When readyActionCount is lower than selectedActionCount, the ready subset commands may be used to plan or execute only actions whose input templates are readyToDispatch=true."
+    decisionRule = "Run the ready plan command first without -Execute. Use the execute command only after this preflight is ready and operator-approved live dispatch is intended; use GitHub CLI auth or -UseGitHubApi with GH_TOKEN/GITHUB_TOKEN. When readyActionCount is lower than selectedActionCount, the ready subset commands may be used to plan or execute only actions whose input templates are readyToDispatch=true."
 }
 
 $markdownLines = @(
@@ -717,6 +917,8 @@ $markdownLines = @(
     "Generated at: $generatedAt",
     "Result: $result",
     "Source unblock plan: $resolvedUnblockPlanPath",
+    "Source result: $($report.sourceResult)",
+    "Source counts: passed=$($report.sourcePassedCount) pending=$($report.sourcePendingCount) total=$($report.sourceTotalCount) checks=$($report.sourceCheckCount)",
     "",
     "## Summary",
     "",
@@ -730,19 +932,44 @@ $markdownLines = @(
     "- Warning checks: $warningCheckCount",
     "- Required GitHub secrets: $(if ($requiredSecrets.Count -gt 0) { @($requiredSecrets) -join ', ' } else { 'none detected' })",
     "- GitHub CLI path: $(if ([string]::IsNullOrWhiteSpace($resolvedGitHubCliPath)) { 'PATH lookup' } else { $resolvedGitHubCliPath })",
+    "- GitHub repository: $(if ([string]::IsNullOrWhiteSpace($githubRepositorySlug)) { 'unknown' } else { $githubRepositorySlug })",
+    "- GitHub ref: $GitHubRef",
     ""
 )
+if ($gitRefSafety.checked) {
+    $gitRefSuggestedPushCommand = if ([string]::IsNullOrWhiteSpace($gitRefSafety.suggestedPushCommand)) { "n/a until the working tree is clean and preflight is rerun" } else { "``$($gitRefSafety.suggestedPushCommand)``" }
+    $markdownLines += @(
+        "## Git Ref Safety",
+        "",
+        "- Status: $($gitRefSafety.status)",
+        "- Current branch: $($gitRefSafety.currentBranch)",
+        "- Commit SHA: $($gitRefSafety.commitSha)",
+        "- Upstream ref: $(if ([string]::IsNullOrWhiteSpace($gitRefSafety.upstreamRef)) { 'none' } else { $gitRefSafety.upstreamRef })",
+        "- Ahead/behind: ahead=$($gitRefSafety.aheadCount), behind=$($gitRefSafety.behindCount)",
+        "- Working tree dirty: $($gitRefSafety.workingTreeDirty)",
+        "- Suggested GitHub ref: $($gitRefSafety.suggestedGitHubRef)",
+        "- Suggested push command: $gitRefSuggestedPushCommand",
+        "- Note: $($gitRefSafety.note)",
+        ""
+    )
+}
 if (-not [string]::IsNullOrWhiteSpace($readyPlanCommand)) {
     $markdownLines += "- Ready plan command: ``$readyPlanCommand``"
 }
 if (-not [string]::IsNullOrWhiteSpace($executeCommand)) {
     $markdownLines += "- Execute command: ``$executeCommand``"
 }
+if (-not [string]::IsNullOrWhiteSpace($apiExecuteCommand)) {
+    $markdownLines += "- API execute command: ``$apiExecuteCommand``"
+}
 if (-not [string]::IsNullOrWhiteSpace($readySubsetPlanCommand)) {
     $markdownLines += "- Ready subset plan command: ``$readySubsetPlanCommand``"
 }
 if (-not [string]::IsNullOrWhiteSpace($readySubsetExecuteCommand)) {
     $markdownLines += "- Ready subset execute command: ``$readySubsetExecuteCommand``"
+}
+if (-not [string]::IsNullOrWhiteSpace($readySubsetApiExecuteCommand)) {
+    $markdownLines += "- Ready subset API execute command: ``$readySubsetApiExecuteCommand``"
 }
 $markdownLines += @(
     "",
@@ -778,11 +1005,27 @@ else {
         $workflowLabel = if ([string]::IsNullOrWhiteSpace($template.workflow)) { "local command" } else { $template.workflow }
         $secretLabel = if (@($template.requiredSecrets).Count -gt 0) { @($template.requiredSecrets) -join ', ' } else { 'none' }
         $workflowInputLabel = if (@($template.workflowInputNames).Count -gt 0) { @($template.workflowInputNames) -join ', ' } else { 'none' }
-        $markdownLines += "- action $($template.actionOrder) - $($template.name): workflow=$workflowLabel, readyToDispatch=$($template.readyToDispatch), missingInputs=$($template.missingInputCount), unsafeInputs=$($template.unsafeInputCount), invalidInputs=$($template.invalidInputCount), workflowInputs=$workflowInputLabel, requiredSecrets=$secretLabel"
+        $dispatchLabel = if ([string]::IsNullOrWhiteSpace($template.dispatchUrl)) { "none" } else { $template.dispatchUrl }
+        $markdownLines += "- action $($template.actionOrder) - $($template.name): workflow=$workflowLabel, dispatchUrl=$dispatchLabel, readyToDispatch=$($template.readyToDispatch), missingInputs=$($template.missingInputCount), unsafeInputs=$($template.unsafeInputCount), invalidInputs=$($template.invalidInputCount), workflowInputs=$workflowInputLabel, requiredSecrets=$secretLabel"
         foreach ($input in @($template.inputs)) {
             $workflowInputLabel = if (@($input.workflowInputs).Count -gt 0) { ", workflowInputs=$((@($input.workflowInputs) | ForEach-Object { [string] $_ }) -join ', ')" } else { "" }
             $markdownLines += "  - $($input.parameter) $($input.placeholder): template=$($input.valueTemplate), supplied=$($input.supplied)$workflowInputLabel"
         }
+    }
+}
+
+$markdownLines += @(
+    "",
+    "## Workflow Dispatch URLs",
+    ""
+)
+$dispatchWorkflows = @($workflowFiles | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_.dispatchUrl) })
+if ($dispatchWorkflows.Count -eq 0) {
+    $markdownLines += "- none"
+}
+else {
+    foreach ($workflow in $dispatchWorkflows) {
+        $markdownLines += "- action $($workflow.actionOrder) - $($workflow.workflow): $($workflow.dispatchUrl)"
     }
 }
 

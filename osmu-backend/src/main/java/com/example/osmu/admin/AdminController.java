@@ -140,9 +140,13 @@ public class AdminController {
     private final String enterpriseAuthSmokeEvidenceReportPath;
     private final String enterpriseAuthJitRollbackEvidenceReportPath;
     private final String dataFlowStoragePlanReportPath;
+    private final String dataFlowQueryRetentionBudgetReportPath;
     private final String dataFlowStorageTransitionRunbookReportPath;
     private final String storageBackendTelemetryReportPath;
     private final String monitoringThresholdEvidenceReportPath;
+    private final String clusterNetworkAccessReviewEvidenceReportPath;
+    private final String helmValuesHardeningEvidenceReportPath;
+    private final String supportEscalationHandoffEvidenceReportPath;
     private final String minioBucketCorsVerificationReportPath;
     private final String operationsReadinessConvergenceReportPath;
     private final String kubernetesOperationsReportSyncReportPath;
@@ -205,9 +209,13 @@ public class AdminController {
             @Value("${osmu.operations.readiness.enterprise-auth-smoke-evidence-report-path:.osmu-run/latest-enterprise-auth-smoke.json}") String enterpriseAuthSmokeEvidenceReportPath,
             @Value("${osmu.operations.readiness.enterprise-auth-jit-rollback-evidence-report-path:.osmu-run/latest-enterprise-auth-jit-rollback-evidence.json}") String enterpriseAuthJitRollbackEvidenceReportPath,
             @Value("${osmu.operations.readiness.data-flow-storage-plan-report-path:.osmu-run/latest-data-flow-storage-plan.json}") String dataFlowStoragePlanReportPath,
+            @Value("${osmu.operations.readiness.data-flow-query-retention-budget-report-path:.osmu-run/latest-data-flow-query-retention-budget-evidence.json}") String dataFlowQueryRetentionBudgetReportPath,
             @Value("${osmu.operations.readiness.data-flow-storage-transition-runbook-report-path:.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json}") String dataFlowStorageTransitionRunbookReportPath,
             @Value("${osmu.operations.readiness.storage-backend-telemetry-report-path:.osmu-run/latest-storage-backend-telemetry.json}") String storageBackendTelemetryReportPath,
             @Value("${osmu.operations.readiness.monitoring-threshold-evidence-report-path:.osmu-run/latest-monitoring-threshold-evidence.json}") String monitoringThresholdEvidenceReportPath,
+            @Value("${osmu.operations.readiness.cluster-network-access-review-evidence-report-path:.osmu-run/latest-cluster-network-access-review-evidence.json}") String clusterNetworkAccessReviewEvidenceReportPath,
+            @Value("${osmu.operations.readiness.helm-values-hardening-evidence-report-path:.osmu-run/latest-helm-values-hardening-evidence.json}") String helmValuesHardeningEvidenceReportPath,
+            @Value("${osmu.operations.readiness.support-escalation-handoff-evidence-report-path:.osmu-run/latest-support-escalation-handoff-evidence.json}") String supportEscalationHandoffEvidenceReportPath,
             @Value("${osmu.operations.readiness.minio-bucket-cors-verification-report-path:.osmu-run/latest-minio-bucket-cors-verification.json}") String minioBucketCorsVerificationReportPath,
             @Value("${osmu.operations.readiness.convergence-report-path:.osmu-run/latest-operations-readiness-convergence.json}") String operationsReadinessConvergenceReportPath,
             @Value("${osmu.operations.readiness.kubernetes-report-sync-report-path:.osmu-run/latest-kubernetes-operations-report-sync.json}") String kubernetesOperationsReportSyncReportPath
@@ -269,9 +277,13 @@ public class AdminController {
         this.enterpriseAuthSmokeEvidenceReportPath = blankToNull(enterpriseAuthSmokeEvidenceReportPath);
         this.enterpriseAuthJitRollbackEvidenceReportPath = blankToNull(enterpriseAuthJitRollbackEvidenceReportPath);
         this.dataFlowStoragePlanReportPath = blankToNull(dataFlowStoragePlanReportPath);
+        this.dataFlowQueryRetentionBudgetReportPath = blankToNull(dataFlowQueryRetentionBudgetReportPath);
         this.dataFlowStorageTransitionRunbookReportPath = blankToNull(dataFlowStorageTransitionRunbookReportPath);
         this.storageBackendTelemetryReportPath = blankToNull(storageBackendTelemetryReportPath);
         this.monitoringThresholdEvidenceReportPath = blankToNull(monitoringThresholdEvidenceReportPath);
+        this.clusterNetworkAccessReviewEvidenceReportPath = blankToNull(clusterNetworkAccessReviewEvidenceReportPath);
+        this.helmValuesHardeningEvidenceReportPath = blankToNull(helmValuesHardeningEvidenceReportPath);
+        this.supportEscalationHandoffEvidenceReportPath = blankToNull(supportEscalationHandoffEvidenceReportPath);
         this.minioBucketCorsVerificationReportPath = blankToNull(minioBucketCorsVerificationReportPath);
         this.operationsReadinessConvergenceReportPath = blankToNull(operationsReadinessConvergenceReportPath);
         this.kubernetesOperationsReportSyncReportPath = blankToNull(kubernetesOperationsReportSyncReportPath);
@@ -890,32 +902,32 @@ public class AdminController {
             DashboardQuotaSummaryResponse quota
     ) {
         java.util.ArrayList<DashboardReadinessItemResponse> items = new java.util.ArrayList<>();
-        addBlockerIfNotUp(items, "SYSTEM", "BACKEND_DOWN", "Backend API", system.backend(), "dashboard", "status-list", "상태 확인");
-        addBlockerIfNotUp(items, "SYSTEM", "DATABASE_DOWN", "Metadata database", system.database(), "dashboard", "status-list", "DB 확인");
-        addBlockerIfNotUp(items, "SYSTEM", "STORAGE_DOWN", "Object storage", system.storage(), "dashboard", "status-list", "스토리지 확인");
-        addBlockerIfNotUp(items, "SECURITY", "ACCESS_KEY_PROVISIONER_DOWN", "Access key provisioner", system.accessKeyProvisioner(), "admin", "admin-access-keys", "Access key 확인");
+        addBlockerIfNotUp(items, "SYSTEM", "BACKEND_DOWN", "Backend API", system.backend(), "dashboard", "status-list", "Backend check");
+        addBlockerIfNotUp(items, "SYSTEM", "DATABASE_DOWN", "Metadata database", system.database(), "dashboard", "status-list", "Database check");
+        addBlockerIfNotUp(items, "SYSTEM", "STORAGE_DOWN", "Object storage", system.storage(), "dashboard", "status-list", "Storage check");
+        addBlockerIfNotUp(items, "SECURITY", "ACCESS_KEY_PROVISIONER_DOWN", "Access key provisioner", system.accessKeyProvisioner(), "admin", "admin-access-keys", "Access key check");
 
         String metadataEngine = mode(system.metadataEngine());
         String storageEngine = mode(system.storageEngine());
         if (!"mariadb".equals(metadataEngine)) {
-            addReadinessItem(items, "WARNING", "RUNTIME", "METADATA_ENGINE", "MariaDB metadata mode is not enabled.", "dashboard", "dashboard-widget-runtime", "런타임 확인");
+            addReadinessItem(items, "WARNING", "RUNTIME", "METADATA_ENGINE", "MariaDB metadata mode is not enabled.", "dashboard", "dashboard-widget-runtime", "Runtime check");
         }
         if (!"minio".equals(storageEngine)) {
-            addReadinessItem(items, "WARNING", "RUNTIME", "STORAGE_ENGINE", "MinIO object storage mode is not enabled.", "dashboard", "dashboard-widget-runtime", "런타임 확인");
+            addReadinessItem(items, "WARNING", "RUNTIME", "STORAGE_ENGINE", "MinIO object storage mode is not enabled.", "dashboard", "dashboard-widget-runtime", "Runtime check");
         }
         backup.pendingGates().stream()
-                .forEach(gate -> addUniqueReadinessItem(items, "WARNING", "BACKUP", "BACKUP_GATE", gate, "dashboard", "backup-status-panel", "백업 확인"));
+                .forEach(gate -> addUniqueReadinessItem(items, "WARNING", "BACKUP", "BACKUP_GATE", gate, "dashboard", "backup-status-panel", "Backup check"));
         addOperationsReadinessItems(items);
         if (usage.bucketCount() == 0) {
-            addReadinessItem(items, "WARNING", "STORAGE", "NO_BUCKET", "No bucket exists for a demo workflow.", "storage", "storage-buckets", "버킷 생성");
+            addReadinessItem(items, "WARNING", "STORAGE", "NO_BUCKET", "No bucket exists for a demo workflow.", "storage", "storage-buckets", "Create bucket");
         }
         if (quota.exhaustedPolicyCount() > 0) {
-            addReadinessItem(items, "WARNING", "QUOTA", "QUOTA_EXHAUSTED", "%d quota policies are exhausted.".formatted(quota.exhaustedPolicyCount()), "admin", "admin-quota-policies", "쿼터 확인");
+            addReadinessItem(items, "WARNING", "QUOTA", "QUOTA_EXHAUSTED", "%d quota policies are exhausted.".formatted(quota.exhaustedPolicyCount()), "admin", "admin-quota-policies", "Quota check");
         } else if (quota.warningPolicyCount() > 0) {
-            addReadinessItem(items, "WARNING", "QUOTA", "QUOTA_WARNING", "%d quota policies are near limit.".formatted(quota.warningPolicyCount()), "admin", "admin-quota-policies", "쿼터 확인");
+            addReadinessItem(items, "WARNING", "QUOTA", "QUOTA_WARNING", "%d quota policies are near limit.".formatted(quota.warningPolicyCount()), "admin", "admin-quota-policies", "Quota check");
         }
         if (shareAnalytics.expiredLinks() > 0) {
-            addReadinessItem(items, "WARNING", "SHARING", "EXPIRED_SHARE_LINKS", "%d expired share links need cleanup.".formatted(shareAnalytics.expiredLinks()), "admin", "admin-object-share", "공유 정리");
+            addReadinessItem(items, "WARNING", "SHARING", "EXPIRED_SHARE_LINKS", "%d expired share links need cleanup.".formatted(shareAnalytics.expiredLinks()), "admin", "admin-object-share", "Share cleanup");
         }
 
         List<String> blockers = items.stream()
@@ -926,6 +938,7 @@ public class AdminController {
                 .filter(item -> "WARNING".equals(item.severity()))
                 .map(DashboardReadinessItemResponse::message)
                 .toList();
+        DashboardOperationsReadinessSummaryResponse operationsReadinessSummary = operationsReadinessSummarySnapshot();
         DashboardOperationsEvidencePlanResponse operationsEvidencePlan = operationsEvidencePlanSnapshot();
         DashboardOperationsEvidenceInvocationResponse operationsEvidenceInvocation = operationsEvidenceInvocationSnapshot();
         DashboardOperationsInvocationUnblockPlanResponse operationsInvocationUnblockPlan = operationsInvocationUnblockPlanSnapshot();
@@ -946,10 +959,16 @@ public class AdminController {
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence = enterpriseAuthSmokeEvidenceSnapshot();
         DashboardEnterpriseAuthJitRollbackEvidenceResponse enterpriseAuthJitRollbackEvidence = enterpriseAuthJitRollbackEvidenceSnapshot();
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan = dataFlowStoragePlanSnapshot();
+        DashboardDataFlowQueryRetentionBudgetResponse dataFlowQueryRetentionBudget = dataFlowQueryRetentionBudgetSnapshot();
         DashboardDataFlowStorageTransitionRunbookResponse dataFlowStorageTransitionRunbook =
                 dataFlowStorageTransitionRunbookSnapshot();
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence = storageBackendTelemetryEvidenceSnapshot();
         DashboardMonitoringThresholdEvidenceResponse monitoringThresholdEvidence = monitoringThresholdEvidenceSnapshot();
+        DashboardHardeningEvidenceResponse clusterNetworkAccessReviewEvidence =
+                clusterNetworkAccessReviewEvidenceSnapshot();
+        DashboardHardeningEvidenceResponse helmValuesHardeningEvidence = helmValuesHardeningEvidenceSnapshot();
+        DashboardSupportEscalationHandoffEvidenceResponse supportEscalationHandoffEvidence =
+                supportEscalationHandoffEvidenceSnapshot();
         DashboardMinioBucketCorsVerificationResponse minioBucketCorsVerification = minioBucketCorsVerificationSnapshot();
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff = operationsEvidenceHandoffSnapshot();
         DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergence = operationsReadinessConvergenceSnapshot();
@@ -967,6 +986,7 @@ public class AdminController {
                 readinessSeveritySummaries(items),
                 readinessCategorySummaries(items),
                 List.copyOf(items),
+                operationsReadinessSummary,
                 operationsEvidencePlan,
                 operationsEvidenceInvocation,
                 operationsInvocationUnblockPlan,
@@ -987,9 +1007,13 @@ public class AdminController {
                 enterpriseAuthSmokeEvidence,
                 enterpriseAuthJitRollbackEvidence,
                 dataFlowStoragePlan,
+                dataFlowQueryRetentionBudget,
                 dataFlowStorageTransitionRunbook,
                 storageBackendTelemetryEvidence,
                 monitoringThresholdEvidence,
+                clusterNetworkAccessReviewEvidence,
+                helmValuesHardeningEvidence,
+                supportEscalationHandoffEvidence,
                 minioBucketCorsVerification,
                 operationsEvidenceHandoff,
                 operationsReadinessConvergence,
@@ -1647,9 +1671,13 @@ public class AdminController {
         addEnterpriseAuthSmokeEvidenceItem(items);
         addEnterpriseAuthJitRollbackEvidenceItem(items);
         addDataFlowStoragePlanItem(items);
+        addDataFlowQueryRetentionBudgetItem(items);
         addDataFlowStorageTransitionRunbookItem(items);
         addStorageBackendTelemetryEvidenceItem(items);
         addMonitoringThresholdEvidenceItem(items);
+        addClusterNetworkAccessReviewEvidenceItem(items);
+        addHelmValuesHardeningEvidenceItem(items);
+        addSupportEscalationHandoffEvidenceItem(items);
         addMinioBucketCorsVerificationItem(items);
 
         addOperationsReadinessArtifactImportItem(items);
@@ -1704,9 +1732,11 @@ public class AdminController {
                         jsonText(action, "actionType"),
                         jsonText(action, "evidencePath"),
                         jsonText(action, "requiredEvidence"),
+                        jsonText(action, "currentDetail"),
                         jsonText(action, "localCommand"),
                         jsonText(action, "workflow"),
                         jsonText(action, "workflowCommand"),
+                        jsonText(action, "dispatchUrl"),
                         jsonText(action, "recommendedCommand"),
                         jsonTextList(action, "operatorInputs"),
                         jsonBoolean(action, "hasPlaceholders"),
@@ -1716,17 +1746,99 @@ public class AdminController {
                 ));
             }
         }
+        java.util.ArrayList<DashboardOperationsEvidencePlanCategoryCountResponse> pendingCategoryCounts = new java.util.ArrayList<>();
+        JsonNode pendingCategoryNodes = evidencePlanReport.path("pendingCategoryCounts");
+        if (pendingCategoryNodes.isArray()) {
+            for (JsonNode categoryCount : pendingCategoryNodes) {
+                pendingCategoryCounts.add(new DashboardOperationsEvidencePlanCategoryCountResponse(
+                        jsonText(categoryCount, "category"),
+                        jsonInt(categoryCount, "count")
+                ));
+            }
+        }
+        JsonNode actionSummary = evidencePlanReport.path("actionSummary");
         return new DashboardOperationsEvidencePlanResponse(
                 jsonText(evidencePlanReport, "result"),
                 jsonText(evidencePlanReport, "sourceSummary"),
                 jsonText(evidencePlanReport, "sourceReport"),
+                jsonInt(evidencePlanReport, "sourcePassedCount"),
+                jsonInt(evidencePlanReport, "sourcePendingCount"),
+                jsonInt(evidencePlanReport, "sourceTotalCount"),
+                jsonInt(evidencePlanReport, "sourceCheckCount"),
+                jsonInt(evidencePlanReport, "sourcePendingRemediationCount"),
+                jsonInt(evidencePlanReport, "sourcePendingRemediationEntryCount"),
+                jsonInt(evidencePlanReport, "sourcePendingRemediationActionCount"),
+                jsonInt(evidencePlanReport, "sourcePendingRemediationMissingActionCount"),
+                jsonBoolean(evidencePlanReport, "sourcePendingRemediationCoverageReady"),
                 jsonInt(evidencePlanReport, "pendingCount"),
                 jsonInt(evidencePlanReport, "actionCount"),
                 jsonInt(evidencePlanReport, "unplannedCount"),
+                jsonText(evidencePlanReport, "pendingCategorySummary"),
+                List.copyOf(pendingCategoryCounts),
+                new DashboardOperationsEvidencePlanSummaryResponse(
+                        jsonInt(actionSummary, "totalActions"),
+                        jsonInt(actionSummary, "kubernetesLiveActions"),
+                        jsonInt(actionSummary, "securityCiActions"),
+                        jsonInt(actionSummary, "operatorRemediationActions"),
+                        jsonInt(actionSummary, "requiresOperatorApprovalCount"),
+                        jsonInt(actionSummary, "requiresKubeconfigSecretCount"),
+                        jsonInt(actionSummary, "actionsWithPlaceholdersCount"),
+                        jsonInt(actionSummary, "unplannedCheckCount")
+                ),
                 List.copyOf(actions)
         );
     }
 
+    private DashboardOperationsReadinessSummaryResponse operationsReadinessSummarySnapshot() {
+        JsonNode readinessReport = readOptionalJsonReport(operationsReadinessReportPath);
+        if (readinessReport == null) {
+            return DashboardOperationsReadinessSummaryResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsReadinessCategoryCountResponse> pendingCategoryCounts =
+                new java.util.ArrayList<>();
+        JsonNode pendingCategoryNodes = readinessReport.path("pendingCategoryCounts");
+        if (pendingCategoryNodes.isArray()) {
+            for (JsonNode categoryCount : pendingCategoryNodes) {
+                pendingCategoryCounts.add(new DashboardOperationsReadinessCategoryCountResponse(
+                        jsonText(categoryCount, "category"),
+                        jsonInt(categoryCount, "count")
+                ));
+            }
+        }
+        java.util.ArrayList<DashboardOperationsReadinessRemediationResponse> pendingRemediations =
+                new java.util.ArrayList<>();
+        JsonNode pendingRemediationNodes = readinessReport.path("pendingRemediations");
+        if (pendingRemediationNodes.isArray()) {
+            for (JsonNode remediation : pendingRemediationNodes) {
+                pendingRemediations.add(new DashboardOperationsReadinessRemediationResponse(
+                        jsonText(remediation, "name"),
+                        jsonText(remediation, "category"),
+                        jsonText(remediation, "evidencePath"),
+                        jsonText(remediation, "requiredEvidence"),
+                        jsonText(remediation, "detail"),
+                        jsonText(remediation, "command"),
+                        jsonText(remediation, "workflow"),
+                        jsonText(remediation, "workflowCommand"),
+                        jsonText(remediation, "note")
+                ));
+            }
+        }
+        return new DashboardOperationsReadinessSummaryResponse(
+                jsonText(readinessReport, "result"),
+                jsonText(readinessReport, "summary"),
+                operationsReadinessReportPath == null ? "" : operationsReadinessReportPath,
+                jsonText(readinessReport, "generatedAt"),
+                jsonInt(readinessReport, "passedCount"),
+                jsonInt(readinessReport, "pendingCount"),
+                jsonInt(readinessReport, "totalCount"),
+                jsonInt(readinessReport, "checkCount"),
+                jsonText(readinessReport, "pendingCategorySummary"),
+                List.copyOf(pendingCategoryCounts),
+                jsonInt(readinessReport, "pendingRemediationCount"),
+                List.copyOf(pendingRemediations),
+                jsonText(readinessReport, "decisionRule")
+        );
+    }
     private void addOperationsEvidenceInvocationItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
         DashboardOperationsEvidenceInvocationResponse invocation = operationsEvidenceInvocationSnapshot();
         if (invocation.result().isBlank()) {
@@ -1789,9 +1901,14 @@ public class AdminController {
                 jsonText(invocationReport, "result"),
                 jsonText(invocationReport, "sourceSummary"),
                 jsonText(invocationReport, "sourcePlan"),
+                jsonInt(invocationReport, "sourcePassedCount"),
+                jsonInt(invocationReport, "sourcePendingCount"),
+                jsonInt(invocationReport, "sourceTotalCount"),
+                jsonInt(invocationReport, "sourceCheckCount"),
                 jsonText(invocationReport, "commandMode"),
                 jsonText(invocationReport, "executionMode"),
                 jsonInt(invocationReport, "selectedActionCount"),
+                jsonIntList(invocationReport, "selectedActionOrders"),
                 jsonInt(invocationReport, "plannedCount"),
                 jsonInt(invocationReport, "blockedCount"),
                 jsonInt(invocationReport, "executedCount"),
@@ -1913,6 +2030,10 @@ public class AdminController {
                 jsonText(unblockPlanReport, "sourceInvocationReport"),
                 jsonText(unblockPlanReport, "sourceResult"),
                 jsonText(unblockPlanReport, "sourceSummary"),
+                jsonInt(unblockPlanReport, "sourcePassedCount"),
+                jsonInt(unblockPlanReport, "sourcePendingCount"),
+                jsonInt(unblockPlanReport, "sourceTotalCount"),
+                jsonInt(unblockPlanReport, "sourceCheckCount"),
                 jsonInt(unblockPlanReport, "selectedActionCount"),
                 jsonInt(unblockPlanReport, "plannedCount"),
                 jsonInt(unblockPlanReport, "blockedCount"),
@@ -1944,6 +2065,41 @@ public class AdminController {
         if ("ready".equalsIgnoreCase(result)) {
             return;
         }
+        String dispatchCommand = preflight.readySubsetPlanCommand();
+        if (dispatchCommand.isBlank()) {
+            dispatchCommand = preflight.readyPlanCommand();
+        }
+        if (!preflight.readySubsetApiExecuteCommand().isBlank()) {
+            dispatchCommand = preflight.readySubsetApiExecuteCommand();
+        }
+        if (!preflight.readySubsetExecuteCommand().isBlank()) {
+            dispatchCommand = preflight.readySubsetExecuteCommand();
+        }
+        if (!preflight.apiExecuteCommand().isBlank()) {
+            dispatchCommand = preflight.apiExecuteCommand();
+        }
+        if (!preflight.executeCommand().isBlank()) {
+            dispatchCommand = preflight.executeCommand();
+        }
+        DashboardOperationsDispatchPreflightGitRefSafetyResponse gitRefSafety = preflight.gitRefSafety();
+        if (gitRefSafety != null && "action-required".equalsIgnoreCase(gitRefSafety.status())) {
+            if (!gitRefSafety.suggestedPushCommand().isBlank()) {
+                dispatchCommand = gitRefSafety.suggestedPushCommand();
+            }
+            else if (gitRefSafety.workingTreeDirty()) {
+                dispatchCommand = "git status --short";
+            }
+        }
+        String decisionRule = preflight.decisionRule();
+        if (!preflight.readySubsetApiExecuteCommand().isBlank()
+                && !decisionRule.contains("Ready subset GitHub REST API dispatch command")) {
+            decisionRule = (decisionRule.isBlank() ? "" : decisionRule + " ")
+                    + "Ready subset GitHub REST API dispatch command is available after setting GH_TOKEN or GITHUB_TOKEN.";
+        }
+        if (gitRefSafety != null && !gitRefSafety.note().isBlank()
+                && !decisionRule.contains(gitRefSafety.note())) {
+            decisionRule = (decisionRule.isBlank() ? "" : decisionRule + " ") + gitRefSafety.note();
+        }
         addReadinessItem(
                 items,
                 "WARNING",
@@ -1962,8 +2118,8 @@ public class AdminController {
                 operationsDispatchPreflightReportPath == null ? "" : operationsDispatchPreflightReportPath,
                 "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-dispatch-preflight.ps1",
                 "",
-                preflight.readyPlanCommand(),
-                preflight.decisionRule()
+                dispatchCommand,
+                decisionRule
         );
     }
 
@@ -1981,6 +2137,7 @@ public class AdminController {
                         jsonText(workflow, "workflow"),
                         jsonText(workflow, "path"),
                         jsonBoolean(workflow, "exists"),
+                        jsonText(workflow, "dispatchUrl"),
                         jsonTextList(workflow, "requiredSecrets")
                 ));
             }
@@ -2015,6 +2172,29 @@ public class AdminController {
                 ));
             }
         }
+        DashboardOperationsDispatchPreflightGitRefSafetyResponse gitRefSafety = null;
+        JsonNode gitRefSafetyNode = preflightReport.path("gitRefSafety");
+        if (gitRefSafetyNode.isObject()) {
+            gitRefSafety = new DashboardOperationsDispatchPreflightGitRefSafetyResponse(
+                    jsonBoolean(gitRefSafetyNode, "checked"),
+                    jsonText(gitRefSafetyNode, "status"),
+                    jsonText(gitRefSafetyNode, "githubRef"),
+                    jsonText(gitRefSafetyNode, "currentBranch"),
+                    jsonText(gitRefSafetyNode, "commitSha"),
+                    jsonText(gitRefSafetyNode, "shortCommitSha"),
+                    jsonText(gitRefSafetyNode, "upstreamRef"),
+                    jsonText(gitRefSafetyNode, "upstreamCommitSha"),
+                    jsonInt(gitRefSafetyNode, "aheadCount"),
+                    jsonInt(gitRefSafetyNode, "behindCount"),
+                    jsonBoolean(gitRefSafetyNode, "workingTreeDirty"),
+                    jsonBoolean(gitRefSafetyNode, "githubRefMatchesCurrentBranch"),
+                    jsonBoolean(gitRefSafetyNode, "githubRefLikelyContainsCommit"),
+                    jsonText(gitRefSafetyNode, "suggestedGitHubRef"),
+                    jsonText(gitRefSafetyNode, "suggestedPushCommand"),
+                    jsonText(gitRefSafetyNode, "note")
+            );
+        }
+
         java.util.ArrayList<DashboardOperationsDispatchPreflightInputTemplateResponse> inputTemplates = new java.util.ArrayList<>();
         JsonNode templateNodes = preflightReport.path("inputTemplates");
         if (templateNodes.isArray()) {
@@ -2045,6 +2225,7 @@ public class AdminController {
                         jsonText(template, "actionType"),
                         jsonText(template, "commandMode"),
                         jsonText(template, "workflow"),
+                        jsonText(template, "dispatchUrl"),
                         jsonBoolean(template, "needsOperatorApprovalConfirmation"),
                         jsonBoolean(template, "needsKubeconfigSecretConfirmation"),
                         jsonTextList(template, "requiredSecrets"),
@@ -2066,6 +2247,10 @@ public class AdminController {
                 jsonText(preflightReport, "result"),
                 jsonText(preflightReport, "sourceUnblockPlan"),
                 jsonText(preflightReport, "sourceResult"),
+                jsonInt(preflightReport, "sourcePassedCount"),
+                jsonInt(preflightReport, "sourcePendingCount"),
+                jsonInt(preflightReport, "sourceTotalCount"),
+                jsonInt(preflightReport, "sourceCheckCount"),
                 jsonInt(preflightReport, "selectedActionCount"),
                 jsonIntList(preflightReport, "selectedActionOrders"),
                 jsonInt(preflightReport, "readyActionCount"),
@@ -2083,12 +2268,17 @@ public class AdminController {
                 jsonInt(preflightReport, "warningCheckCount"),
                 jsonTextList(preflightReport, "requiredGitHubSecrets"),
                 jsonText(preflightReport, "githubCliPath"),
+                jsonText(preflightReport, "githubRepository"),
+                jsonText(preflightReport, "githubRef"),
+                gitRefSafety,
                 List.copyOf(workflowFiles),
                 List.copyOf(checks),
                 jsonText(preflightReport, "readyPlanCommand"),
                 jsonText(preflightReport, "executeCommand"),
+                jsonText(preflightReport, "apiExecuteCommand"),
                 jsonText(preflightReport, "readySubsetPlanCommand"),
                 jsonText(preflightReport, "readySubsetExecuteCommand"),
+                jsonText(preflightReport, "readySubsetApiExecuteCommand"),
                 List.copyOf(requiredInputs),
                 List.copyOf(inputTemplates),
                 jsonText(preflightReport, "decisionRule")
@@ -2125,10 +2315,57 @@ public class AdminController {
         );
     }
 
+    private DashboardOperationsWorkflowRunIdInputResponse workflowRunIdInputSnapshot(JsonNode input) {
+        return new DashboardOperationsWorkflowRunIdInputResponse(
+                jsonText(input, "workflow"),
+                jsonText(input, "group"),
+                jsonIntList(input, "actionOrders"),
+                jsonText(input, "runIdParameter"),
+                jsonText(input, "recommendedRunId"),
+                jsonText(input, "artifactName"),
+                jsonBoolean(input, "requiredForReadiness"),
+                jsonBoolean(input, "readyForArtifactDownload"),
+                jsonText(input, "runsUrl"),
+                jsonText(input, "runListJsonPath"),
+                jsonText(input, "queryCommand"),
+                jsonText(input, "gitHubApiQueryUrl"),
+                jsonBoolean(input, "sourceSelected"),
+                jsonBoolean(input, "supplementalForSecurityFinalizer")
+        );
+    }
+
     private DashboardOperationsWorkflowRunIdPlanResponse operationsWorkflowRunIdPlanSnapshot() {
         JsonNode runIdPlanReport = readOptionalJsonReport(operationsWorkflowRunIdPlanReportPath);
         if (runIdPlanReport == null) {
             return DashboardOperationsWorkflowRunIdPlanResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsWorkflowRunIdInputResponse> workflowRunIdInputs = new java.util.ArrayList<>();
+        JsonNode inputNodes = runIdPlanReport.path("workflowRunIdInputs");
+        if (inputNodes.isArray()) {
+            for (JsonNode input : inputNodes) {
+                workflowRunIdInputs.add(workflowRunIdInputSnapshot(input));
+            }
+        }
+        java.util.ArrayList<DashboardOperationsWorkflowRunIdInputResponse> securityEvidenceFinalizerRunIdInputHints = new java.util.ArrayList<>();
+        JsonNode hintNodes = runIdPlanReport.path("securityEvidenceFinalizerRunIdInputHints");
+        if (hintNodes.isArray()) {
+            for (JsonNode input : hintNodes) {
+                securityEvidenceFinalizerRunIdInputHints.add(workflowRunIdInputSnapshot(input));
+            }
+        }
+        java.util.ArrayList<DashboardOperationsReadinessConvergenceCommandResponse> recommendedCommands = new java.util.ArrayList<>();
+        JsonNode commandNodes = runIdPlanReport.path("recommendedCommands");
+        if (commandNodes.isArray()) {
+            for (JsonNode command : commandNodes) {
+                recommendedCommands.add(new DashboardOperationsReadinessConvergenceCommandResponse(
+                        jsonInt(command, "order"),
+                        jsonText(command, "name"),
+                        jsonText(command, "command"),
+                        jsonText(command, "reason"),
+                        jsonText(command, "note"),
+                        jsonTextList(command, "dispatchUrls")
+                ));
+            }
         }
         java.util.ArrayList<DashboardOperationsWorkflowRunResponse> workflows = new java.util.ArrayList<>();
         JsonNode workflowNodes = runIdPlanReport.path("workflows");
@@ -2147,6 +2384,12 @@ public class AdminController {
                         jsonTextList(workflow, "actionTypes"),
                         jsonText(workflow, "group"),
                         jsonText(workflow, "queryCommand"),
+                        jsonText(workflow, "gitHubApiQueryUrl"),
+                        jsonText(workflow, "runListJsonFile"),
+                        jsonText(workflow, "runListJsonPath"),
+                        jsonBoolean(workflow, "runListJsonExists"),
+                        jsonText(workflow, "runListJsonNote"),
+                        jsonText(workflow, "runsUrl"),
                         jsonText(workflow, "queryMode"),
                         jsonInt(workflow, "candidateCount"),
                         jsonText(workflow, "latestRunId"),
@@ -2172,8 +2415,24 @@ public class AdminController {
                 jsonText(runIdPlanReport, "result"),
                 jsonText(runIdPlanReport, "sourceInvocationReport"),
                 jsonText(runIdPlanReport, "invocationResult"),
+                jsonText(runIdPlanReport, "sourceSummary"),
+                jsonInt(runIdPlanReport, "sourcePassedCount"),
+                jsonInt(runIdPlanReport, "sourcePendingCount"),
+                jsonInt(runIdPlanReport, "sourceTotalCount"),
+                jsonInt(runIdPlanReport, "sourceCheckCount"),
+                jsonIntList(runIdPlanReport, "selectedActionOrders"),
                 jsonText(runIdPlanReport, "branch"),
+                jsonText(runIdPlanReport, "githubRepository"),
                 jsonText(runIdPlanReport, "queryMode"),
+                jsonText(runIdPlanReport, "runListJsonDirectory"),
+                jsonText(runIdPlanReport, "runListJsonDirectoryCommand"),
+                jsonText(runIdPlanReport, "githubApiRunListCommand"),
+                jsonText(runIdPlanReport, "githubApiBaseUrl"),
+                jsonText(runIdPlanReport, "runListJsonFilePattern"),
+                jsonText(runIdPlanReport, "runListJsonHandoffNote"),
+                jsonTextList(runIdPlanReport, "browserWorkflowRunsUrls"),
+                List.copyOf(workflowRunIdInputs),
+                List.copyOf(recommendedCommands),
                 jsonInt(runIdPlanReport, "limit"),
                 jsonInt(runIdPlanReport, "workflowCount"),
                 jsonInt(runIdPlanReport, "readyWorkflowCount"),
@@ -2182,6 +2441,11 @@ public class AdminController {
                 jsonText(runIdPlanReport, "imageSigningVersion"),
                 jsonText(runIdPlanReport, "commitSha"),
                 jsonText(runIdPlanReport, "artifactCollectionPlanCommand"),
+                jsonBoolean(runIdPlanReport, "securityEvidenceFinalizerReady"),
+                jsonTextList(runIdPlanReport, "securityEvidenceFinalizerRunIdInputs"),
+                List.copyOf(securityEvidenceFinalizerRunIdInputHints),
+                jsonTextList(runIdPlanReport, "securityEvidenceFinalizerMissingRunIdInputs"),
+                jsonText(runIdPlanReport, "securityEvidenceFinalizerDependencyNote"),
                 jsonText(runIdPlanReport, "securityEvidenceFinalizerCommand"),
                 jsonText(runIdPlanReport, "decisionRule"),
                 List.copyOf(workflows)
@@ -2202,10 +2466,12 @@ public class AdminController {
                 "WARNING",
                 "OPERATIONS",
                 "OPERATIONS_ARTIFACT_COLLECTION_PLAN",
-                "Operations artifact collection plan is %s%s%s.".formatted(
+                "Operations artifact collection plan is %s%s%s%s%s.".formatted(
                         result.isBlank() ? "available" : result,
                         ": artifacts=" + collectionPlan.artifactCount(),
-                        ", missingRequired=" + collectionPlan.missingRequiredArtifactCount()
+                        ", missingRequired=" + collectionPlan.missingRequiredArtifactCount(),
+                        ", missingSecuritySources=" + collectionPlan.missingSecuritySourceArtifactCount(),
+                        collectionPlan.securityEvidenceFinalizerMissingRunIdInputs().isEmpty() ? "" : ", missingSecurityFinalizerInputs=" + String.join("/", collectionPlan.securityEvidenceFinalizerMissingRunIdInputs())
                 ),
                 "dashboard",
                 "dashboard-readiness-panel",
@@ -2242,18 +2508,50 @@ public class AdminController {
                 ));
             }
         }
+        java.util.ArrayList<DashboardOperationsArtifactCollectionSecurityInputResponse> securityFinalizerInputs = new java.util.ArrayList<>();
+        JsonNode securityInputNodes = collectionPlanReport.path("securityEvidenceFinalizerInputs");
+        if (securityInputNodes.isArray()) {
+            for (JsonNode input : securityInputNodes) {
+                securityFinalizerInputs.add(new DashboardOperationsArtifactCollectionSecurityInputResponse(
+                        jsonText(input, "name"),
+                        jsonText(input, "runIdParameter"),
+                        jsonText(input, "workflow"),
+                        jsonText(input, "artifactName"),
+                        jsonText(input, "artifactNameParameter"),
+                        jsonText(input, "runId"),
+                        jsonBoolean(input, "ready"),
+                        jsonBoolean(input, "sourceArtifactSelected"),
+                        jsonBoolean(input, "sourceArtifactReady"),
+                        jsonBoolean(input, "requiredForSecurityFinalizer"),
+                        jsonText(input, "note")
+                ));
+            }
+        }
         return new DashboardOperationsArtifactCollectionPlanResponse(
                 jsonText(collectionPlanReport, "result"),
                 jsonText(collectionPlanReport, "sourceInvocationReport"),
                 jsonText(collectionPlanReport, "invocationResult"),
+                jsonText(collectionPlanReport, "sourceSummary"),
+                jsonInt(collectionPlanReport, "sourcePassedCount"),
+                jsonInt(collectionPlanReport, "sourcePendingCount"),
+                jsonInt(collectionPlanReport, "sourceTotalCount"),
+                jsonInt(collectionPlanReport, "sourceCheckCount"),
+                jsonIntList(collectionPlanReport, "selectedActionOrders"),
                 jsonText(collectionPlanReport, "invocationSummary"),
                 jsonInt(collectionPlanReport, "artifactCount"),
                 jsonInt(collectionPlanReport, "requiredArtifactCount"),
                 jsonInt(collectionPlanReport, "readyArtifactCount"),
                 jsonInt(collectionPlanReport, "missingRequiredArtifactCount"),
+                jsonInt(collectionPlanReport, "securitySourceArtifactCount"),
+                jsonInt(collectionPlanReport, "readySecuritySourceArtifactCount"),
+                jsonInt(collectionPlanReport, "missingSecuritySourceArtifactCount"),
+                jsonBoolean(collectionPlanReport, "securityEvidenceFinalizerReady"),
+                List.copyOf(securityFinalizerInputs),
+                jsonTextList(collectionPlanReport, "securityEvidenceFinalizerMissingRunIdInputs"),
                 jsonText(collectionPlanReport, "securityEvidenceFinalizerCommand"),
                 jsonText(collectionPlanReport, "operationsArtifactFinalizerCommand"),
                 jsonText(collectionPlanReport, "dataFlowStoragePlanInputNote"),
+                jsonText(collectionPlanReport, "dataFlowQueryRetentionBudgetInputNote"),
                 jsonText(collectionPlanReport, "dataFlowStorageTransitionRunbookInputNote"),
                 jsonText(collectionPlanReport, "minioBucketCorsInputNote"),
                 jsonText(collectionPlanReport, "localImportCommand"),
@@ -2486,6 +2784,8 @@ public class AdminController {
         JsonNode targetEvidenceSnapshots = packageReport.path("targetEvidenceSnapshots");
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlanSnapshot =
                 dataFlowStoragePlanSnapshotFromNode(targetEvidenceSnapshots.path("dataFlowStoragePlan"), false);
+        DashboardDataFlowQueryRetentionBudgetResponse dataFlowQueryRetentionBudgetSnapshot =
+                dataFlowQueryRetentionBudgetSnapshotFromNode(targetEvidenceSnapshots.path("dataFlowQueryRetentionBudget"), false);
         DashboardDataFlowStorageTransitionRunbookResponse dataFlowStorageTransitionRunbookSnapshot =
                 dataFlowStorageTransitionRunbookSnapshotFromNode(
                         targetEvidenceSnapshots.path("dataFlowStorageTransitionRunbook"),
@@ -2505,6 +2805,10 @@ public class AdminController {
                 enterpriseAuthJitRollbackEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("enterpriseAuthJitRollback"), false);
         DashboardMonitoringThresholdEvidenceResponse monitoringThresholdSnapshot =
                 monitoringThresholdEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("monitoringThreshold"), false);
+        DashboardHardeningEvidenceResponse clusterNetworkAccessReviewSnapshot =
+                hardeningEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("clusterNetworkAccessReview"), "staticControls");
+        DashboardHardeningEvidenceResponse helmValuesHardeningSnapshot =
+                hardeningEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("helmValuesHardening"), "staticHardening");
         return new DashboardOperationsHandoffPackageResponse(
                 jsonText(packageReport, "result"),
                 jsonText(packageReport, "generatedAt"),
@@ -2520,6 +2824,7 @@ public class AdminController {
                 readinessSnapshot,
                 convergenceSnapshot,
                 dataFlowStoragePlanSnapshot,
+                dataFlowQueryRetentionBudgetSnapshot,
                 dataFlowStorageTransitionRunbookSnapshot,
                 secretRotationSnapshot,
                 commercialIntegrationSnapshot,
@@ -2528,6 +2833,8 @@ public class AdminController {
                 enterpriseAuthSmokeSnapshot,
                 enterpriseAuthJitRollbackSnapshot,
                 monitoringThresholdSnapshot,
+                clusterNetworkAccessReviewSnapshot,
+                helmValuesHardeningSnapshot,
                 List.copyOf(checks),
                 jsonText(packageReport, "decisionRule"),
                 jsonText(packageReport, "scopePolicy"),
@@ -2555,6 +2862,8 @@ public class AdminController {
         if (snapshot == null || !snapshot.isObject()) {
             return null;
         }
+        List<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> handoffPostDispatchCommands =
+                operationsPostDispatchCommands(snapshot, "handoffPostDispatchCommands");
         return new DashboardOperationsHandoffPackageConvergenceSnapshotResponse(
                 jsonBoolean(snapshot, "provided"),
                 jsonBoolean(snapshot, "parsed"),
@@ -2582,7 +2891,9 @@ public class AdminController {
                 jsonInt(snapshot, "finalizerGapCount"),
                 jsonText(snapshot, "currentBottleneckCode"),
                 jsonText(snapshot, "currentBottleneckTitle"),
-                jsonInt(snapshot, "recommendedCommandCount")
+                jsonInt(snapshot, "recommendedCommandCount"),
+                jsonInt(snapshot, "handoffPostDispatchCommandCount"),
+                handoffPostDispatchCommands
         );
     }
 
@@ -3602,6 +3913,116 @@ public class AdminController {
         return dataFlowStoragePlanSnapshotFromNode(planReport, true);
     }
 
+    private void addDataFlowQueryRetentionBudgetItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardDataFlowQueryRetentionBudgetResponse evidence = dataFlowQueryRetentionBudgetSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "DATA_FLOW_QUERY_RETENTION_BUDGET",
+                "Data-flow query/retention budget evidence is %s: p95=%d/%dms, retention=%d/%ds, failures=%d/%d.".formatted(
+                        evidence.result(),
+                        evidence.observedP95QueryLatencyMs(),
+                        evidence.targetP95QueryLatencyMs(),
+                        Math.max(
+                                evidence.detailedRetentionObservedSeconds(),
+                                Math.max(evidence.dailyRollupRetentionObservedSeconds(), evidence.monthlyRollupRetentionObservedSeconds())
+                        ),
+                        evidence.retentionBudgetSeconds(),
+                        evidence.failureCount(),
+                        evidence.checkCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Data-flow query budget",
+                dataFlowQueryRetentionBudgetReportPath == null ? "" : dataFlowQueryRetentionBudgetReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-query-retention-budget-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -DataFlowStoragePlanJsonPath .\\.osmu-run\\latest-data-flow-storage-plan.json -QueryLatencyEvidenceRef <ref> -RetentionBudgetEvidenceRef <ref> -EvidenceRef <run-ref> -ObservedP95QueryLatencyMs <ms> -ObservedP99QueryLatencyMs <ms> -QuerySampleCount <n> -ObservedQueryWindowDays <days> -RetentionJobBudgetSeconds <seconds> -DetailedRetentionObservedSeconds <seconds> -DailyRollupRetentionObservedSeconds <seconds> -MonthlyRollupRetentionObservedSeconds <seconds> -DetailedRetentionDeletedRows <n> -DailyRollupRetentionDeletedRows <n> -MonthlyRollupRetentionDeletedRows <n> -ConfirmQueryLatencyReviewed -ConfirmRetentionJobsWithinBudget -ConfirmNoObjectKeysInEvidence -ConfirmNoRawSqlOrExplain -ConfirmNoSecretValues -FailIfNotPassed",
+                ".github/workflows/manual-data-flow-query-retention-budget-evidence.yml",
+                "",
+                evidence.scopePolicy().isBlank()
+                        ? "Collect target query latency and retention budget evidence before production/B2B readiness."
+                        : evidence.scopePolicy()
+        );
+    }
+
+    private DashboardDataFlowQueryRetentionBudgetResponse dataFlowQueryRetentionBudgetSnapshot() {
+        JsonNode report = readOptionalJsonReport(dataFlowQueryRetentionBudgetReportPath);
+        return dataFlowQueryRetentionBudgetSnapshotFromNode(report, true);
+    }
+
+    private DashboardDataFlowQueryRetentionBudgetResponse dataFlowQueryRetentionBudgetSnapshotFromNode(
+            JsonNode report,
+            boolean emptyWhenMissing
+    ) {
+        if (report == null || report.isMissingNode() || report.isNull() || !report.isObject()) {
+            if (!emptyWhenMissing) {
+                return null;
+            }
+            return DashboardDataFlowQueryRetentionBudgetResponse.empty();
+        }
+        java.util.ArrayList<DashboardDataFlowQueryRetentionBudgetCheckResponse> checks = new java.util.ArrayList<>();
+        JsonNode checkNodes = report.path("topFailedChecks");
+        boolean explicitTopFailedChecks = checkNodes.isArray();
+        if (!explicitTopFailedChecks) {
+            checkNodes = report.path("checks");
+        }
+        if (checkNodes.isArray()) {
+            for (JsonNode check : checkNodes) {
+                boolean passed = jsonBoolean(check, "passed") || "PASS".equalsIgnoreCase(jsonText(check, "status"));
+                if (passed && !explicitTopFailedChecks) {
+                    continue;
+                }
+                checks.add(new DashboardDataFlowQueryRetentionBudgetCheckResponse(
+                        jsonText(check, "id"),
+                        jsonText(check, "name"),
+                        jsonText(check, "status"),
+                        passed,
+                        jsonText(check, "detail")
+                ));
+            }
+        }
+        JsonNode planSnapshot = report.path("dataFlowStoragePlanSnapshot");
+        JsonNode queryLatencyBudget = report.path("queryLatencyBudget");
+        JsonNode retentionBudget = report.path("retentionBudget");
+        JsonNode summary = report.path("summary");
+        int targetP95 = Math.max(
+                jsonInt(queryLatencyBudget, "targetP95QueryLatencyMs"),
+                Math.max(jsonInt(report, "targetP95QueryLatencyMs"), jsonInt(planSnapshot, "targetP95QueryLatencyMs"))
+        );
+        return new DashboardDataFlowQueryRetentionBudgetResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "environmentName"),
+                jsonText(report, "targetCluster"),
+                firstNonBlank(jsonText(report, "operatorName"), jsonText(report, "operator")),
+                jsonText(report, "evidenceRef"),
+                firstNonBlank(jsonText(report, "storagePlanResult"), jsonText(planSnapshot, "result")),
+                firstNonBlank(jsonText(report, "candidateStore"), jsonText(planSnapshot, "candidateStore")),
+                targetP95,
+                Math.max(jsonInt(queryLatencyBudget, "observedP95QueryLatencyMs"), jsonInt(report, "observedP95QueryLatencyMs")),
+                Math.max(jsonInt(queryLatencyBudget, "observedP99QueryLatencyMs"), jsonInt(report, "observedP99QueryLatencyMs")),
+                Math.max(jsonInt(queryLatencyBudget, "querySampleCount"), jsonInt(report, "querySampleCount")),
+                Math.max(jsonInt(queryLatencyBudget, "observedQueryWindowDays"), jsonInt(report, "observedQueryWindowDays")),
+                Math.max(jsonInt(retentionBudget, "budgetSeconds"), jsonInt(report, "retentionBudgetSeconds")),
+                Math.max(jsonInt(retentionBudget, "detailedRetentionObservedSeconds"), jsonInt(report, "detailedRetentionObservedSeconds")),
+                Math.max(jsonInt(retentionBudget, "dailyRollupRetentionObservedSeconds"), jsonInt(report, "dailyRollupRetentionObservedSeconds")),
+                Math.max(jsonInt(retentionBudget, "monthlyRollupRetentionObservedSeconds"), jsonInt(report, "monthlyRollupRetentionObservedSeconds")),
+                Math.max(jsonInt(retentionBudget, "detailedRetentionDeletedRows"), jsonInt(report, "detailedRetentionDeletedRows")),
+                Math.max(jsonInt(retentionBudget, "dailyRollupRetentionDeletedRows"), jsonInt(report, "dailyRollupRetentionDeletedRows")),
+                Math.max(jsonInt(retentionBudget, "monthlyRollupRetentionDeletedRows"), jsonInt(report, "monthlyRollupRetentionDeletedRows")),
+                jsonBoolean(queryLatencyBudget, "withinBudget") || jsonBoolean(report, "queryLatencyWithinBudget"),
+                jsonBoolean(retentionBudget, "withinBudget") || jsonBoolean(report, "retentionJobsWithinBudget"),
+                Math.max(jsonInt(report, "failureCount"), jsonInt(summary, "failureCount")),
+                Math.max(jsonInt(report, "checkCount"), jsonInt(summary, "checkCount")),
+                Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
+                List.copyOf(checks),
+                jsonText(report, "scopePolicy")
+        );
+    }
+
     private void addDataFlowStorageTransitionRunbookItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
         DashboardDataFlowStorageTransitionRunbookResponse evidence = dataFlowStorageTransitionRunbookSnapshot();
         if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
@@ -3659,6 +4080,8 @@ public class AdminController {
                 ));
             }
         }
+        DashboardDataFlowStoragePlanCandidateDecisionResponse candidateDecision =
+                dataFlowStoragePlanCandidateDecisionSnapshot(planReport.path("candidateDecision"));
         DashboardDataFlowQueryPlanEvidenceResponse queryPlanEvidence =
                 dataFlowQueryPlanEvidenceSnapshot(planReport.path("queryPlanEvidence"));
         return new DashboardDataFlowStoragePlanResponse(
@@ -3679,8 +4102,27 @@ public class AdminController {
                 jsonInt(planReport, "passedCount"),
                 jsonInt(planReport, "pendingCount"),
                 List.copyOf(checks),
+                candidateDecision,
                 queryPlanEvidence,
                 jsonText(planReport, "scopePolicy")
+        );
+    }
+
+    private DashboardDataFlowStoragePlanCandidateDecisionResponse dataFlowStoragePlanCandidateDecisionSnapshot(JsonNode decision) {
+        if (decision == null || decision.isMissingNode() || decision.isNull()) {
+            return DashboardDataFlowStoragePlanCandidateDecisionResponse.empty();
+        }
+        return new DashboardDataFlowStoragePlanCandidateDecisionResponse(
+                jsonText(decision, "candidateStore"),
+                jsonText(decision, "decision"),
+                jsonText(decision, "evidenceModel"),
+                jsonBoolean(decision, "requiresMariaDbQueryEvidence"),
+                jsonBoolean(decision, "requiresTargetStoreEvidence"),
+                jsonBoolean(decision, "queryPlanEvidenceRequired"),
+                jsonBoolean(decision, "queryPlanEvidencePassed"),
+                jsonBoolean(decision, "targetStoreEvidenceConfirmed"),
+                jsonText(decision, "safeDataPolicy"),
+                jsonText(decision, "nextAction")
         );
     }
 
@@ -3878,6 +4320,231 @@ public class AdminController {
         return List.copyOf(checks);
     }
 
+    private void addClusterNetworkAccessReviewEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardHardeningEvidenceResponse evidence = clusterNetworkAccessReviewEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "CLUSTER_NETWORK_ACCESS_REVIEW_EVIDENCE",
+                "Cluster network access review evidence is %s: failures=%d/%d.".formatted(
+                        evidence.result(),
+                        evidence.failureCount(),
+                        evidence.totalCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Cluster network access review",
+                clusterNetworkAccessReviewEvidenceReportPath == null ? "" : clusterNetworkAccessReviewEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-cluster-network-access-review-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DnsEgressReviewRef <ref> -MariaDbAccessReviewRef <ref> -MinioAccessReviewRef <ref> -BackupAccessReviewRef <ref> -PublicIngressReviewRef <ref> -DefaultDenyReviewRef <ref> -ObservabilityScrapeReviewRef <ref> -K8sVerifierEvidenceRef <ref> -HelmVerifierEvidenceRef <ref> -EvidenceRef <ref> -ConfirmBackendOnlyMariaDb -ConfirmBackendOnlyMinio -ConfirmBackupOnlyMariaDbMinio -ConfirmDnsEgressScoped -ConfirmMariaDbIngressBackendBackupOnly -ConfirmMinioIngressBackendBackupOnly -ConfirmPublicIngressLimited -ConfirmNamespaceDefaultDenyReviewed -ConfirmObservabilityScrapeReviewed -ConfirmHelmNetworkPolicyEnabled -ConfirmNoCredentialValues -FailIfNotPassed",
+                ".github/workflows/manual-cluster-network-access-review-evidence.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Record reviewed static NetworkPolicy controls and non-secret access review references before operations handoff package finalization."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private void addHelmValuesHardeningEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardHardeningEvidenceResponse evidence = helmValuesHardeningEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "HELM_VALUES_HARDENING_EVIDENCE",
+                "Helm values hardening evidence is %s: failures=%d/%d.".formatted(
+                        evidence.result(),
+                        evidence.failureCount(),
+                        evidence.totalCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Helm values hardening",
+                helmValuesHardeningEvidenceReportPath == null ? "" : helmValuesHardeningEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-helm-values-hardening-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -ChangeApprovalRef <change-id> -HelmVerifierEvidenceRef <ref> -KubernetesVerifierEvidenceRef <ref> -ContainerHardeningEvidenceRef <ref> -ClusterNetworkAccessReviewEvidenceRef <ref> -EvidenceRef <ref> -ConfirmSecretsExternalized -ConfirmDefaultSecretPlaceholdersNotUsed -ConfirmHaReplicasReviewed -ConfirmResourcesBounded -ConfirmSecurityContextsReviewed -ConfirmNetworkPolicyEnabled -ConfirmTlsIngressReviewed -ConfirmOperationsReportsReadOnly -ConfirmStorageExpansionRbacDisabledByDefault -ConfirmNoCredentialValues -FailIfNotPassed",
+                ".github/workflows/manual-helm-values-hardening-evidence.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Record reviewed Helm values/templates hardening references before operations handoff package finalization."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardHardeningEvidenceResponse clusterNetworkAccessReviewEvidenceSnapshot() {
+        return hardeningEvidenceSnapshot(clusterNetworkAccessReviewEvidenceReportPath, "staticControlSnapshot");
+    }
+
+    private DashboardHardeningEvidenceResponse helmValuesHardeningEvidenceSnapshot() {
+        DashboardHardeningEvidenceResponse response = hardeningEvidenceSnapshot(
+                helmValuesHardeningEvidenceReportPath,
+                "staticHardeningSnapshot"
+        );
+        JsonNode report = readOptionalJsonReport(helmValuesHardeningEvidenceReportPath);
+        if (report == null) {
+            return response;
+        }
+        java.util.LinkedHashMap<String, String> staticSnapshot = new java.util.LinkedHashMap<>(response.staticSnapshot());
+        JsonNode chartSnapshot = report.path("chartSnapshot");
+        putIfNotBlank(staticSnapshot, "chartDirectory", jsonText(chartSnapshot, "chartDirectory"));
+        JsonNode chartFiles = chartSnapshot.path("files");
+        if (chartFiles.isArray()) {
+            staticSnapshot.put("chartFileCount", Integer.toString(chartFiles.size()));
+        }
+        return new DashboardHardeningEvidenceResponse(
+                response.result(),
+                response.generatedAt(),
+                response.environmentName(),
+                response.targetCluster(),
+                response.operatorName(),
+                response.reviewWindow(),
+                response.evidence(),
+                Map.copyOf(staticSnapshot),
+                response.confirmations(),
+                response.passCount(),
+                response.failureCount(),
+                response.totalCount(),
+                response.checks(),
+                response.scopePolicy(),
+                response.secretPolicy(),
+                response.decisionRule()
+        );
+    }
+
+    private DashboardHardeningEvidenceResponse hardeningEvidenceSnapshot(String reportPath, String staticSnapshotFieldName) {
+        return hardeningEvidenceSnapshotFromNode(readOptionalJsonReport(reportPath), staticSnapshotFieldName);
+    }
+
+    private DashboardHardeningEvidenceResponse hardeningEvidenceSnapshotFromNode(JsonNode report, String staticSnapshotFieldName) {
+        if (report == null || !report.isObject()) {
+            return DashboardHardeningEvidenceResponse.empty();
+        }
+        JsonNode summary = summaryOrSelf(report);
+        java.util.LinkedHashMap<String, String> evidence = new java.util.LinkedHashMap<>(jsonTextMap(report.path("evidence")));
+        putIfNotBlank(evidence, "evidenceRef", jsonText(report, "evidenceRef"));
+        putIfNotBlank(evidence, "path", jsonText(report, "path"));
+        String operator = jsonText(report, "operatorName");
+        if (operator.isBlank()) {
+            operator = jsonText(report, "operator");
+        }
+        JsonNode checks = report.path("checks");
+        if (!checks.isArray()) {
+            checks = report.path("topChecks");
+        }
+        return new DashboardHardeningEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "environmentName"),
+                jsonText(report, "targetCluster"),
+                operator,
+                Map.copyOf(jsonTextMap(report.path("reviewWindow"))),
+                Map.copyOf(evidence),
+                Map.copyOf(jsonTextMap(report.path(staticSnapshotFieldName))),
+                Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
+                jsonInt(summary, "passCount"),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "totalCount"),
+                hardeningEvidenceChecks(checks),
+                jsonText(report, "scopePolicy"),
+                jsonText(report, "secretPolicy"),
+                jsonText(report, "decisionRule")
+        );
+    }
+
+    private List<DashboardHardeningEvidenceCheckResponse> hardeningEvidenceChecks(JsonNode checkNodes) {
+        if (!checkNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardHardeningEvidenceCheckResponse> checks = new java.util.ArrayList<>();
+        for (JsonNode check : checkNodes) {
+            checks.add(new DashboardHardeningEvidenceCheckResponse(
+                    jsonText(check, "id"),
+                    jsonText(check, "name"),
+                    jsonText(check, "status"),
+                    jsonBoolean(check, "passed"),
+                    jsonText(check, "detail"),
+                    jsonText(check, "evidenceRef")
+            ));
+        }
+        return List.copyOf(checks);
+    }
+    private void addSupportEscalationHandoffEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardSupportEscalationHandoffEvidenceResponse evidence = supportEscalationHandoffEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "SUPPORT_ESCALATION_HANDOFF_EVIDENCE",
+                "Support escalation handoff evidence is %s: failures=%d/%d.".formatted(
+                        evidence.result(),
+                        evidence.failureCount(),
+                        evidence.totalCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Support escalation handoff",
+                supportEscalationHandoffEvidenceReportPath == null ? "" : supportEscalationHandoffEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-support-escalation-handoff-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -ChangeApprovalRef <change-id> -OperationsHandoffPackageRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -RollbackReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -EvidenceRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackPathReviewed -ConfirmSupportEscalationReviewed -ConfirmSupportSlaReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsHandoffReferenceReady -ConfirmNoCredentialValues -FailIfNotPassed",
+                ".github/workflows/manual-support-escalation-handoff-evidence.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Record reviewed support escalation, support SLA, runbook, rollback, and known-gap references before operations handoff package finalization."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardSupportEscalationHandoffEvidenceResponse supportEscalationHandoffEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(supportEscalationHandoffEvidenceReportPath);
+        if (report == null) {
+            return DashboardSupportEscalationHandoffEvidenceResponse.empty();
+        }
+        JsonNode summary = summaryOrSelf(report);
+        return new DashboardSupportEscalationHandoffEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "environmentName"),
+                jsonText(report, "targetCluster"),
+                jsonText(report, "operator"),
+                Map.copyOf(jsonTextMap(report.path("reviewWindow"))),
+                Map.copyOf(jsonTextMap(report.path("evidence"))),
+                Map.copyOf(jsonBooleanMap(report.path("documentSnapshot"))),
+                Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
+                jsonInt(summary, "passCount"),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "totalCount"),
+                supportEscalationHandoffChecks(report.path("checks")),
+                jsonText(report, "scopePolicy"),
+                jsonText(report, "secretPolicy"),
+                jsonText(report, "decisionRule")
+        );
+    }
+
+    private List<DashboardSupportEscalationHandoffCheckResponse> supportEscalationHandoffChecks(JsonNode checkNodes) {
+        if (!checkNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardSupportEscalationHandoffCheckResponse> checks = new java.util.ArrayList<>();
+        for (JsonNode check : checkNodes) {
+            checks.add(new DashboardSupportEscalationHandoffCheckResponse(
+                    jsonText(check, "id"),
+                    jsonText(check, "name"),
+                    jsonText(check, "status"),
+                    jsonBoolean(check, "passed"),
+                    jsonText(check, "detail"),
+                    jsonText(check, "evidenceRef")
+            ));
+        }
+        return List.copyOf(checks);
+    }
+
     private void addMinioBucketCorsVerificationItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
         DashboardMinioBucketCorsVerificationResponse evidence = minioBucketCorsVerificationSnapshot();
         if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
@@ -3977,7 +4644,7 @@ public class AdminController {
                 "WARNING",
                 "OPERATIONS",
                 "OPERATIONS_EVIDENCE_HANDOFF",
-                "Operations evidence handoff is %s%s%s%s%s%s%s%s.".formatted(
+                "Operations evidence handoff is %s%s%s%s%s%s%s%s%s.".formatted(
                         result.isBlank() ? "available" : result,
                         nextCode.isBlank() ? "" : ": next=" + nextCode,
                         ", dispatchReady=" + handoff.readyDispatchTemplateCount(),
@@ -3985,6 +4652,7 @@ public class AdminController {
                         ", blockedActions=" + handoff.blockedActionCount(),
                         ", missingRuns=" + handoff.missingWorkflowRunCount(),
                         ", missingArtifacts=" + handoff.missingRequiredArtifactCount(),
+                        handoff.dispatchPreflightScopeMismatch() ? ", dispatchScopeMismatch=true" : "",
                         handoff.finalizerGapCount() == 0 ? "" : ", finalizerGaps=" + handoff.finalizerGapCount()
                 ),
                 "dashboard",
@@ -4013,6 +4681,7 @@ public class AdminController {
                         jsonText(workflow, "actionType"),
                         jsonText(workflow, "commandMode"),
                         jsonText(workflow, "workflow"),
+                        jsonText(workflow, "dispatchUrl"),
                         jsonBoolean(workflow, "readyToDispatch"),
                         jsonInt(workflow, "missingInputCount"),
                         jsonInt(workflow, "unsafeInputCount"),
@@ -4028,6 +4697,58 @@ public class AdminController {
         return List.copyOf(workflows);
     }
 
+
+    private List<DashboardOperationsEvidenceHandoffBrowserDispatchChecklistResponse> operationsEvidenceHandoffBrowserDispatchChecklist(JsonNode handoffReport) {
+        java.util.ArrayList<DashboardOperationsEvidenceHandoffBrowserDispatchChecklistResponse> checklist = new java.util.ArrayList<>();
+        JsonNode itemNodes = handoffReport.path("browserDispatchChecklist");
+        if (itemNodes.isArray()) {
+            for (JsonNode item : itemNodes) {
+                checklist.add(new DashboardOperationsEvidenceHandoffBrowserDispatchChecklistResponse(
+                        jsonInt(item, "actionOrder"),
+                        jsonText(item, "name"),
+                        jsonText(item, "category"),
+                        jsonText(item, "actionType"),
+                        jsonText(item, "workflow"),
+                        jsonText(item, "dispatchUrl"),
+                        jsonText(item, "runsUrl"),
+                        jsonText(item, "runIdParameter"),
+                        jsonText(item, "artifactName"),
+                        jsonText(item, "runListJsonPath"),
+                        jsonText(item, "runListJsonDirectoryCommand"),
+                        jsonText(item, "manualArtifactCollectionCommand"),
+                        jsonTextList(item, "workflowInputNames"),
+                        jsonTextList(item, "operatorChecklist"),
+                        jsonTextList(item, "securityFinalizerRunIdInputs"),
+                        jsonTextList(item, "securityFinalizerMissingRunIdInputs"),
+                        jsonText(item, "securityFinalizerDependencyNote"),
+                        jsonTextList(item, "steps")
+                ));
+            }
+        }
+        return List.copyOf(checklist);
+    }
+
+    private List<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> operationsPostDispatchCommands(
+            JsonNode report,
+            String fieldName
+    ) {
+        java.util.ArrayList<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> commands = new java.util.ArrayList<>();
+        JsonNode commandNodes = report.path(fieldName);
+        if (commandNodes.isArray()) {
+            for (JsonNode command : commandNodes) {
+                commands.add(new DashboardOperationsEvidenceHandoffPostDispatchCommandResponse(
+                        jsonText(command, "name"),
+                        jsonText(command, "command"),
+                        jsonText(command, "note")
+                ));
+            }
+        }
+        return List.copyOf(commands);
+    }
+
+    private List<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> operationsEvidenceHandoffPostDispatchCommands(JsonNode handoffReport) {
+        return operationsPostDispatchCommands(handoffReport, "postDispatchCommands");
+    }
     private DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoffSnapshot() {
         JsonNode handoffReport = readOptionalJsonReport(operationsEvidenceHandoffReportPath);
         if (handoffReport == null) {
@@ -4051,7 +4772,20 @@ public class AdminController {
         }
         List<DashboardOperationsEvidenceHandoffDispatchWorkflowResponse> readyDispatchWorkflows = operationsEvidenceHandoffDispatchWorkflows(handoffReport, "readyDispatchWorkflows");
         List<DashboardOperationsEvidenceHandoffDispatchWorkflowResponse> blockedDispatchWorkflows = operationsEvidenceHandoffDispatchWorkflows(handoffReport, "blockedDispatchWorkflows");
+        List<DashboardOperationsEvidenceHandoffBrowserDispatchChecklistResponse> browserDispatchChecklist = operationsEvidenceHandoffBrowserDispatchChecklist(handoffReport);
+        java.util.ArrayList<DashboardOperationsWorkflowRunIdInputResponse> securityEvidenceFinalizerRunIdInputHints = new java.util.ArrayList<>();
+        JsonNode hintNodes = handoffReport.path("securityEvidenceFinalizerRunIdInputHints");
+        if (hintNodes.isArray()) {
+            for (JsonNode input : hintNodes) {
+                securityEvidenceFinalizerRunIdInputHints.add(workflowRunIdInputSnapshot(input));
+            }
+        }
+        List<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> postDispatchCommands = operationsEvidenceHandoffPostDispatchCommands(handoffReport);
         JsonNode nextStep = handoffReport.path("nextStep");
+        JsonNode currentBottleneck = handoffReport.path("currentBottleneck");
+        if (currentBottleneck.isMissingNode() || currentBottleneck.isNull()) {
+            currentBottleneck = nextStep;
+        }
         return new DashboardOperationsEvidenceHandoffResponse(
                 jsonText(handoffReport, "result"),
                 jsonText(handoffReport, "generatedAt"),
@@ -4060,23 +4794,53 @@ public class AdminController {
                         jsonText(nextStep, "title"),
                         jsonText(nextStep, "command"),
                         jsonText(nextStep, "reason"),
-                        jsonText(nextStep, "note")
+                        jsonText(nextStep, "note"),
+                        jsonTextList(nextStep, "dispatchUrls")
+                ),
+                new DashboardOperationsEvidenceHandoffNextStepResponse(
+                        jsonText(currentBottleneck, "code"),
+                        jsonText(currentBottleneck, "title"),
+                        jsonText(currentBottleneck, "command"),
+                        jsonText(currentBottleneck, "reason"),
+                        jsonText(currentBottleneck, "note"),
+                        jsonTextList(currentBottleneck, "dispatchUrls")
                 ),
                 jsonInt(handoffReport, "stageCount"),
                 jsonInt(handoffReport, "readyStageCount"),
+                jsonText(handoffReport, "readinessSummary"),
+                jsonInt(handoffReport, "readinessPassedCount"),
+                jsonInt(handoffReport, "readinessPendingCount"),
+                jsonInt(handoffReport, "readinessTotalCount"),
+                jsonInt(handoffReport, "readinessCheckCount"),
                 jsonText(handoffReport, "dispatchPreflightResult"),
+                jsonText(handoffReport, "dispatchGithubRepository"),
                 jsonInt(handoffReport, "readyDispatchTemplateCount"),
                 jsonInt(handoffReport, "blockedDispatchTemplateCount"),
                 jsonIntList(handoffReport, "readyDispatchActionOrders"),
                 jsonIntList(handoffReport, "blockedDispatchActionOrders"),
+                jsonIntList(handoffReport, "invocationSelectedActionOrders"),
+                jsonIntList(handoffReport, "dispatchPreflightSelectedActionOrders"),
+                jsonIntList(handoffReport, "workflowRunIdPlanActionOrders"),
+                jsonIntList(handoffReport, "artifactCollectionActionOrders"),
+                jsonBoolean(handoffReport, "dispatchPreflightScopeMismatch"),
+                jsonBoolean(handoffReport, "workflowRunIdPlanStale"),
+                jsonBoolean(handoffReport, "workflowRunIdPlanScopeMismatch"),
+                jsonBoolean(handoffReport, "artifactCollectionStale"),
+                jsonBoolean(handoffReport, "artifactCollectionScopeMismatch"),
                 readyDispatchWorkflows,
                 blockedDispatchWorkflows,
+                jsonInt(handoffReport, "browserDispatchChecklistCount"),
+                browserDispatchChecklist,
+                jsonInt(handoffReport, "securityEvidenceFinalizerRunIdInputHintCount"),
+                List.copyOf(securityEvidenceFinalizerRunIdInputHints),
+                jsonInt(handoffReport, "staleReportCount"),
                 jsonInt(handoffReport, "blockedActionCount"),
                 jsonInt(handoffReport, "missingWorkflowRunCount"),
                 jsonInt(handoffReport, "missingRequiredArtifactCount"),
                 jsonInt(handoffReport, "failedImportCount"),
                 jsonInt(handoffReport, "finalizerFailedCount"),
                 jsonInt(handoffReport, "finalizerGapCount"),
+                postDispatchCommands,
                 List.copyOf(stages)
         );
     }
@@ -4109,8 +4873,9 @@ public class AdminController {
                 convergence.currentBottleneck().command(),
                 "",
                 "",
-                "%s%s".formatted(
+                "%s%s%s".formatted(
                         convergence.currentBottleneck().reason(),
+                        convergence.currentBottleneck().note().isBlank() ? "" : " " + convergence.currentBottleneck().note(),
                         convergence.safetyPolicy().isBlank() ? "" : " " + convergence.safetyPolicy()
                 ).trim()
         );
@@ -4122,6 +4887,24 @@ public class AdminController {
             return DashboardOperationsReadinessConvergenceResponse.empty();
         }
         JsonNode bottleneck = convergenceReport.path("currentBottleneck");
+        java.util.ArrayList<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> handoffPostDispatchCommands = new java.util.ArrayList<>();
+        JsonNode postDispatchCommandNodes = convergenceReport.path("handoffPostDispatchCommands");
+        if (postDispatchCommandNodes.isArray()) {
+            for (JsonNode command : postDispatchCommandNodes) {
+                handoffPostDispatchCommands.add(new DashboardOperationsEvidenceHandoffPostDispatchCommandResponse(
+                        jsonText(command, "name"),
+                        jsonText(command, "command"),
+                        jsonText(command, "note")
+                ));
+            }
+        }
+        java.util.ArrayList<DashboardOperationsWorkflowRunIdInputResponse> handoffSecurityEvidenceFinalizerRunIdInputHints = new java.util.ArrayList<>();
+        JsonNode hintNodes = convergenceReport.path("handoffSecurityEvidenceFinalizerRunIdInputHints");
+        if (hintNodes.isArray()) {
+            for (JsonNode input : hintNodes) {
+                handoffSecurityEvidenceFinalizerRunIdInputHints.add(workflowRunIdInputSnapshot(input));
+            }
+        }
         java.util.ArrayList<DashboardOperationsReadinessConvergenceCommandResponse> recommendedCommands = new java.util.ArrayList<>();
         JsonNode commandNodes = convergenceReport.path("recommendedCommands");
         if (commandNodes.isArray()) {
@@ -4130,7 +4913,9 @@ public class AdminController {
                         jsonInt(command, "order"),
                         jsonText(command, "name"),
                         jsonText(command, "command"),
-                        jsonText(command, "reason")
+                        jsonText(command, "reason"),
+                        jsonText(command, "note"),
+                        jsonTextList(command, "dispatchUrls")
                 ));
             }
         }
@@ -4142,9 +4927,18 @@ public class AdminController {
                 jsonText(convergenceReport, "operationsReadinessFinalizeReportPath"),
                 jsonBoolean(convergenceReport, "handoffExists"),
                 jsonText(convergenceReport, "handoffResult"),
+                jsonBoolean(convergenceReport, "handoffStale"),
+                jsonText(convergenceReport, "handoffTimestamp"),
+                jsonText(convergenceReport, "handoffTimestampSource"),
+                jsonText(convergenceReport, "readinessTimestamp"),
+                jsonText(convergenceReport, "readinessTimestampSource"),
                 jsonBoolean(convergenceReport, "readinessExists"),
                 jsonText(convergenceReport, "readinessResult"),
                 jsonText(convergenceReport, "readinessSummary"),
+                jsonInt(convergenceReport, "readinessPassedCount"),
+                jsonInt(convergenceReport, "readinessPendingCount"),
+                jsonInt(convergenceReport, "readinessTotalCount"),
+                jsonInt(convergenceReport, "readinessCheckCount"),
                 jsonBoolean(convergenceReport, "finalizerExists"),
                 jsonText(convergenceReport, "finalizerResult"),
                 jsonText(convergenceReport, "finalizerReadinessResult"),
@@ -4154,6 +4948,10 @@ public class AdminController {
                 jsonText(convergenceReport, "kubernetesOperationsReportSyncReportPath"),
                 jsonBoolean(convergenceReport, "kubernetesReportSyncExists"),
                 jsonText(convergenceReport, "kubernetesReportSyncResult"),
+                jsonBoolean(convergenceReport, "kubernetesReportSyncStale"),
+                jsonText(convergenceReport, "kubernetesReportSyncTimestamp"),
+                jsonText(convergenceReport, "kubernetesReportSyncTimestampSource"),
+                jsonText(convergenceReport, "kubernetesReportSyncFreshnessReason"),
                 jsonInt(convergenceReport, "kubernetesReportSyncFailedCount"),
                 jsonBoolean(convergenceReport, "kubernetesReportSyncFailedCountValid"),
                 jsonText(convergenceReport, "kubernetesReportSyncFailedCountRaw"),
@@ -4174,8 +4972,14 @@ public class AdminController {
                         jsonText(bottleneck, "code"),
                         jsonText(bottleneck, "title"),
                         jsonText(bottleneck, "reason"),
-                        jsonText(bottleneck, "command")
+                        jsonText(bottleneck, "command"),
+                        jsonText(bottleneck, "note"),
+                        jsonTextList(bottleneck, "dispatchUrls")
                 ),
+                List.copyOf(handoffPostDispatchCommands),
+                jsonTextList(convergenceReport, "handoffBrowserDispatchDependencyNotes"),
+                jsonInt(convergenceReport, "handoffSecurityEvidenceFinalizerRunIdInputHintCount"),
+                List.copyOf(handoffSecurityEvidenceFinalizerRunIdInputHints),
                 List.copyOf(recommendedCommands),
                 jsonText(convergenceReport, "decisionRule"),
                 jsonText(convergenceReport, "safetyPolicy")
@@ -4251,13 +5055,25 @@ public class AdminController {
                 jsonText(report, "evidenceConfigMapKey"),
                 jsonText(report, "dataFlowStoragePlanConfigMapKey"),
                 jsonText(report, "dataFlowStorageTransitionRunbookConfigMapKey"),
+                jsonText(report, "dataFlowQueryRetentionBudgetConfigMapKey"),
                 jsonBoolean(report, "publishDataFlowStoragePlanToConfigMap"),
                 jsonBoolean(report, "publishDataFlowStorageTransitionRunbookToConfigMap"),
+                jsonBoolean(report, "publishDataFlowQueryRetentionBudgetToConfigMap"),
                 jsonText(report, "sourceReportPath"),
                 jsonText(report, "sourceReportFormatVersion"),
                 jsonText(report, "sourceReportResult"),
                 jsonLong(report, "sourceReportBytes"),
                 jsonText(report, "sourceReportSha256"),
+                jsonText(report, "dataFlowQueryRetentionBudgetResult"),
+                jsonText(report, "dataFlowQueryRetentionBudgetStoragePlanResult"),
+                jsonText(report, "dataFlowQueryRetentionBudgetCandidateStore"),
+                jsonInt(report, "dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs"),
+                jsonInt(report, "dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs"),
+                jsonInt(report, "dataFlowQueryRetentionBudgetRetentionBudgetSeconds"),
+                jsonInt(report, "dataFlowQueryRetentionBudgetFailureCount"),
+                jsonInt(report, "dataFlowQueryRetentionBudgetCheckCount"),
+                jsonLong(report, "dataFlowQueryRetentionBudgetBytes"),
+                jsonText(report, "dataFlowQueryRetentionBudgetSha256"),
                 jsonText(report, "dataFlowStorageTransitionRunbookResult"),
                 jsonText(report, "dataFlowStorageTransitionRunbookStoragePlanResult"),
                 jsonText(report, "dataFlowStorageTransitionRunbookCandidateStore"),
@@ -4366,6 +5182,11 @@ public class AdminController {
         return value.isBoolean() && value.asBoolean(false);
     }
 
+    private void putIfNotBlank(java.util.LinkedHashMap<String, String> values, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            values.put(key, value);
+        }
+    }
     private java.util.LinkedHashMap<String, String> jsonTextMap(JsonNode node) {
         java.util.LinkedHashMap<String, String> values = new java.util.LinkedHashMap<>();
         if (node == null || !node.isObject()) {

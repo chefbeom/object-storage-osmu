@@ -11,6 +11,7 @@ public record DashboardOperationsEvidenceHandoffDispatchWorkflowResponse(
         String actionType,
         String commandMode,
         String workflow,
+        String dispatchUrl,
         boolean readyToDispatch,
         int missingInputCount,
         int unsafeInputCount,

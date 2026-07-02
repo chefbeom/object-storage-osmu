@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -104,8 +108,8 @@ if ($LASTEXITCODE -ne 0) {
 Assert-True (Test-Path -LiteralPath $jsonOutputPath) "Data-flow storage transition runbook evidence JSON missing."
 Assert-True (Test-Path -LiteralPath $markdownOutputPath) "Data-flow storage transition runbook evidence markdown missing."
 
-$reportText = Get-Content -Raw -LiteralPath $jsonOutputPath
-$markdown = Get-Content -Raw -LiteralPath $markdownOutputPath
+$reportText = Read-Utf8Text $jsonOutputPath
+$markdown = Read-Utf8Text $markdownOutputPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 
@@ -225,3 +229,4 @@ Assert-Contains ($rawSqlOutput | Out-String) "raw SQL" "raw SQL plan output"
 Write-Host "Data-flow storage transition runbook evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"
 Write-Host "Markdown: $markdownOutputPath"
+exit 0

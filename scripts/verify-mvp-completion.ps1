@@ -2,6 +2,7 @@ param(
     [string] $DemoReadinessPath = ".\.osmu-run\latest-demo-readiness.json",
     [string] $DurableGateReportPath = ".\.osmu-run\latest-durable-demo-gate.json",
     [string] $DurableFinalizeReportPath = ".\.osmu-run\latest-durable-mvp-finalize.json",
+    [string] $DurablePreflightReportPath = ".\.osmu-run\latest-durable-demo-preflight.json",
     [string] $ReleaseReportPath = ".\.osmu-run\latest-release.json",
     [string] $AuditPath = ".\.osmu-run\latest-mvp-audit.md",
     [string] $DecisionPath = ".\.osmu-run\latest-release-decision.md",
@@ -23,6 +24,11 @@ function Resolve-ProjectPath([string] $PathValue) {
         return [System.IO.Path]::GetFullPath($PathValue)
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
+}
+
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
 }
 
 function Get-JsonProperty([object] $Object, [string] $Name) {
@@ -62,7 +68,7 @@ function Read-OptionalJson([string] $PathValue, [string] $Label) {
             path = $resolved
             exists = $true
             parsed = $true
-            json = (Get-Content -Raw -LiteralPath $resolved | ConvertFrom-Json)
+            json = (Read-Utf8Text $resolved | ConvertFrom-Json)
             detail = "report parsed"
         }
     }
@@ -93,7 +99,7 @@ function Read-OptionalText([string] $PathValue, [string] $Label) {
         label = $Label
         path = $resolved
         exists = $true
-        text = (Get-Content -Raw -LiteralPath $resolved)
+        text = (Read-Utf8Text $resolved)
         detail = "file read"
     }
 }
@@ -125,9 +131,17 @@ function Test-NotContains([object] $TextReport, [string] $Unexpected) {
     return $TextReport.exists -and -not $TextReport.text.Contains($Unexpected)
 }
 
+function Test-OccurrenceCount([object] $TextReport, [string] $Expected, [int] $Count) {
+    if (-not $TextReport.exists) {
+        return $false
+    }
+    return ([regex]::Matches($TextReport.text, [regex]::Escape($Expected))).Count -eq $Count
+}
+
 $demo = Read-OptionalJson $DemoReadinessPath "MVP demo readiness"
 $durableGate = Read-OptionalJson $DurableGateReportPath "Durable demo gate"
 $durableFinalize = Read-OptionalJson $DurableFinalizeReportPath "Durable MVP finalizer"
+$durablePreflight = Read-OptionalJson $DurablePreflightReportPath "Durable demo preflight"
 $release = Read-OptionalJson $ReleaseReportPath "MVP release report"
 $operations = Read-OptionalJson $OperationsReadinessPath "Production operations readiness"
 $audit = Read-OptionalText $AuditPath "MVP audit"
@@ -138,6 +152,8 @@ $featureInventory = Read-OptionalText ".\dev-docs\feature-inventory.md" "Feature
 $prototypeStatus = Read-OptionalText ".\dev-docs\prototype-status.md" "Prototype status"
 $releaseChecklist = Read-OptionalText ".\dev-docs\mvp-release-checklist.md" "MVP release checklist"
 $documentIndex = Read-OptionalText ".\dev-docs\document-index.md" "Document index"
+$localDevEnv = Read-OptionalText ".\dev-docs\local-dev-env.md" "Local dev environment"
+$testCases = Read-OptionalText ".\dev-docs\test-cases.md" "Test cases"
 $s3Compatibility = Read-OptionalText ".\dev-docs\s3-compatibility.md" "S3 compatibility matrix"
 $s3BoundaryVerifierPath = Resolve-ProjectPath ".\scripts\verify-s3-compatibility-boundary.ps1"
 
@@ -150,21 +166,77 @@ if ($demo.exists -and $demo.parsed) {
     $pendingDurableChecks = @(Get-JsonProperty $demo.json "pendingDurableChecks")
 }
 
+
+$durableFinalizeResult = Get-Text $durableFinalize.json "result"
+$durableFinalizeStatus = Get-Text $durableFinalize.json "currentDemoStatus"
+$durableFinalizeSelectedS3Client = Get-Text $durableFinalize.json "selectedS3Client"
+if (-not $durableFinalizeSelectedS3Client) {
+    $durableFinalizeSelectedS3Client = "docker-mc"
+}
+$durablePreflightResult = if ($durablePreflight.exists -and $durablePreflight.parsed) { Get-Text $durablePreflight.json "result" } else { "missing" }
+$durablePreflightNextAction = if ($durablePreflight.exists -and $durablePreflight.parsed) { Get-Text $durablePreflight.json "nextAction" } else { "" }
+$durablePreflightNextActionCommand = if ($durablePreflight.exists -and $durablePreflight.parsed) { Get-Text $durablePreflight.json "nextActionCommand" } else { "" }
+$durablePreflightBlockingActions = @()
+if ($durablePreflight.exists -and $durablePreflight.parsed) {
+    $durablePreflightBlockingActions = @(Get-JsonProperty $durablePreflight.json "blockingActions" | ForEach-Object {
+        [ordered]@{
+            check = Get-Text $_ "check"
+            action = Get-Text $_ "action"
+            command = Get-Text $_ "command"
+        }
+    })
+}
+$durablePreflightBlockingSummary = if ($durablePreflightBlockingActions.Count -gt 0) {
+    @($durablePreflightBlockingActions | ForEach-Object { $_.check }) -join ", "
+}
+else {
+    "none"
+}
+$durableFinalizeDetail = "result=$durableFinalizeResult, currentDemoStatus=$durableFinalizeStatus"
+if ($durableFinalize.exists -and $durableFinalize.parsed -and $durableFinalizeResult -eq "planned") {
+    $durableFinalizeDetail = "$durableFinalizeDetail; plan-only report detected at latest finalizer path. Run .\scripts\finalize-durable-mvp-demo.ps1 -S3Client $durableFinalizeSelectedS3Client -EnableRealMultipartEvidence after Docker is ready, or point -DurableFinalizeReportPath at a ready report. Plan-only defaults to .osmu-run/latest-durable-mvp-finalize-plan.*."
+    if ($durablePreflight.exists -and $durablePreflight.parsed) {
+        $durableFinalizeDetail = "$durableFinalizeDetail Latest durable preflight: result=$durablePreflightResult, blockingActions=$durablePreflightBlockingSummary."
+        if ($durablePreflightNextAction) {
+            $durableFinalizeDetail = "$durableFinalizeDetail Next action: $durablePreflightNextAction"
+        }
+        if ($durablePreflightNextActionCommand) {
+            $durableFinalizeDetail = "$durableFinalizeDetail Command: $durablePreflightNextActionCommand"
+        }
+    }
+}
+
 Add-Check "Demo readiness report ready" "local-mvp" ($demo.exists -and $demo.parsed -and $demoResult -eq "ready" -and $demoStatus -eq "docker-durable-demo-verified") "result=$demoResult, currentDemoStatus=$demoStatus, mvpDemo=$demoMvpEstimate" $demo.path
 Add-Check "No pending durable checks" "local-mvp" ($demo.exists -and $demo.parsed -and @($pendingDurableChecks).Count -eq 0) "pendingDurableChecks=$(@($pendingDurableChecks).Count)" $demo.path
 Add-Check "Durable demo gate ready" "local-mvp" ($durableGate.exists -and $durableGate.parsed -and (Get-Text $durableGate.json "result") -eq "ready" -and (Get-Text $durableGate.json "currentDemoStatus") -eq "docker-durable-demo-verified") "result=$(Get-Text $durableGate.json "result"), currentDemoStatus=$(Get-Text $durableGate.json "currentDemoStatus"), selectedS3Client=$(Get-Text $durableGate.json "selectedS3Client")" $durableGate.path
-Add-Check "Durable MVP finalizer ready" "local-mvp" ($durableFinalize.exists -and $durableFinalize.parsed -and (Get-Text $durableFinalize.json "result") -eq "ready" -and (Get-Text $durableFinalize.json "currentDemoStatus") -eq "docker-durable-demo-verified") "result=$(Get-Text $durableFinalize.json "result"), currentDemoStatus=$(Get-Text $durableFinalize.json "currentDemoStatus")" $durableFinalize.path
+Add-Check "Durable MVP finalizer ready" "local-mvp" ($durableFinalize.exists -and $durableFinalize.parsed -and $durableFinalizeResult -eq "ready" -and $durableFinalizeStatus -eq "docker-durable-demo-verified") $durableFinalizeDetail $durableFinalize.path
 Add-Check "Release report passed" "release-artifact" ($release.exists -and $release.parsed -and (Get-Text $release.json "result") -eq "passed") "result=$(Get-Text $release.json "result"), source=$(Get-Text $release.json "source")" $release.path
 Add-Check "Audit marks durable and frontend evidence passed" "release-artifact" ((Test-Contains $audit "- PASS: Durable MVP demo gate") -and (Test-Contains $audit "- PASS: Frontend portal checks") -and (Test-Contains $audit "Browser click E2E passed") -and (Test-NotContains $audit "Browser click E2E pending")) "audit durable/frontend/browser status checked" $audit.path
 Add-Check "Release decision marks durable MVP pilot GO" "release-artifact" (Test-Contains $decision "- Durable MVP pilot: GO") "durable MVP pilot decision line checked" $decision.path
 Add-Check "Release notes preserve durable proof" "release-artifact" ((Test-Contains $releaseNotes "Durable MVP demo gate report: result=ready") -and (Test-Contains $releaseNotes "local durable MVP demo evidence")) "durable proof release note checked" $releaseNotes.path
-Add-Check "Demo package notes preserve pilot handoff" "release-artifact" ((Test-Contains $demoPackageNotes "Package status: local-durable-mvp-ready") -and (Test-Contains $demoPackageNotes "S3 Replacement Boundary") -and (Test-Contains $demoPackageNotes "dev-docs/s3-compatibility.md")) "demo package handoff checked" $demoPackageNotes.path
+$expectedDemoPackageStatus = if (
+    $demo.exists -and $demo.parsed -and $demoResult -eq "ready" -and $demoStatus -eq "docker-durable-demo-verified" -and
+    @($pendingDurableChecks).Count -eq 0 -and
+    $durableGate.exists -and $durableGate.parsed -and (Get-Text $durableGate.json "result") -eq "ready" -and (Get-Text $durableGate.json "currentDemoStatus") -eq "docker-durable-demo-verified" -and
+    $durableFinalize.exists -and $durableFinalize.parsed -and $durableFinalizeResult -eq "ready" -and $durableFinalizeStatus -eq "docker-durable-demo-verified" -and
+    $release.exists -and $release.parsed -and (Get-Text $release.json "result") -eq "passed" -and
+    (Test-Contains $decision "- Durable MVP pilot: GO")
+) {
+    "local-durable-mvp-ready"
+}
+else {
+    "local-durable-mvp-pending"
+}
+Add-Check "Demo package notes preserve pilot handoff" "release-artifact" ((Test-Contains $demoPackageNotes "Package status: $expectedDemoPackageStatus") -and (Test-Contains $demoPackageNotes "S3 Replacement Boundary") -and (Test-Contains $demoPackageNotes "dev-docs/s3-compatibility.md")) "demo package handoff checked; expectedPackageStatus=$expectedDemoPackageStatus" $demoPackageNotes.path
 Add-Check "S3 replacement boundary verifier available" "documentation" (Test-Path -LiteralPath $s3BoundaryVerifierPath) "path=$s3BoundaryVerifierPath" $s3BoundaryVerifierPath
 Add-Check "S3 compatibility matrix preserves replacement boundary" "documentation" ((Test-Contains $s3Compatibility "## Product Boundary") -and (Test-Contains $s3Compatibility "## Verification Rule") -and (Test-Contains $s3Compatibility "New S3 work should start from target-client replacement needs") -and (Test-Contains $s3Compatibility "New S3 behavior is accepted into the roadmap only when it protects replacement use") -and (Test-Contains $s3Compatibility "Detailed AWS checksum negotiation/client-option parity is out of scope unless needed for a supported real-client smoke.")) "S3 replacement boundary checked" $s3Compatibility.path
-Add-Check "Feature inventory local MVP state current" "documentation" ((Test-Contains $featureInventory "MVP demo current estimate: 90-95%") -and (Test-Contains $featureInventory "docker-durable-demo-verified") -and (Test-Contains $featureInventory "readiness-ready/finalizer-missing")) "feature inventory local MVP status checked" $featureInventory.path
+Add-Check "Feature inventory local MVP state current" "documentation" ((Test-Contains $featureInventory "MVP demo current estimate: 90-95%") -and (Test-Contains $featureInventory "docker-durable-demo-verified") -and (Test-Contains $featureInventory "readiness-ready/finalizer-missing") -and (Test-Contains $featureInventory "currentDemoStatus=durable-mvp-finalize-plan") -and (Test-Contains $featureInventory "frontend unit tests: 115 passed") -and (Test-NotContains $featureInventory "frontend unit tests: 95 passed")) "feature inventory local MVP status checked" $featureInventory.path
 Add-Check "Prototype status local MVP state current" "documentation" ((Test-Contains $prototypeStatus "docker-durable-demo-verified") -and (Test-NotContains $prototypeStatus "full Docker runtime verification is still pending")) "prototype status stale blocker check" $prototypeStatus.path
-Add-Check "Release checklist local durable decision current" "documentation" ((Test-Contains $releaseChecklist "GO for local durable MVP demo") -and (Test-Contains $releaseChecklist 'operations readiness finalizer report exists with `result=ready`, `readinessResult=ready`') -and (Test-Contains $releaseChecklist 'typed JSON integer `failedCount=0`') -and (Test-Contains $releaseChecklist "typed boolean confirmations plus strict typed operations readiness/convergence snapshots") -and (Test-Contains $releaseChecklist "rejects string booleans, missing integer counts") -and (Test-Contains $releaseChecklist "data_flow_storage_transition_runbook_json_base64") -and (Test-Contains $releaseChecklist "OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REPORT_PATH") -and (Test-NotContains $releaseChecklist "NO-GO until every durable gate above passes")) "release checklist durable, convergence, typed handoff, and data-flow runbook sync gate checked" $releaseChecklist.path
+Add-Check "Release checklist local durable decision current" "documentation" ((Test-Contains $releaseChecklist "GO for local durable MVP demo") -and (Test-Contains $releaseChecklist 'Latest completion status: run `scripts/verify-mvp-completion.ps1` without `-FailIfLocalMvpNotReady` for the current status report') -and (Test-Contains $releaseChecklist "post-Docker-ready finalizer hard gate") -and (Test-Contains $releaseChecklist "Hard ready gate after Docker-ready finalizer refresh") -and (Test-Contains $releaseChecklist "Durable pilot: local demo/pilot handoff can be GO") -and (Test-OccurrenceCount $releaseChecklist 'verify-mvp-completion.ps1 -FailIfLocalMvpNotReady' 1) -and (Test-Contains $releaseChecklist "[x] Browser/Chrome UI click-path E2E passes.") -and (Test-Contains $releaseChecklist "[x] Release report records Docker integration as included.") -and (Test-Contains $releaseChecklist "[x] Release report records Browser E2E as verified.") -and (Test-Contains $releaseChecklist "[x] MVP audit report has no PENDING durable gate.") -and (Test-Contains $releaseChecklist "Browser acceptance spec coverage is locked by") -and (Test-Contains $releaseChecklist "[x] Smoke script coverage includes bucket root listing") -and (Test-Contains $releaseChecklist 'operations readiness finalizer report exists with `result=ready`, `readinessResult=ready`') -and (Test-Contains $releaseChecklist 'typed JSON integer `failedCount=0`') -and (Test-Contains $releaseChecklist "typed boolean confirmations plus strict typed operations readiness/convergence snapshots") -and (Test-Contains $releaseChecklist "rejects string booleans, missing integer counts") -and (Test-Contains $releaseChecklist "data_flow_query_retention_budget_json_base64") -and (Test-Contains $releaseChecklist "data_flow_storage_transition_runbook_json_base64") -and (Test-Contains $releaseChecklist "OSMU_OPERATIONS_READINESS_DATA_FLOW_QUERY_RETENTION_BUDGET_REPORT_PATH") -and (Test-Contains $releaseChecklist "OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REPORT_PATH") -and (Test-NotContains $releaseChecklist "NO-GO until every durable gate above passes") -and (Test-NotContains $releaseChecklist "Durable pilot: NO-GO while Docker, real S3 client, or Browser E2E remain pending.")) "release checklist durable, convergence, typed handoff, browser E2E, status/hard-gate split, and data-flow query-retention/runbook sync gate checked" $releaseChecklist.path
+Add-Check "Release checklist operations workflow coverage current" "documentation" ((Test-Contains $releaseChecklist "manual data-flow query/retention budget") -and (Test-Contains $releaseChecklist "manual chargeback closeout") -and (Test-Contains $releaseChecklist "manual enterprise auth JIT rollback") -and (Test-Contains $releaseChecklist "enterprise auth JIT rollback evidence summary line") -and (Test-Contains $releaseChecklist "data-flow plan candidate-decision/query-retention budget/runbook") -and (Test-Contains $releaseChecklist "data-flow query/retention budget summary line") -and (Test-Contains $releaseChecklist "data-flow query/retention budget check rows") -and (Test-Contains $releaseChecklist 'optional direct `data_flow_query_retention_budget_json_base64`') -and (Test-Contains $releaseChecklist "chargeback closeout evidence must prove sanitized invoice/payment/reconciliation counts") -and (Test-Contains $releaseChecklist "JIT rollback evidence must exclude raw identity claims") -and (Test-Contains $releaseChecklist "data_flow_query_retention_budget_json_base64") -and (Test-Contains $releaseChecklist "data_flow_storage_transition_runbook_json_base64") -and (Test-OccurrenceCount $releaseChecklist '`.osmu-run/latest-commercial-approval-evidence.json` is generated with `result=passed`' 1) -and (Test-OccurrenceCount $releaseChecklist '`.osmu-run/latest-chargeback-closeout-evidence.json` is generated with `result=passed`' 1)) "release checklist operations finalizer, importer, frontend workflow coverage, and target evidence checklist uniqueness checked" $releaseChecklist.path
 Add-Check "Document index operations convergence current" "documentation" ((Test-Contains $documentIndex "Kubernetes operations report sync reports") -and (Test-Contains $documentIndex "finalizer failed/gap gates") -and (Test-Contains $documentIndex "action-required, finalizer-required, sync-required") -and (Test-Contains $documentIndex "typed handoff confirmations") -and (Test-Contains $documentIndex "string booleans or missing integer counts inside handoff package snapshots")) "document index operations convergence and typed handoff gate checked" $documentIndex.path
+Add-Check "Durable finalize plan hygiene documented" "documentation" ((Test-Contains $documentIndex "verify-durable-mvp-finalize-plan.ps1") -and (Test-Contains $releaseChecklist "Durable finalize PlanOnly verifier") -and (Test-Contains $localDevEnv "verify-durable-mvp-finalize-plan.ps1") -and (Test-Contains $localDevEnv "preserving the latest ready finalizer evidence")) "durable PlanOnly evidence preservation docs checked" $localDevEnv.path
+Add-Check "Test cases MVP completion pending state current" "documentation" ((Test-Contains $testCases "TC-DEMO-008") -and (Test-Contains $testCases "classification=local-durable-mvp-pending") -and (Test-Contains $testCases "localDurableMvpReady=false") -and (Test-Contains $testCases "plan-only durable finalizer keeps completion pending") -and (Test-Contains $testCases "durablePreflightBlockingActions") -and (Test-Contains $testCases "durablePreflightNextActionCommand") -and (Test-NotContains $testCases "verify-mvp-completion.ps1 -FailIfLocalMvpNotReady")) "test cases MVP completion pending contract checked" $testCases.path
 
 $operationsResult = if ($operations.exists -and $operations.parsed) { Get-Text $operations.json "result" } else { "missing" }
 $operationsSummary = if ($operations.exists -and $operations.parsed) { Get-Text $operations.json "summary" } else { $operations.detail }
@@ -194,6 +266,11 @@ $report = [ordered]@{
     demoReadinessPath = $demo.path
     durableGateReportPath = $durableGate.path
     durableFinalizeReportPath = $durableFinalize.path
+    durablePreflightReportPath = $durablePreflight.path
+    durablePreflightResult = $durablePreflightResult
+    durablePreflightNextAction = $durablePreflightNextAction
+    durablePreflightNextActionCommand = $durablePreflightNextActionCommand
+    durablePreflightBlockingActions = @($durablePreflightBlockingActions)
     releaseReportPath = $release.path
     auditPath = $audit.path
     decisionPath = $decision.path
@@ -216,6 +293,13 @@ $markdownLines = @(
     "## Decision Rule",
     "",
     $report.decisionRule,
+    "",
+    "## Durable Preflight Handoff",
+    "",
+    "Result: $durablePreflightResult",
+    "Next action: $(if ($durablePreflightNextAction) { $durablePreflightNextAction } else { 'n/a' })",
+    "Next action command: $(if ($durablePreflightNextActionCommand) { $durablePreflightNextActionCommand } else { 'n/a' })",
+    "Blocking actions: $durablePreflightBlockingSummary",
     "",
     "## Checks",
     ""

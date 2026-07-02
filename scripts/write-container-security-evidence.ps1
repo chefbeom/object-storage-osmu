@@ -23,6 +23,11 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Read-SbomSummary([string] $path, [string] $label) {
     $resolvedPath = Resolve-ProjectPath $path
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
@@ -41,7 +46,7 @@ function Read-SbomSummary([string] $path, [string] $label) {
     }
 
     try {
-        $sbom = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $sbom = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $spdxVersion = [string] $sbom.spdxVersion
         $packages = @($sbom.packages)
         $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedPath

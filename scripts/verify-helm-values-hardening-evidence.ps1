@@ -10,6 +10,11 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Assert-True([bool] $Condition, [string] $Message) { if (-not $Condition) { throw $Message } }
 function Assert-Contains([string] $Text, [string] $Expected, [string] $Label) { if (-not $Text.Contains($Expected)) { throw "$Label does not contain expected text: $Expected" } }
 function Assert-NotContains([string] $Text, [string] $Unexpected, [string] $Label) { if ($Text.Contains($Unexpected)) { throw "$Label contains unexpected secret/raw text: $Unexpected" } }
@@ -27,14 +32,18 @@ $plannedJsonPath = Join-Path $resolvedOutputDirectory "planned.json"
 $plannedMarkdownPath = Join-Path $resolvedOutputDirectory "planned.md"
 $passedJsonPath = Join-Path $resolvedOutputDirectory "passed.json"
 $passedMarkdownPath = Join-Path $resolvedOutputDirectory "passed.md"
+$invalidWindowJsonPath = Join-Path $resolvedOutputDirectory "invalid-window.json"
+$invalidWindowMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-window.md"
+$tamperedJsonPath = Join-Path $resolvedOutputDirectory "tampered.json"
+$tamperedMarkdownPath = Join-Path $resolvedOutputDirectory "tampered.md"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -JsonOutputPath $plannedJsonPath `
     -MarkdownOutputPath $plannedMarkdownPath | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "planned write-helm-values-hardening-evidence.ps1 failed with exit code $LASTEXITCODE." }
 
-$plannedReport = Get-Content -Raw -LiteralPath $plannedJsonPath | ConvertFrom-Json
-$plannedMarkdown = Get-Content -Raw -LiteralPath $plannedMarkdownPath
+$plannedReport = Read-Utf8Text $plannedJsonPath | ConvertFrom-Json
+$plannedMarkdown = Read-Utf8Text $plannedMarkdownPath
 Assert-True ($plannedReport.formatVersion -eq "osmu.helm-values-hardening-evidence.v1") "Unexpected Helm values hardening formatVersion."
 Assert-True ($plannedReport.result -eq "planned") "Default Helm values hardening evidence should be planned."
 Assert-True ($plannedReport.summary.failureCount -gt 0) "Planned Helm values hardening evidence should include missing checks."
@@ -70,8 +79,8 @@ Assert-Contains $plannedMarkdown "Helm Values Hardening Evidence" "planned markd
     -FailIfNotPassed | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "passed write-helm-values-hardening-evidence.ps1 failed with exit code $LASTEXITCODE." }
 
-$reportText = Get-Content -Raw -LiteralPath $passedJsonPath
-$markdown = Get-Content -Raw -LiteralPath $passedMarkdownPath
+$reportText = Read-Utf8Text $passedJsonPath
+$markdown = Read-Utf8Text $passedMarkdownPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 Assert-True ($report.result -eq "passed") "Expected result=passed."
@@ -129,17 +138,20 @@ try {
         -ConfirmOperationsReportsReadOnly `
         -ConfirmStorageExpansionRbacDisabledByDefault `
         -ConfirmNoCredentialValues `
+        -JsonOutputPath $invalidWindowJsonPath `
+        -MarkdownOutputPath $invalidWindowMarkdownPath `
         -FailIfNotPassed 2>&1
     $invalidWindowExitCode = $LASTEXITCODE
 }
 finally { $ErrorActionPreference = $previousErrorActionPreference }
 Assert-True ($invalidWindowExitCode -ne 0) "Invalid review window should be rejected."
 Assert-Contains ($invalidWindowOutput | Out-String) "review-window-order" "invalid window output"
+Assert-True (Test-Path -LiteralPath $invalidWindowJsonPath) "Invalid-window JSON should stay isolated under the self-test output directory."
 
 $fixtureChart = Join-Path $resolvedOutputDirectory "tampered-chart"
 Copy-Item -Recurse -LiteralPath (Resolve-ProjectPath ".\infra\helm\osmu") -Destination $fixtureChart
 $fixtureValuesPath = Join-Path $fixtureChart "values.yaml"
-$fixtureValues = Get-Content -Raw -LiteralPath $fixtureValuesPath
+$fixtureValues = Read-Utf8Text $fixtureValuesPath
 $fixtureValues = $fixtureValues -replace "(?ms)(networkPolicy:\s*\r?\n\s*)enabled:\s*true", '$1enabled: false'
 Set-Content -Encoding UTF8 -LiteralPath $fixtureValuesPath -Value $fixtureValues
 
@@ -169,11 +181,15 @@ try {
         -ConfirmOperationsReportsReadOnly `
         -ConfirmStorageExpansionRbacDisabledByDefault `
         -ConfirmNoCredentialValues `
+        -JsonOutputPath $tamperedJsonPath `
+        -MarkdownOutputPath $tamperedMarkdownPath `
         -FailIfNotPassed 2>&1
     $tamperedExitCode = $LASTEXITCODE
 }
 finally { $ErrorActionPreference = $previousErrorActionPreference }
 Assert-True ($tamperedExitCode -ne 0) "Tampered networkPolicy.enabled=false values should fail."
 Assert-Contains ($tamperedOutput | Out-String) "network-policy-enabled" "tampered values output"
+Assert-True (Test-Path -LiteralPath $tamperedJsonPath) "Tampered-values JSON should stay isolated under the self-test output directory."
 
 Write-Host "Helm values hardening evidence verification passed: $passedJsonPath"
+exit 0

@@ -10,6 +10,23 @@ $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 . (Join-Path $PSScriptRoot "java-toolchain.ps1")
 . (Join-Path $PSScriptRoot "docker-toolchain.ps1")
 
+function Resolve-VerifyLocalPath([string] $PathValue) {
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return [System.IO.Path]::GetFullPath($PathValue)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
+}
+
+function Read-Utf8Text([string] $PathValue) {
+    $resolvedPath = Resolve-VerifyLocalPath $PathValue
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.Encoding]::UTF8)
+}
+
+function Invoke-PowerShellScriptParseCheck() {
+    Get-ChildItem (Join-Path $root "scripts") -Filter *.ps1 | ForEach-Object {
+        [scriptblock]::Create((Read-Utf8Text $_.FullName)) | Out-Null
+    }
+}
 function Step($message) {
     Write-Host ""
     Write-Host "==> $message"
@@ -29,6 +46,229 @@ function Run($command, $workingDirectory = $root) {
     }
 }
 
+function Run-GitDiffCheck() {
+    $command = "git diff --check"
+    Write-Host "    $command"
+    Push-Location $root
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $global:LASTEXITCODE = 0
+        $output = & git diff --check 2>&1
+        $exitCode = $LASTEXITCODE
+        if ($output) {
+            $output | ForEach-Object { Write-Host $_ }
+        }
+        if ($exitCode -ne 0) {
+            throw "Command failed with exit code $exitCode`: $command"
+        }
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        Pop-Location
+    }
+}
+
+function Get-JsonFile($path) {
+    $resolvedPath = Resolve-VerifyLocalPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return $null
+    }
+    try {
+        return Read-Utf8Text $resolvedPath | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-JsonPropertyValue($object, [string] $name) {
+    if ($null -eq $object) {
+        return $null
+    }
+    $property = $object.PSObject.Properties[$name]
+    if ($null -eq $property) {
+        return $null
+    }
+    return $property.Value
+}
+
+function Quote-RunArgument([string] $value) {
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return ""
+    }
+    return "'" + ($value -replace "'", "''") + "'"
+}
+
+function New-RunArgument([string] $name, [string] $value) {
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return ""
+    }
+    return " -$name $(Quote-RunArgument $value)"
+}
+
+function Get-OperationsSelectedActionOrders() {
+    $candidateReports = @(
+        @{ Path = ".osmu-run\latest-operations-evidence-plan-invocation.json"; Fields = @("selectedActionOrders") },
+        @{ Path = ".osmu-run\latest-operations-dispatch-preflight.json"; Fields = @("selectedActionOrders", "readyActionOrders") },
+        @{ Path = ".osmu-run\latest-operations-workflow-run-ids.json"; Fields = @("selectedActionOrders", "sourceActionOrders") },
+        @{ Path = ".osmu-run\latest-operations-artifact-collection-plan.json"; Fields = @("selectedActionOrders", "sourceActionOrders") },
+        @{ Path = ".osmu-run\latest-operations-evidence-handoff.json"; Fields = @("invocationSelectedActionOrders", "dispatchPreflightSelectedActionOrders", "workflowRunIdPlanActionOrders", "artifactCollectionActionOrders") }
+    )
+
+    foreach ($candidate in $candidateReports) {
+        $report = Get-JsonFile $candidate.Path
+        if ($null -eq $report) {
+            continue
+        }
+        foreach ($field in $candidate.Fields) {
+            $values = @(Get-JsonPropertyValue $report $field)
+            $orders = @(
+                $values |
+                    Where-Object { $null -ne $_ -and "$($_)".Trim() -match '^\d+$' } |
+                    ForEach-Object { [int] $_ } |
+                    Sort-Object -Unique
+            )
+            if (@($orders).Count -gt 0) {
+                return $orders
+            }
+        }
+    }
+
+    return @()
+}
+
+function New-ActionOrderArgument([int[]] $orders) {
+    if (@($orders).Count -eq 0) {
+        return ""
+    }
+    return " -ActionOrder $($orders -join ',')"
+}
+function Get-OperationsIntProperty($object, [string] $name) {
+    $value = Get-JsonPropertyValue $object $name
+    if ($null -eq $value) {
+        return 0
+    }
+    try {
+        return [int] $value
+    }
+    catch {
+        throw "Operations latest evidence field $name is not an integer: $value"
+    }
+}
+
+function Get-OperationsBoolProperty($object, [string] $name) {
+    $value = Get-JsonPropertyValue $object $name
+    if ($null -eq $value) {
+        return $false
+    }
+    try {
+        return [System.Convert]::ToBoolean($value)
+    }
+    catch {
+        throw "Operations latest evidence field $name is not a boolean: $value"
+    }
+}
+
+function Convert-OperationsTimestamp([string] $value, [string] $label) {
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw "Operations latest evidence $label timestamp is missing."
+    }
+    $parsed = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse($value, [ref] $parsed)) {
+        throw "Operations latest evidence $label timestamp is invalid: $value"
+    }
+    return $parsed
+}
+
+function Get-OperationsIntArray($object, [string] $name) {
+    $values = @(Get-JsonPropertyValue $object $name)
+    return @(
+        $values |
+            Where-Object { $null -ne $_ -and "$($_)".Trim() -match '^\d+$' } |
+            ForEach-Object { [int] $_ } |
+            Sort-Object -Unique
+    )
+}
+
+function Assert-OperationsIntArrayEqual([int[]] $expected, [int[]] $actual, [string] $label) {
+    $expectedValues = @($expected | Sort-Object -Unique)
+    $actualValues = @($actual | Sort-Object -Unique)
+    $expectedText = if (@($expectedValues).Count -eq 0) { "" } else { $expectedValues -join "," }
+    $actualText = if (@($actualValues).Count -eq 0) { "" } else { $actualValues -join "," }
+    if ($expectedText -ne $actualText) {
+        throw "Operations latest evidence selected action order mismatch for $label`: expected=[$expectedText] actual=[$actualText]"
+    }
+}
+
+function Assert-OperationsSelectedActionScope([int[]] $expectedActionOrders, [object] $report, [string] $fieldName, [string] $label) {
+    if (@($expectedActionOrders).Count -eq 0) {
+        return
+    }
+    if ($null -eq $report) {
+        throw "Operations latest evidence report missing while checking selected action scope: $label"
+    }
+    Assert-OperationsIntArrayEqual $expectedActionOrders (Get-OperationsIntArray $report $fieldName) $label
+}
+
+function Assert-OperationsLatestEvidenceFreshness([int[]] $expectedActionOrders) {
+    $readiness = Get-JsonFile ".osmu-run\latest-operations-readiness.json"
+    $invocation = Get-JsonFile ".osmu-run\latest-operations-evidence-plan-invocation.json"
+    $dispatchPreflight = Get-JsonFile ".osmu-run\latest-operations-dispatch-preflight.json"
+    $workflowRunIds = Get-JsonFile ".osmu-run\latest-operations-workflow-run-ids.json"
+    $artifactCollection = Get-JsonFile ".osmu-run\latest-operations-artifact-collection-plan.json"
+    $handoff = Get-JsonFile ".osmu-run\latest-operations-evidence-handoff.json"
+    $convergence = Get-JsonFile ".osmu-run\latest-operations-readiness-convergence.json"
+
+    if ($null -eq $readiness -or $null -eq $handoff -or $null -eq $convergence) {
+        throw "Operations latest evidence refresh did not write readiness, handoff, and convergence reports."
+    }
+
+    $readinessTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $readiness "generatedAt")) "readiness"
+    $handoffTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $handoff "generatedAt")) "handoff"
+    $convergenceTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $convergence "generatedAt")) "convergence"
+
+    if ($handoffTime -lt $readinessTime) {
+        throw "Operations latest evidence handoff is older than readiness after refresh: handoff=$handoffTime readiness=$readinessTime"
+    }
+    if ($convergenceTime -lt $handoffTime) {
+        throw "Operations latest evidence convergence is older than handoff after refresh: convergence=$convergenceTime handoff=$handoffTime"
+    }
+
+    $staleReportCount = Get-OperationsIntProperty $handoff "staleReportCount"
+    if ($staleReportCount -ne 0) {
+        throw "Operations latest evidence handoff still has staleReportCount=$staleReportCount after refresh."
+    }
+    if (Get-OperationsBoolProperty $convergence "handoffStale") {
+        throw "Operations latest evidence convergence still has handoffStale=true after refresh."
+    }
+
+    $handoffNextStep = Get-JsonPropertyValue $handoff "nextStep"
+    $handoffCurrentBottleneck = Get-JsonPropertyValue $handoff "currentBottleneck"
+    $handoffNextStepCode = [string] (Get-JsonPropertyValue $handoffNextStep "code")
+    $handoffCurrentBottleneckCode = [string] (Get-JsonPropertyValue $handoffCurrentBottleneck "code")
+    if ([string]::IsNullOrWhiteSpace($handoffCurrentBottleneckCode)) {
+        throw "Operations latest evidence handoff currentBottleneck.code is missing after refresh."
+    }
+    if ($handoffNextStepCode -ne $handoffCurrentBottleneckCode) {
+        throw "Operations latest evidence handoff currentBottleneck mismatch: nextStep=$handoffNextStepCode currentBottleneck=$handoffCurrentBottleneckCode"
+    }
+
+    $readinessSummary = [string] (Get-JsonPropertyValue $readiness "summary")
+    $convergenceSummary = [string] (Get-JsonPropertyValue $convergence "readinessSummary")
+    if ($readinessSummary -ne $convergenceSummary) {
+        throw "Operations latest evidence convergence readiness summary mismatch: readiness=$readinessSummary convergence=$convergenceSummary"
+    }
+
+    Assert-OperationsSelectedActionScope $expectedActionOrders $invocation "selectedActionOrders" "invocation.selectedActionOrders"
+    Assert-OperationsSelectedActionScope $expectedActionOrders $dispatchPreflight "selectedActionOrders" "dispatchPreflight.selectedActionOrders"
+    Assert-OperationsSelectedActionScope $expectedActionOrders $workflowRunIds "selectedActionOrders" "workflowRunIds.selectedActionOrders"
+    Assert-OperationsSelectedActionScope $expectedActionOrders $artifactCollection "selectedActionOrders" "artifactCollection.selectedActionOrders"
+    Assert-OperationsSelectedActionScope $expectedActionOrders $handoff "invocationSelectedActionOrders" "handoff.invocationSelectedActionOrders"
+    Assert-OperationsSelectedActionScope $expectedActionOrders $handoff "dispatchPreflightSelectedActionOrders" "handoff.dispatchPreflightSelectedActionOrders"
+    Assert-OperationsSelectedActionScope $expectedActionOrders $handoff "workflowRunIdPlanActionOrders" "handoff.workflowRunIdPlanActionOrders"
+    Assert-OperationsSelectedActionScope $expectedActionOrders $handoff "artifactCollectionActionOrders" "handoff.artifactCollectionActionOrders"
+}
 function Normalize-ProcessPath() {
     $processPath = [Environment]::GetEnvironmentVariable("Path", "Process")
     if (-not $processPath) {
@@ -41,11 +281,42 @@ function Normalize-ProcessPath() {
 }
 
 function Use-JavaHome($path) {
-    Use-OsmuJavaHome $path | Out-Null
+    $script:ResolvedJavaHome = Use-OsmuJavaHome $path
 }
 
 function Assert-JavaAvailable() {
     Assert-OsmuJavaAvailable -RequiredVersion 17 | Out-Null
+}
+
+function Format-ProcessArgument([string] $value) {
+    if ($value -match "\s") {
+        return '"' + ($value -replace '"', '\"') + '"'
+    }
+    return $value
+}
+
+function Run-BackendGradleTests() {
+    Push-Location (Join-Path $root "osmu-backend")
+    try {
+        $arguments = New-Object System.Collections.Generic.List[string]
+        if (-not [string]::IsNullOrWhiteSpace($script:ResolvedJavaHome)) {
+            $arguments.Add("-Dorg.gradle.java.installations.paths=$script:ResolvedJavaHome") | Out-Null
+            $arguments.Add("-Dorg.gradle.java.installations.auto-detect=false") | Out-Null
+            $arguments.Add("-Dorg.gradle.java.installations.auto-download=false") | Out-Null
+        }
+        $arguments.Add("test") | Out-Null
+        $arguments.Add("--no-daemon") | Out-Null
+
+        $displayArguments = @($arguments | ForEach-Object { Format-ProcessArgument $_ })
+        Write-Host "    .\gradlew.bat $($displayArguments -join ' ')"
+        & .\gradlew.bat @arguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "Command failed with exit code $LASTEXITCODE`: .\gradlew.bat $($displayArguments -join ' ')"
+        }
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 Use-JavaHome $JavaHome
@@ -53,16 +324,32 @@ Normalize-ProcessPath
 Use-OsmuDockerConfig $root | Out-Null
 
 Step "Git whitespace check"
-Run "git diff --check"
+Run-GitDiffCheck
 
 Step "Env ignore check"
 Run "git check-ignore -v .\infra\local\.env .\osmu-backend\.env .\osmu-frontend\.env"
 
 Step "PowerShell script parse check"
-Run "Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath `$_.FullName)) | Out-Null }"
+Write-Host "    Invoke-PowerShellScriptParseCheck"
+Invoke-PowerShellScriptParseCheck
+
+Step "Encoding hygiene check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-doc-encoding-hygiene.ps1"
+
+Step "Encoding hygiene self-test"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-doc-encoding-hygiene-self-test.ps1"
+
+Step "Project doc file reference check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-dev-doc-file-references.ps1"
 
 Step "MVP release decision self-test"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1"
+
+Step "Durable MVP finalize PlanOnly self-test"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-durable-mvp-finalize-plan.ps1"
+
+Step "MVP completion handoff check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-completion.ps1"
 
 Step "CI workflow draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1"
@@ -84,6 +371,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-development-roadm
 
 Step "Prototype status check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-status.ps1"
+
+Step "MVP release checklist check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-checklist.ps1"
 
 Step "OpenAPI MVP contract check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1"
@@ -274,6 +564,28 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-data-flow-query-r
 Step "Data-flow storage transition runbook evidence check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-data-flow-storage-transition-runbook-evidence.ps1"
 
+Step "Operations latest evidence refresh"
+$operationsSelectedActionOrders = @(Get-OperationsSelectedActionOrders)
+$operationsActionOrderArgument = New-ActionOrderArgument $operationsSelectedActionOrders
+$operationsRunIdContext = Get-JsonFile ".osmu-run\latest-operations-workflow-run-ids.json"
+$operationsGitHubRepository = [string] (Get-JsonPropertyValue $operationsRunIdContext "githubRepository")
+$operationsBranch = [string] (Get-JsonPropertyValue $operationsRunIdContext "branch")
+$operationsImageSigningVersion = [string] (Get-JsonPropertyValue $operationsRunIdContext "imageSigningVersion")
+$operationsCommitSha = [string] (Get-JsonPropertyValue $operationsRunIdContext "commitSha")
+$operationsGitHubRepositoryArgument = New-RunArgument "GitHubRepository" $operationsGitHubRepository
+$operationsBranchArgument = New-RunArgument "Branch" $operationsBranch
+$operationsImageSigningVersionArgument = New-RunArgument "ImageSigningVersion" $operationsImageSigningVersion
+$operationsCommitShaArgument = New-RunArgument "CommitSha" $operationsCommitSha
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-plan.ps1$operationsGitHubRepositoryArgument"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1$operationsActionOrderArgument"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1$operationsActionOrderArgument -CheckGitHubCli$operationsGitHubRepositoryArgument"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1$operationsBranchArgument$operationsGitHubRepositoryArgument$operationsImageSigningVersionArgument$operationsCommitShaArgument"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1$operationsImageSigningVersionArgument$operationsCommitShaArgument"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness-convergence.ps1"
+Assert-OperationsLatestEvidenceFreshness $operationsSelectedActionOrders
 if (-not $SkipDocker) {
     Step "Docker Compose config check"
     Run "docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet"
@@ -300,7 +612,7 @@ if (-not $SkipBackend) {
     Assert-JavaAvailable
 
     Step "Backend tests"
-    Run ".\gradlew.bat test" (Join-Path $root "osmu-backend")
+    Run-BackendGradleTests
 }
 
 Step "Done"

@@ -1,0 +1,173 @@
+name: Manual Support Escalation Handoff Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      review_started_at:
+        description: Support escalation handoff review start timestamp
+        required: true
+        default: ""
+      review_completed_at:
+        description: Support escalation handoff review completion timestamp
+        required: true
+        default: ""
+      change_approval_ref:
+        description: External change approval reference
+        required: true
+        default: ""
+      evidence_ref:
+        description: External support escalation handoff evidence reference
+        required: true
+        default: ""
+      handoff_refs_json_base64:
+        description: Base64 JSON containing non-secret handoff reference fields
+        required: true
+        default: ""
+      confirm_runbook_reviewed:
+        description: Confirm runbook review
+        required: true
+        type: boolean
+        default: false
+      confirm_troubleshooting_reviewed:
+        description: Confirm troubleshooting review
+        required: true
+        type: boolean
+        default: false
+      confirm_rollback_path_reviewed:
+        description: Confirm rollback path review
+        required: true
+        type: boolean
+        default: false
+      confirm_support_escalation_reviewed:
+        description: Confirm support escalation review
+        required: true
+        type: boolean
+        default: false
+      confirm_support_sla_reviewed:
+        description: Confirm support SLA review
+        required: true
+        type: boolean
+        default: false
+      confirm_known_gaps_accepted:
+        description: Confirm known gaps acceptance
+        required: true
+        type: boolean
+        default: false
+      confirm_operations_handoff_reference_ready:
+        description: Confirm refs can be fed into the operations handoff package
+        required: true
+        type: boolean
+        default: false
+      confirm_no_credential_values:
+        description: Confirm inputs contain references only, not credentials
+        required: true
+        type: boolean
+        default: false
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-support-escalation-handoff-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  support-escalation-handoff-evidence:
+    name: Manual support escalation handoff evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record support escalation handoff evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_REVIEW_STARTED_AT: ${{ inputs.review_started_at }}
+          OSMU_REVIEW_COMPLETED_AT: ${{ inputs.review_completed_at }}
+          OSMU_CHANGE_APPROVAL_REF: ${{ inputs.change_approval_ref }}
+          OSMU_EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          OSMU_HANDOFF_REFS_JSON_BASE64: ${{ inputs.handoff_refs_json_base64 }}
+          OSMU_CONFIRM_RUNBOOK_REVIEWED: ${{ inputs.confirm_runbook_reviewed }}
+          OSMU_CONFIRM_TROUBLESHOOTING_REVIEWED: ${{ inputs.confirm_troubleshooting_reviewed }}
+          OSMU_CONFIRM_ROLLBACK_PATH_REVIEWED: ${{ inputs.confirm_rollback_path_reviewed }}
+          OSMU_CONFIRM_SUPPORT_ESCALATION_REVIEWED: ${{ inputs.confirm_support_escalation_reviewed }}
+          OSMU_CONFIRM_SUPPORT_SLA_REVIEWED: ${{ inputs.confirm_support_sla_reviewed }}
+          OSMU_CONFIRM_KNOWN_GAPS_ACCEPTED: ${{ inputs.confirm_known_gaps_accepted }}
+          OSMU_CONFIRM_OPERATIONS_HANDOFF_REFERENCE_READY: ${{ inputs.confirm_operations_handoff_reference_ready }}
+          OSMU_CONFIRM_NO_CREDENTIAL_VALUES: ${{ inputs.confirm_no_credential_values }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+        run: |
+          New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+          $refsPath = ".osmu-run/support-escalation-handoff-refs.json"
+          [System.IO.File]::WriteAllBytes($refsPath, [Convert]::FromBase64String($env:OSMU_HANDOFF_REFS_JSON_BASE64))
+          $refs = Get-Content -Raw -LiteralPath $refsPath | ConvertFrom-Json
+
+          $evidenceArgs = @(
+            "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+            "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+            "-Operator", $env:OSMU_OPERATOR,
+            "-ReviewStartedAt", $env:OSMU_REVIEW_STARTED_AT,
+            "-ReviewCompletedAt", $env:OSMU_REVIEW_COMPLETED_AT,
+            "-ChangeApprovalRef", $env:OSMU_CHANGE_APPROVAL_REF,
+            "-OperationsHandoffPackageRef", ([string] $refs.operationsHandoffPackageRef),
+            "-RunbookReviewRef", ([string] $refs.runbookReviewRef),
+            "-TroubleshootingReviewRef", ([string] $refs.troubleshootingReviewRef),
+            "-RollbackReviewRef", ([string] $refs.rollbackReviewRef),
+            "-SupportEscalationRef", ([string] $refs.supportEscalationRef),
+            "-SupportSlaRef", ([string] $refs.supportSlaRef),
+            "-KnownGapsRef", ([string] $refs.knownGapsRef),
+            "-EvidenceRef", $env:OSMU_EVIDENCE_REF,
+            "-JsonOutputPath", ".osmu-run/latest-support-escalation-handoff-evidence.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-support-escalation-handoff-evidence.md"
+          )
+
+          if ($env:OSMU_CONFIRM_RUNBOOK_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmRunbookReviewed" }
+          if ($env:OSMU_CONFIRM_TROUBLESHOOTING_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmTroubleshootingReviewed" }
+          if ($env:OSMU_CONFIRM_ROLLBACK_PATH_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmRollbackPathReviewed" }
+          if ($env:OSMU_CONFIRM_SUPPORT_ESCALATION_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmSupportEscalationReviewed" }
+          if ($env:OSMU_CONFIRM_SUPPORT_SLA_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmSupportSlaReviewed" }
+          if ($env:OSMU_CONFIRM_KNOWN_GAPS_ACCEPTED -eq "true") { $evidenceArgs += "-ConfirmKnownGapsAccepted" }
+          if ($env:OSMU_CONFIRM_OPERATIONS_HANDOFF_REFERENCE_READY -eq "true") { $evidenceArgs += "-ConfirmOperationsHandoffReferenceReady" }
+          if ($env:OSMU_CONFIRM_NO_CREDENTIAL_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoCredentialValues" }
+          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+          ./scripts/write-support-escalation-handoff-evidence.ps1 @evidenceArgs
+          Remove-Item -LiteralPath $refsPath -Force -ErrorAction SilentlyContinue
+
+      - name: Remove decoded reference payload
+        if: always()
+        shell: pwsh
+        run: Remove-Item -LiteralPath ".osmu-run/support-escalation-handoff-refs.json" -Force -ErrorAction SilentlyContinue
+
+      - name: Upload support escalation handoff evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: support-escalation-handoff-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-support-escalation-handoff-evidence.json
+            .osmu-run/latest-support-escalation-handoff-evidence.md
+          if-no-files-found: error
+          retention-days: 14

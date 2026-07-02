@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -117,8 +121,8 @@ if ($LASTEXITCODE -ne 0) {
 Assert-True (Test-Path -LiteralPath $jsonOutputPath) "Storage backend telemetry JSON missing."
 Assert-True (Test-Path -LiteralPath $markdownOutputPath) "Storage backend telemetry markdown missing."
 
-$reportText = Get-Content -Raw -LiteralPath $jsonOutputPath
-$markdown = Get-Content -Raw -LiteralPath $markdownOutputPath
+$reportText = Read-Utf8Text $jsonOutputPath
+$markdown = Read-Utf8Text $markdownOutputPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 $pools = @($report.pools)
@@ -194,3 +198,4 @@ Assert-Contains ($unsafeOutput | Out-String) "appears to contain secret material
 Write-Host "Storage backend telemetry evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"
 Write-Host "Markdown: $markdownOutputPath"
+exit 0

@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-Equal($Actual, $Expected, [string] $Message) {
     if ($Actual -ne $Expected) {
         throw "$Message. Expected '$Expected' but got '$Actual'."
@@ -63,6 +67,10 @@ Write-JsonFixture $blockedInvocationPath ([ordered]@{
     result = "blocked"
     sourcePlan = ".osmu-run/latest-operations-evidence-plan.json"
     sourceSummary = "passed=36 pending=6"
+    sourcePassedCount = 36
+    sourcePendingCount = 6
+    sourceTotalCount = 42
+    sourceCheckCount = 42
     commandMode = "Workflow"
     executionMode = "plan-only"
     selectedActionCount = 4
@@ -142,9 +150,13 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-invocation-unblock-plan.ps1 blocked fixture failed with exit code $LASTEXITCODE."
 }
 
-$blockedReport = Get-Content -Raw -LiteralPath $blockedJsonPath | ConvertFrom-Json
-$blockedMarkdown = Get-Content -Raw -LiteralPath $blockedMarkdownPath
+$blockedReport = Read-Utf8Text $blockedJsonPath | ConvertFrom-Json
+$blockedMarkdown = Read-Utf8Text $blockedMarkdownPath
 Assert-Equal $blockedReport.formatVersion "osmu.operations-invocation-unblock-plan.v1" "blocked formatVersion"
+Assert-Equal $blockedReport.sourcePassedCount 36 "blocked source passed count"
+Assert-Equal $blockedReport.sourcePendingCount 6 "blocked source pending count"
+Assert-Equal $blockedReport.sourceTotalCount 42 "blocked source total count"
+Assert-Equal $blockedReport.sourceCheckCount 42 "blocked source check count"
 Assert-Equal $blockedReport.result "action-required" "blocked result"
 Assert-Equal $blockedReport.blockedCount 3 "blocked count"
 Assert-Equal $blockedReport.plannedCount 1 "planned count"
@@ -184,6 +196,7 @@ $securityRunIdInput = @(@($blockedReport.actions[2].requiredInputs) | Where-Obje
 Assert-True (@($securityRunIdInput.workflowInputs) -contains "image_signing_run_id") "expected image signing run id workflow input mapping"
 Assert-True (@($securityRunIdInput.workflowInputs) -contains "container_security_run_id") "expected container security run id workflow input mapping"
 Assert-Contains $blockedMarkdown "workflow inputs: image_signing_run_id, container_security_run_id" "blocked markdown workflow inputs"
+Assert-Contains $blockedMarkdown "Source counts: passed=36 pending=6 total=42 checks=42" "blocked markdown source counts"
 Assert-Contains $blockedMarkdown "## Unblock Groups" "blocked markdown groups"
 Assert-Contains $blockedMarkdown "Confirmation: Operator approval" "blocked markdown confirmation group"
 Assert-Contains $blockedMarkdown "Input: BackupTimestamp <YYYYMMDDTHHMMSSZ>" "blocked markdown input group"
@@ -195,6 +208,10 @@ Write-JsonFixture $readyInvocationPath ([ordered]@{
     result = "planned"
     sourcePlan = ".osmu-run/latest-operations-evidence-plan.json"
     sourceSummary = "passed=36 pending=6"
+    sourcePassedCount = 36
+    sourcePendingCount = 6
+    sourceTotalCount = 42
+    sourceCheckCount = 42
     commandMode = "Workflow"
     executionMode = "plan-only"
     selectedActionCount = 1
@@ -229,8 +246,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-invocation-unblock-plan.ps1 ready fixture failed with exit code $LASTEXITCODE."
 }
 
-$readyReport = Get-Content -Raw -LiteralPath $readyJsonPath | ConvertFrom-Json
-$readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownPath
+$readyReport = Read-Utf8Text $readyJsonPath | ConvertFrom-Json
+$readyMarkdown = Read-Utf8Text $readyMarkdownPath
 Assert-Equal $readyReport.result "ready" "ready result"
 Assert-Equal $readyReport.blockedCount 0 "ready blocked count"
 Assert-Equal $readyReport.requiredPlaceholderCount 0 "ready placeholder count"
@@ -245,6 +262,10 @@ Write-JsonFixture $invalidInvocationPath ([ordered]@{
     result = "blocked"
     sourcePlan = ".osmu-run/latest-operations-evidence-plan.json"
     sourceSummary = "passed=36 pending=6"
+    sourcePassedCount = 36
+    sourcePendingCount = 6
+    sourceTotalCount = 42
+    sourceCheckCount = 42
     commandMode = "Workflow"
     executionMode = "plan-only"
     selectedActionCount = 1
@@ -279,8 +300,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-invocation-unblock-plan.ps1 invalid fixture failed with exit code $LASTEXITCODE."
 }
 
-$invalidReport = Get-Content -Raw -LiteralPath $invalidJsonPath | ConvertFrom-Json
-$invalidMarkdown = Get-Content -Raw -LiteralPath $invalidMarkdownPath
+$invalidReport = Read-Utf8Text $invalidJsonPath | ConvertFrom-Json
+$invalidMarkdown = Read-Utf8Text $invalidMarkdownPath
 Assert-Equal $invalidReport.result "action-required" "invalid result"
 Assert-Equal $invalidReport.requiredPlaceholderCount 1 "invalid required placeholder count"
 Assert-Equal $invalidReport.confirmationGroupCount 0 "invalid confirmation group count"

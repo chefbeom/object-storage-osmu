@@ -1,0 +1,195 @@
+﻿name: Manual Chargeback Closeout Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      billing_period:
+        description: Closed billing period in yyyy-mm format
+        required: true
+        default: ""
+      closeout_started_at:
+        description: Closeout start time in ISO-8601 format
+        required: true
+        default: ""
+      closeout_completed_at:
+        description: Closeout completion time in ISO-8601 format
+        required: true
+        default: ""
+      change_approval_ref:
+        description: External change approval reference
+        required: true
+        default: ""
+      payment_provider_adapter_readiness_json_base64:
+        description: Optional base64 JSON from GET /api/admin/billing/payment-provider-adapter-readiness
+        required: false
+        default: ""
+      chargeback_closeout_snapshot_json_base64:
+        description: Optional base64 sanitized chargeback closeout snapshot JSON
+        required: false
+        default: ""
+      chargeback_closeout_payload_json_base64:
+        description: Optional base64 JSON containing evidence refs and review confirmations
+        required: false
+        default: ""
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-chargeback-closeout-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  chargeback-closeout-evidence:
+    name: Manual chargeback closeout evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record chargeback closeout evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_BILLING_PERIOD: ${{ inputs.billing_period }}
+          OSMU_CLOSEOUT_STARTED_AT: ${{ inputs.closeout_started_at }}
+          OSMU_CLOSEOUT_COMPLETED_AT: ${{ inputs.closeout_completed_at }}
+          OSMU_CHANGE_APPROVAL_REF: ${{ inputs.change_approval_ref }}
+          OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64: ${{ inputs.payment_provider_adapter_readiness_json_base64 }}
+          OSMU_CHARGEBACK_CLOSEOUT_SNAPSHOT_JSON_BASE64: ${{ inputs.chargeback_closeout_snapshot_json_base64 }}
+          OSMU_CHARGEBACK_CLOSEOUT_PAYLOAD_JSON_BASE64: ${{ inputs.chargeback_closeout_payload_json_base64 }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+        run: |
+          $paymentReadinessJsonPath = ""
+          $closeoutSnapshotJsonPath = ""
+          try {
+            $payload = [pscustomobject]@{}
+            if (-not [string]::IsNullOrWhiteSpace($env:OSMU_CHARGEBACK_CLOSEOUT_PAYLOAD_JSON_BASE64)) {
+              $payloadText = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:OSMU_CHARGEBACK_CLOSEOUT_PAYLOAD_JSON_BASE64))
+              $payload = $payloadText | ConvertFrom-Json
+            }
+
+            function Get-PayloadString([string] $Name) {
+              $property = $payload.PSObject.Properties[$Name]
+              if ($null -eq $property -or $null -eq $property.Value) {
+                return ""
+              }
+              return [string] $property.Value
+            }
+
+            function Test-PayloadTrue([string] $Name, [bool] $Default = $false) {
+              $property = $payload.PSObject.Properties[$Name]
+              if ($null -eq $property -or $null -eq $property.Value) {
+                return $Default
+              }
+              if ($property.Value -is [bool]) {
+                return [bool] $property.Value
+              }
+              return [string] $property.Value -eq "true"
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64)) {
+              New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+              $paymentReadinessJsonPath = ".osmu-run/payment-provider-adapter-readiness.json"
+              $resolvedPaymentReadinessJsonPath = Join-Path (Resolve-Path ".").Path $paymentReadinessJsonPath
+              [System.IO.File]::WriteAllBytes($resolvedPaymentReadinessJsonPath, [Convert]::FromBase64String($env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64))
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($env:OSMU_CHARGEBACK_CLOSEOUT_SNAPSHOT_JSON_BASE64)) {
+              New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+              $closeoutSnapshotJsonPath = ".osmu-run/chargeback-closeout-summary.json"
+              $resolvedCloseoutSnapshotJsonPath = Join-Path (Resolve-Path ".").Path $closeoutSnapshotJsonPath
+              [System.IO.File]::WriteAllBytes($resolvedCloseoutSnapshotJsonPath, [Convert]::FromBase64String($env:OSMU_CHARGEBACK_CLOSEOUT_SNAPSHOT_JSON_BASE64))
+            }
+
+            $evidenceArgs = @(
+              "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+              "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+              "-Operator", $env:OSMU_OPERATOR,
+              "-BillingPeriod", $env:OSMU_BILLING_PERIOD,
+              "-CloseoutStartedAt", $env:OSMU_CLOSEOUT_STARTED_AT,
+              "-CloseoutCompletedAt", $env:OSMU_CLOSEOUT_COMPLETED_AT,
+              "-ChangeApprovalRef", $env:OSMU_CHANGE_APPROVAL_REF,
+              "-PricingPolicyEvidenceRef", (Get-PayloadString "pricing_policy_evidence_ref"),
+              "-PricingProposalApprovalRef", (Get-PayloadString "pricing_proposal_approval_ref"),
+              "-ChargebackPreviewEvidenceRef", (Get-PayloadString "chargeback_preview_evidence_ref"),
+              "-ChargebackTrendExportEvidenceRef", (Get-PayloadString "chargeback_trend_export_evidence_ref"),
+              "-InvoiceDraftEvidenceRef", (Get-PayloadString "invoice_draft_evidence_ref"),
+              "-InvoiceFinalizationEvidenceRef", (Get-PayloadString "invoice_finalization_evidence_ref"),
+              "-PaymentRequestEvidenceRef", (Get-PayloadString "payment_request_evidence_ref"),
+              "-PaymentProviderHandoffEvidenceRef", (Get-PayloadString "payment_provider_handoff_evidence_ref"),
+              "-PaymentProviderAdapterReadinessEvidenceRef", (Get-PayloadString "payment_provider_adapter_readiness_evidence_ref"),
+              "-NotificationDeliveryEvidenceRef", (Get-PayloadString "notification_delivery_evidence_ref"),
+              "-AdapterRetryWorkerEvidenceRef", (Get-PayloadString "adapter_retry_worker_evidence_ref"),
+              "-ReconciliationEvidenceRef", (Get-PayloadString "reconciliation_evidence_ref"),
+              "-CommercialIntegrationEvidenceRef", (Get-PayloadString "commercial_integration_evidence_ref"),
+              "-CommercialApprovalEvidenceRef", (Get-PayloadString "commercial_approval_evidence_ref"),
+              "-JsonOutputPath", ".osmu-run/latest-chargeback-closeout-evidence.json",
+              "-MarkdownOutputPath", ".osmu-run/latest-chargeback-closeout-evidence.md"
+            )
+
+            if (-not [string]::IsNullOrWhiteSpace($paymentReadinessJsonPath)) { $evidenceArgs += @("-PaymentProviderAdapterReadinessJsonPath", $paymentReadinessJsonPath) }
+            if (-not [string]::IsNullOrWhiteSpace($closeoutSnapshotJsonPath)) { $evidenceArgs += @("-ChargebackCloseoutSnapshotJsonPath", $closeoutSnapshotJsonPath) }
+            if (Test-PayloadTrue "confirm_pricing_policy_reviewed") { $evidenceArgs += "-ConfirmPricingPolicyReviewed" }
+            if (Test-PayloadTrue "confirm_price_list_approved") { $evidenceArgs += "-ConfirmPriceListApproved" }
+            if (Test-PayloadTrue "confirm_usage_window_reviewed") { $evidenceArgs += "-ConfirmUsageWindowReviewed" }
+            if (Test-PayloadTrue "confirm_chargeback_preview_reviewed") { $evidenceArgs += "-ConfirmChargebackPreviewReviewed" }
+            if (Test-PayloadTrue "confirm_trend_export_reviewed") { $evidenceArgs += "-ConfirmTrendExportReviewed" }
+            if (Test-PayloadTrue "confirm_invoice_draft_reviewed") { $evidenceArgs += "-ConfirmInvoiceDraftReviewed" }
+            if (Test-PayloadTrue "confirm_invoice_finalized") { $evidenceArgs += "-ConfirmInvoiceFinalized" }
+            if (Test-PayloadTrue "confirm_payment_request_reviewed") { $evidenceArgs += "-ConfirmPaymentRequestReviewed" }
+            if (Test-PayloadTrue "confirm_payment_provider_handoff_reviewed") { $evidenceArgs += "-ConfirmPaymentProviderHandoffReviewed" }
+            if (Test-PayloadTrue "confirm_payment_provider_adapter_readiness_reviewed") { $evidenceArgs += "-ConfirmPaymentProviderAdapterReadinessReviewed" }
+            if (Test-PayloadTrue "confirm_notification_delivery_reviewed") { $evidenceArgs += "-ConfirmNotificationDeliveryReviewed" }
+            if (Test-PayloadTrue "confirm_adapter_retry_reviewed") { $evidenceArgs += "-ConfirmAdapterRetryReviewed" }
+            if (Test-PayloadTrue "confirm_reconciliation_reviewed") { $evidenceArgs += "-ConfirmReconciliationReviewed" }
+            if (Test-PayloadTrue "confirm_commercial_integration_reviewed") { $evidenceArgs += "-ConfirmCommercialIntegrationReviewed" }
+            if (Test-PayloadTrue "confirm_commercial_approval_reviewed") { $evidenceArgs += "-ConfirmCommercialApprovalReviewed" }
+            if (Test-PayloadTrue "confirm_no_raw_customer_payment_data") { $evidenceArgs += "-ConfirmNoRawCustomerPaymentData" }
+            if (Test-PayloadTrue "confirm_no_raw_provider_responses") { $evidenceArgs += "-ConfirmNoRawProviderResponses" }
+            if (Test-PayloadTrue "confirm_no_secret_values") { $evidenceArgs += "-ConfirmNoSecretValues" }
+            if (Test-PayloadTrue "require_payment_provider_adapter_readiness_snapshot") { $evidenceArgs += "-RequirePaymentProviderAdapterReadinessSnapshot" }
+            if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+            ./scripts/write-chargeback-closeout-evidence.ps1 @evidenceArgs
+          }
+          finally {
+            if (-not [string]::IsNullOrWhiteSpace($paymentReadinessJsonPath)) {
+              Remove-Item -LiteralPath $paymentReadinessJsonPath -Force -ErrorAction SilentlyContinue
+            }
+            if (-not [string]::IsNullOrWhiteSpace($closeoutSnapshotJsonPath)) {
+              Remove-Item -LiteralPath $closeoutSnapshotJsonPath -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Upload chargeback closeout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chargeback-closeout-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-chargeback-closeout-evidence.json
+            .osmu-run/latest-chargeback-closeout-evidence.md
+          if-no-files-found: error
+          retention-days: 14

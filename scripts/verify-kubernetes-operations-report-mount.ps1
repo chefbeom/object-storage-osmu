@@ -6,10 +6,12 @@ param(
     [string] $SyncEvidenceKey = "latest-kubernetes-operations-report-sync.json",
     [string] $DataFlowStoragePlanKey = "latest-data-flow-storage-plan.json",
     [string] $DataFlowStorageTransitionRunbookKey = "latest-data-flow-storage-transition-runbook-evidence.json",
+    [string] $DataFlowQueryRetentionBudgetKey = "latest-data-flow-query-retention-budget-evidence.json",
     [string] $LocalReportPath = ".\.osmu-run\latest-operations-readiness-convergence.json",
     [string] $LocalSyncEvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync.json",
     [string] $LocalDataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
     [string] $LocalDataFlowStorageTransitionRunbookPath = ".\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json",
+    [string] $LocalDataFlowQueryRetentionBudgetPath = ".\.osmu-run\latest-data-flow-query-retention-budget-evidence.json",
     [string] $BackendSelector = "app.kubernetes.io/name=osmu-backend",
     [string] $BackendContainer = "backend",
     [string] $MountPath = "/app/.osmu-run",
@@ -17,6 +19,7 @@ param(
     [switch] $SkipPodMountCheck,
     [switch] $SkipDataFlowStoragePlanCheck,
     [switch] $SkipDataFlowStorageTransitionRunbookCheck,
+    [switch] $SkipDataFlowQueryRetentionBudgetCheck,
     [switch] $PlanOnly
 )
 
@@ -30,6 +33,10 @@ function Resolve-ProjectPath([string] $PathValue) {
         return [System.IO.Path]::GetFullPath($PathValue)
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
+}
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
 }
 
 function Format-Command([string[]] $Arguments) {
@@ -280,12 +287,38 @@ function Compare-DataFlowStorageTransitionRunbookJson([object] $Actual, [object]
     }
 }
 
+
+function Compare-DataFlowQueryRetentionBudgetJson([object] $Actual, [object] $Expected, [string] $Label) {
+    if ($null -eq $Actual) {
+        return
+    }
+    $queryLatencyBudget = $Actual.queryLatencyBudget
+    $retentionBudget = $Actual.retentionBudget
+    Add-Check "$Label-format-version" ((Get-ObjectText $Actual.formatVersion) -eq "osmu.data-flow-query-retention-budget-evidence.v1") "$Label formatVersion=$(Get-ObjectText $Actual.formatVersion)."
+    Add-Check "$Label-result" ((Get-ObjectText $Actual.result) -eq "passed") "$Label result=$(Get-ObjectText $Actual.result), expected=passed."
+    Add-Check "$Label-storage-plan-result" ((Get-ObjectText $Actual.dataFlowStoragePlanSnapshot.result) -eq "passed") "$Label dataFlowStoragePlanSnapshot.result=$(Get-ObjectText $Actual.dataFlowStoragePlanSnapshot.result), expected=passed."
+    Add-Check "$Label-query-latency-within-budget" ((Get-ObjectBool $queryLatencyBudget.withinBudget) -eq $true) "$Label queryLatencyBudget.withinBudget=$(Get-ObjectBool $queryLatencyBudget.withinBudget)."
+    Add-Check "$Label-retention-within-budget" ((Get-ObjectBool $retentionBudget.withinBudget) -eq $true) "$Label retentionBudget.withinBudget=$(Get-ObjectBool $retentionBudget.withinBudget)."
+    Add-Check "$Label-failure-count" ((Get-ObjectInt $Actual.summary.failureCount) -eq 0) "$Label failureCount=$(Get-ObjectInt $Actual.summary.failureCount)."
+    foreach ($confirmationName in @("queryLatencyReviewed", "retentionJobsWithinBudget", "noObjectKeysInEvidence", "noRawSqlOrExplain", "noSecretValues")) {
+        $confirmationValue = if ($null -ne $Actual.confirmations -and $Actual.confirmations.PSObject.Properties.Name -contains $confirmationName) { $Actual.confirmations.PSObject.Properties[$confirmationName].Value } else { $null }
+        Add-Check "$Label-$confirmationName" (($confirmationValue -is [bool]) -and [bool] $confirmationValue) "$Label confirmation $confirmationName=$confirmationValue expected boolean true."
+    }
+    if ($null -ne $Expected) {
+        Add-Check "$Label-candidate-store" ((Get-ObjectText $Actual.dataFlowStoragePlanSnapshot.candidateStore) -eq (Get-ObjectText $Expected.dataFlowStoragePlanSnapshot.candidateStore)) "$Label candidateStore=$(Get-ObjectText $Actual.dataFlowStoragePlanSnapshot.candidateStore), expected=$(Get-ObjectText $Expected.dataFlowStoragePlanSnapshot.candidateStore)."
+        Add-Check "$Label-target-p95" ((Get-ObjectInt $queryLatencyBudget.targetP95QueryLatencyMs) -eq (Get-ObjectInt $Expected.queryLatencyBudget.targetP95QueryLatencyMs)) "$Label targetP95=$(Get-ObjectInt $queryLatencyBudget.targetP95QueryLatencyMs), expected=$(Get-ObjectInt $Expected.queryLatencyBudget.targetP95QueryLatencyMs)."
+        Add-Check "$Label-observed-p95" ((Get-ObjectInt $queryLatencyBudget.observedP95QueryLatencyMs) -eq (Get-ObjectInt $Expected.queryLatencyBudget.observedP95QueryLatencyMs)) "$Label observedP95=$(Get-ObjectInt $queryLatencyBudget.observedP95QueryLatencyMs), expected=$(Get-ObjectInt $Expected.queryLatencyBudget.observedP95QueryLatencyMs)."
+        Add-Check "$Label-retention-budget-seconds" ((Get-ObjectInt $retentionBudget.budgetSeconds) -eq (Get-ObjectInt $Expected.retentionBudget.budgetSeconds)) "$Label retention budget seconds=$(Get-ObjectInt $retentionBudget.budgetSeconds), expected=$(Get-ObjectInt $Expected.retentionBudget.budgetSeconds)."
+        Add-Check "$Label-check-count" ((Get-ObjectInt $Actual.summary.checkCount) -eq (Get-ObjectInt $Expected.summary.checkCount)) "$Label checkCount=$(Get-ObjectInt $Actual.summary.checkCount), expected=$(Get-ObjectInt $Expected.summary.checkCount)."
+    }
+}
 Assert-KubernetesName "Namespace" $Namespace
 Assert-KubernetesName "ConfigMapName" $ConfigMapName
 Assert-ConfigMapKey $ReportKey
 Assert-ConfigMapKey $SyncEvidenceKey
 Assert-ConfigMapKey $DataFlowStoragePlanKey
 Assert-ConfigMapKey $DataFlowStorageTransitionRunbookKey
+Assert-ConfigMapKey $DataFlowQueryRetentionBudgetKey
 if ([string]::IsNullOrWhiteSpace($BackendSelector) -or $BackendSelector -notmatch "^[A-Za-z0-9_.\-/]+=[A-Za-z0-9_.\-/]+$") {
     throw "BackendSelector must be a simple label selector key=value: $BackendSelector"
 }
@@ -300,40 +333,49 @@ $resolvedLocalReportPath = Resolve-ProjectPath $LocalReportPath
 $resolvedLocalSyncEvidencePath = Resolve-ProjectPath $LocalSyncEvidencePath
 $resolvedLocalDataFlowStoragePlanPath = Resolve-ProjectPath $LocalDataFlowStoragePlanPath
 $resolvedLocalDataFlowStorageTransitionRunbookPath = Resolve-ProjectPath $LocalDataFlowStorageTransitionRunbookPath
+$resolvedLocalDataFlowQueryRetentionBudgetPath = Resolve-ProjectPath $LocalDataFlowQueryRetentionBudgetPath
 $resolvedEvidencePath = Resolve-ProjectPath $EvidencePath
 $reportMountPath = ($MountPath.TrimEnd("/") + "/" + $ReportKey)
 $syncEvidenceMountPath = ($MountPath.TrimEnd("/") + "/" + $SyncEvidenceKey)
 $dataFlowStoragePlanMountPath = ($MountPath.TrimEnd("/") + "/" + $DataFlowStoragePlanKey)
 $dataFlowStorageTransitionRunbookMountPath = ($MountPath.TrimEnd("/") + "/" + $DataFlowStorageTransitionRunbookKey)
+$dataFlowQueryRetentionBudgetMountPath = ($MountPath.TrimEnd("/") + "/" + $DataFlowQueryRetentionBudgetKey)
 $shouldCheckDataFlowStoragePlan = [bool](-not $SkipDataFlowStoragePlanCheck -and (Test-Path -LiteralPath $resolvedLocalDataFlowStoragePlanPath))
 $shouldCheckDataFlowStorageTransitionRunbook = [bool](-not $SkipDataFlowStorageTransitionRunbookCheck -and (Test-Path -LiteralPath $resolvedLocalDataFlowStorageTransitionRunbookPath))
+$shouldCheckDataFlowQueryRetentionBudget = [bool](-not $SkipDataFlowQueryRetentionBudgetCheck -and (Test-Path -LiteralPath $resolvedLocalDataFlowQueryRetentionBudgetPath))
 
 $localReportJson = $null
 $localSyncEvidenceJson = $null
 $localDataFlowStoragePlanJson = $null
 $localDataFlowStorageTransitionRunbookJson = $null
+$localDataFlowQueryRetentionBudgetJson = $null
 if (Test-Path -LiteralPath $resolvedLocalReportPath) {
-    $localReportJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalReportPath | ConvertFrom-Json
+    $localReportJson = Read-Utf8Text $resolvedLocalReportPath | ConvertFrom-Json
 }
 if (Test-Path -LiteralPath $resolvedLocalSyncEvidencePath) {
-    $localSyncEvidenceJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalSyncEvidencePath | ConvertFrom-Json
+    $localSyncEvidenceJson = Read-Utf8Text $resolvedLocalSyncEvidencePath | ConvertFrom-Json
 }
 if ($shouldCheckDataFlowStoragePlan) {
-    $localDataFlowStoragePlanJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalDataFlowStoragePlanPath | ConvertFrom-Json
+    $localDataFlowStoragePlanJson = Read-Utf8Text $resolvedLocalDataFlowStoragePlanPath | ConvertFrom-Json
 }
 if ($shouldCheckDataFlowStorageTransitionRunbook) {
-    $localDataFlowStorageTransitionRunbookJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalDataFlowStorageTransitionRunbookPath | ConvertFrom-Json
+    $localDataFlowStorageTransitionRunbookJson = Read-Utf8Text $resolvedLocalDataFlowStorageTransitionRunbookPath | ConvertFrom-Json
+}
+if ($shouldCheckDataFlowQueryRetentionBudget) {
+    $localDataFlowQueryRetentionBudgetJson = Read-Utf8Text $resolvedLocalDataFlowQueryRetentionBudgetPath | ConvertFrom-Json
 }
 
 $configMapReportText = ""
 $configMapSyncText = ""
 $configMapDataFlowStoragePlanText = ""
 $configMapDataFlowStorageTransitionRunbookText = ""
+$configMapDataFlowQueryRetentionBudgetText = ""
 $backendPodName = ""
 $mountedReportText = ""
 $mountedSyncText = ""
 $mountedDataFlowStoragePlanText = ""
 $mountedDataFlowStorageTransitionRunbookText = ""
+$mountedDataFlowQueryRetentionBudgetText = ""
 
 if ($PlanOnly) {
     Add-Check "plan-only" $true "Plan-only mode does not call kubectl."
@@ -345,6 +387,7 @@ else {
         $configMapSyncText = Get-DataValue $configMapSource.json.data $SyncEvidenceKey
         $configMapDataFlowStoragePlanText = Get-DataValue $configMapSource.json.data $DataFlowStoragePlanKey
         $configMapDataFlowStorageTransitionRunbookText = Get-DataValue $configMapSource.json.data $DataFlowStorageTransitionRunbookKey
+        $configMapDataFlowQueryRetentionBudgetText = Get-DataValue $configMapSource.json.data $DataFlowQueryRetentionBudgetKey
         Add-Check "configmap-report-key-present" ($null -ne $configMapReportText) "ConfigMap report key present=$($null -ne $configMapReportText)." $configMapSource.command
         Add-Check "configmap-sync-evidence-key-present" ($null -ne $configMapSyncText) "ConfigMap sync evidence key present=$($null -ne $configMapSyncText)." $configMapSource.command
         if ($shouldCheckDataFlowStoragePlan) {
@@ -358,6 +401,12 @@ else {
         }
         else {
             Add-Check "data-flow-storage-transition-runbook-check-optional" $true "Local data-flow storage transition runbook evidence is absent or skipped; ConfigMap key is optional."
+        }
+        if ($shouldCheckDataFlowQueryRetentionBudget) {
+            Add-Check "configmap-data-flow-query-retention-budget-key-present" ($null -ne $configMapDataFlowQueryRetentionBudgetText) "ConfigMap data-flow query/retention budget key present=$($null -ne $configMapDataFlowQueryRetentionBudgetText)." $configMapSource.command
+        }
+        else {
+            Add-Check "data-flow-query-retention-budget-check-optional" $true "Local data-flow query/retention budget evidence is absent or skipped; ConfigMap key is optional."
         }
 
         if ($null -ne $configMapReportText) {
@@ -375,6 +424,10 @@ else {
         if ($null -ne $configMapDataFlowStorageTransitionRunbookText) {
             $configMapDataFlowStorageTransitionRunbookJson = Read-JsonText $configMapDataFlowStorageTransitionRunbookText "configmap-data-flow-storage-transition-runbook"
             Compare-DataFlowStorageTransitionRunbookJson $configMapDataFlowStorageTransitionRunbookJson $localDataFlowStorageTransitionRunbookJson "configmap-data-flow-storage-transition-runbook"
+        }
+        if ($null -ne $configMapDataFlowQueryRetentionBudgetText) {
+            $configMapDataFlowQueryRetentionBudgetJson = Read-JsonText $configMapDataFlowQueryRetentionBudgetText "configmap-data-flow-query-retention-budget"
+            Compare-DataFlowQueryRetentionBudgetJson $configMapDataFlowQueryRetentionBudgetJson $localDataFlowQueryRetentionBudgetJson "configmap-data-flow-query-retention-budget"
         }
     }
 
@@ -435,6 +488,19 @@ else {
                     }
                 }
             }
+
+            if ($shouldCheckDataFlowQueryRetentionBudget) {
+                $mountedDataFlowQueryRetentionBudget = Invoke-KubectlRaw "read-mounted-data-flow-query-retention-budget" @("-n", $Namespace, "exec", $backendPodName, "-c", $BackendContainer, "--", "cat", $dataFlowQueryRetentionBudgetMountPath)
+                $mountedDataFlowQueryRetentionBudgetText = $mountedDataFlowQueryRetentionBudget.output
+                Add-Check "mounted-data-flow-query-retention-budget-readable" ($mountedDataFlowQueryRetentionBudget.exitCode -eq 0) "Mounted data-flow query/retention budget evidence is readable from backend pod." $mountedDataFlowQueryRetentionBudget.command $mountedDataFlowQueryRetentionBudget.exitCode $mountedDataFlowQueryRetentionBudget.output
+                if ($mountedDataFlowQueryRetentionBudget.exitCode -eq 0) {
+                    $mountedDataFlowQueryRetentionBudgetJson = Read-JsonText $mountedDataFlowQueryRetentionBudgetText "mounted-data-flow-query-retention-budget"
+                    Compare-DataFlowQueryRetentionBudgetJson $mountedDataFlowQueryRetentionBudgetJson $localDataFlowQueryRetentionBudgetJson "mounted-data-flow-query-retention-budget"
+                    if ($configMapDataFlowQueryRetentionBudgetText) {
+                        Add-Check "mounted-data-flow-query-retention-budget-matches-configmap" ((Get-TextSha256 $mountedDataFlowQueryRetentionBudgetText) -eq (Get-TextSha256 $configMapDataFlowQueryRetentionBudgetText)) "Mounted data-flow query/retention budget content matches ConfigMap data."
+                    }
+                }
+            }
         }
     }
     else {
@@ -459,6 +525,7 @@ $report = [ordered]@{
     syncEvidenceKey = $SyncEvidenceKey
     dataFlowStoragePlanKey = $DataFlowStoragePlanKey
     dataFlowStorageTransitionRunbookKey = $DataFlowStorageTransitionRunbookKey
+    dataFlowQueryRetentionBudgetKey = $DataFlowQueryRetentionBudgetKey
     backendSelector = $BackendSelector
     backendContainer = $BackendContainer
     backendPodName = $backendPodName
@@ -467,25 +534,30 @@ $report = [ordered]@{
     syncEvidenceMountPath = $syncEvidenceMountPath
     dataFlowStoragePlanMountPath = $dataFlowStoragePlanMountPath
     dataFlowStorageTransitionRunbookMountPath = $dataFlowStorageTransitionRunbookMountPath
+    dataFlowQueryRetentionBudgetMountPath = $dataFlowQueryRetentionBudgetMountPath
     localReportPath = $resolvedLocalReportPath
     localSyncEvidencePath = $resolvedLocalSyncEvidencePath
     localDataFlowStoragePlanPath = $resolvedLocalDataFlowStoragePlanPath
     localDataFlowStorageTransitionRunbookPath = $resolvedLocalDataFlowStorageTransitionRunbookPath
+    localDataFlowQueryRetentionBudgetPath = $resolvedLocalDataFlowQueryRetentionBudgetPath
     configMapReportSha256 = if ($configMapReportText) { Get-TextSha256 $configMapReportText } else { "" }
     configMapSyncEvidenceSha256 = if ($configMapSyncText) { Get-TextSha256 $configMapSyncText } else { "" }
     configMapDataFlowStoragePlanSha256 = if ($configMapDataFlowStoragePlanText) { Get-TextSha256 $configMapDataFlowStoragePlanText } else { "" }
     configMapDataFlowStorageTransitionRunbookSha256 = if ($configMapDataFlowStorageTransitionRunbookText) { Get-TextSha256 $configMapDataFlowStorageTransitionRunbookText } else { "" }
+    configMapDataFlowQueryRetentionBudgetSha256 = if ($configMapDataFlowQueryRetentionBudgetText) { Get-TextSha256 $configMapDataFlowQueryRetentionBudgetText } else { "" }
     mountedReportSha256 = if ($mountedReportText) { Get-TextSha256 $mountedReportText } else { "" }
     mountedSyncEvidenceSha256 = if ($mountedSyncText) { Get-TextSha256 $mountedSyncText } else { "" }
     mountedDataFlowStoragePlanSha256 = if ($mountedDataFlowStoragePlanText) { Get-TextSha256 $mountedDataFlowStoragePlanText } else { "" }
     mountedDataFlowStorageTransitionRunbookSha256 = if ($mountedDataFlowStorageTransitionRunbookText) { Get-TextSha256 $mountedDataFlowStorageTransitionRunbookText } else { "" }
+    mountedDataFlowQueryRetentionBudgetSha256 = if ($mountedDataFlowQueryRetentionBudgetText) { Get-TextSha256 $mountedDataFlowQueryRetentionBudgetText } else { "" }
     dataFlowStoragePlanChecked = [bool]$shouldCheckDataFlowStoragePlan
     dataFlowStorageTransitionRunbookChecked = [bool]$shouldCheckDataFlowStorageTransitionRunbook
+    dataFlowQueryRetentionBudgetChecked = [bool]$shouldCheckDataFlowQueryRetentionBudget
     podMountChecked = [bool](-not $SkipPodMountCheck -and -not $PlanOnly)
     checkCount = @($checks).Count
     failedCount = $failureCount
     checks = $checks
-    safetyPolicy = "This verifier is read-only. It does not create, update, or delete Kubernetes resources and it does not read Kubernetes Secret values. Optional data-flow storage plan and transition runbook evidence are read only as reduced JSON summaries from ConfigMap and backend mounts."
+    safetyPolicy = "This verifier is read-only. It does not create, update, or delete Kubernetes resources and it does not read Kubernetes Secret values. Optional data-flow storage plan, query/retention budget, and transition runbook evidence are read only as reduced JSON summaries from ConfigMap and backend mounts."
 }
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedEvidencePath) | Out-Null

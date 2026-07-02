@@ -20,6 +20,7 @@ public record DashboardDataFlowStoragePlanResponse(
         int passedCount,
         int pendingCount,
         List<DashboardDataFlowStoragePlanCheckResponse> checks,
+        DashboardDataFlowStoragePlanCandidateDecisionResponse candidateDecision,
         DashboardDataFlowQueryPlanEvidenceResponse queryPlanEvidence,
         String scopePolicy
 ) {
@@ -42,6 +43,7 @@ public record DashboardDataFlowStoragePlanResponse(
                 0,
                 0,
                 List.of(),
+                DashboardDataFlowStoragePlanCandidateDecisionResponse.empty(),
                 DashboardDataFlowQueryPlanEvidenceResponse.empty(),
                 ""
         );

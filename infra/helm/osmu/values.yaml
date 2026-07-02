@@ -37,6 +37,7 @@ config:
   operationsReadinessConvergenceReportPath: .osmu-run/latest-operations-readiness-convergence.json
   kubernetesOperationsReportSyncReportPath: .osmu-run/latest-kubernetes-operations-report-sync.json
   dataFlowStoragePlanReportPath: .osmu-run/latest-data-flow-storage-plan.json
+  dataFlowQueryRetentionBudgetReportPath: .osmu-run/latest-data-flow-query-retention-budget-evidence.json
   dataFlowStorageTransitionRunbookReportPath: .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json
 
 secrets:
@@ -246,5 +247,4 @@ monitoring:
     interval: 30s
     scrapeTimeout: 10s
     releaseLabel: prometheus
-
 

@@ -12,6 +12,10 @@ function Resolve-ProjectPath($path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -21,7 +25,7 @@ function Assert-True([bool] $condition, [string] $message) {
 function Read-Manifest([string] $fileName) {
     $path = Join-Path $resolvedManifestDirectory $fileName
     Assert-True (Test-Path -LiteralPath $path) "Kubernetes manifest missing: $fileName"
-    $content = Get-Content -Raw -LiteralPath $path
+    $content = Read-Utf8Text $path
     Assert-True (-not $content.Contains("`t")) "Tabs are not allowed in Kubernetes manifest: $fileName"
     Assert-True ($content.Contains("apiVersion:")) "apiVersion missing in Kubernetes manifest: $fileName"
     Assert-True ($content.Contains("kind:")) "kind missing in Kubernetes manifest: $fileName"
@@ -256,7 +260,7 @@ Assert-True (-not $kustomization.Contains("monitoring-operator.yaml")) "kustomiz
 
 $osmuDevOverlayDirectory = Join-Path $root "infra\k8s-overlays\osmu-dev"
 Assert-True (Test-Path -LiteralPath $osmuDevOverlayDirectory) "osmu-dev overlay missing."
-$osmuDevKustomization = Get-Content -Raw -LiteralPath (Join-Path $osmuDevOverlayDirectory "kustomization.yaml")
+$osmuDevKustomization = Read-Utf8Text (Join-Path $osmuDevOverlayDirectory "kustomization.yaml")
 Assert-Contains $osmuDevKustomization "namespace: osmu-dev" "overlays/osmu-dev/kustomization.yaml"
 Assert-Contains $osmuDevKustomization "osmu-dev.192.168.35.60.nip.io" "overlays/osmu-dev/kustomization.yaml"
 Assert-Contains $osmuDevKustomization "30080" "overlays/osmu-dev/kustomization.yaml"
@@ -271,13 +275,13 @@ Assert-Contains $osmuDevKustomization "MC_CONFIG_DIR" "overlays/osmu-dev/kustomi
 Assert-Contains $osmuDevKustomization "/var/lib/osmu-dev/frontend/dist" "overlays/osmu-dev/kustomization.yaml"
 Assert-Contains $osmuDevKustomization "osmu-backup-data" "overlays/osmu-dev/kustomization.yaml"
 
-$osmuDevFrontendNginx = Get-Content -Raw -LiteralPath (Join-Path $osmuDevOverlayDirectory "frontend-nginx-config.yaml")
+$osmuDevFrontendNginx = Read-Utf8Text (Join-Path $osmuDevOverlayDirectory "frontend-nginx-config.yaml")
 Assert-Contains $osmuDevFrontendNginx "kind: ConfigMap" "overlays/osmu-dev/frontend-nginx-config.yaml"
 Assert-Contains $osmuDevFrontendNginx "name: osmu-frontend-nginx" "overlays/osmu-dev/frontend-nginx-config.yaml"
 Assert-Contains $osmuDevFrontendNginx "listen 8080" "overlays/osmu-dev/frontend-nginx-config.yaml"
 Assert-Contains $osmuDevKustomization "osmu-dev-local" "overlays/osmu-dev/kustomization.yaml"
 
-$osmuDevPv = Get-Content -Raw -LiteralPath (Join-Path $osmuDevOverlayDirectory "pv.yaml")
+$osmuDevPv = Read-Utf8Text (Join-Path $osmuDevOverlayDirectory "pv.yaml")
 Assert-Contains $osmuDevPv "kind: StorageClass" "overlays/osmu-dev/pv.yaml"
 Assert-Contains $osmuDevPv "kind: PersistentVolume" "overlays/osmu-dev/pv.yaml"
 Assert-Contains $osmuDevPv "/var/lib/osmu-dev/mariadb" "overlays/osmu-dev/pv.yaml"
@@ -288,7 +292,7 @@ Assert-Contains $osmuDevPv "nodeAffinity:" "overlays/osmu-dev/pv.yaml"
 Assert-Contains $osmuDevPv "slave01" "overlays/osmu-dev/pv.yaml"
 Assert-Contains $osmuDevPv "persistentVolumeReclaimPolicy: Retain" "overlays/osmu-dev/pv.yaml"
 
-$restoreExample = Get-Content -Raw -LiteralPath (Join-Path $resolvedManifestDirectory "examples\restore-from-backup.example.yaml")
+$restoreExample = Read-Utf8Text (Join-Path $resolvedManifestDirectory "examples\restore-from-backup.example.yaml")
 Assert-Contains $restoreExample "kind: Job" "examples/restore-from-backup.example.yaml"
 Assert-Contains $restoreExample "osmu-restore-from-backup-example" "examples/restore-from-backup.example.yaml"
 Assert-Contains $restoreExample "BACKUP_TIMESTAMP" "examples/restore-from-backup.example.yaml"
@@ -300,7 +304,7 @@ Assert-Contains $restoreExample "Restoring can overwrite" "examples/restore-from
 
 $yamlFiles = Get-ChildItem -LiteralPath $resolvedManifestDirectory -Filter *.yaml
 foreach ($yamlFile in $yamlFiles) {
-    $content = Get-Content -Raw -LiteralPath $yamlFile.FullName
+    $content = Read-Utf8Text $yamlFile.FullName
     if ($yamlFile.Name -ne "secret.example.yaml") {
         Assert-True (-not $content.Contains("change-me")) "$($yamlFile.Name) contains placeholder secret text."
     }

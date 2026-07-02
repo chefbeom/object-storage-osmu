@@ -12,6 +12,11 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Assert-True([bool] $Condition, [string] $Message) {
     if (-not $Condition) {
         throw $Message
@@ -135,9 +140,9 @@ Assert-True (Test-Path -LiteralPath $summaryPath) "Storage expansion finalizer s
 Assert-True (Test-Path -LiteralPath $telemetryJsonPath) "Storage backend telemetry JSON missing."
 Assert-True (Test-Path -LiteralPath $telemetryMarkdownPath) "Storage backend telemetry markdown missing."
 
-$report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
-$telemetry = Get-Content -Raw -LiteralPath $telemetryJsonPath | ConvertFrom-Json
-$summaryText = Get-Content -Raw -LiteralPath $summaryPath
+$report = Read-Utf8Text $reportPath | ConvertFrom-Json
+$telemetry = Read-Utf8Text $telemetryJsonPath | ConvertFrom-Json
+$summaryText = Read-Utf8Text $summaryPath
 
 Assert-True ($report.formatVersion -eq "osmu.storage-expansion-finalize.v1") "Expected storage expansion finalizer formatVersion."
 Assert-True ($report.result -eq "passed") "Expected finalizer result=passed."

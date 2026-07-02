@@ -4,6 +4,43 @@ import { randomUUID } from 'node:crypto'
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 8080
 const BYTES_PER_GIB = 1024 ** 3
+const BROWSER_READY_SUBSET_NOTE = 'Run the ready subset plan command first without -Execute, then use the web dispatch URL(s) after operator review. GITHUB_CLI_AVAILABLE: GitHub CLI was not found on PATH. Web dispatch URL(s) for ready templates: action 6: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml. Review failed preflight checks and operator approvals before using browser dispatch.'
+const SECURITY_FINALIZER_DEPENDENCY_NOTE = 'Security finalizer dependency: this dispatch can supply ContainerSecurityRunId; also collect ImageSigningRunId before running security-evidence-finalizer-ci.yml.'
+const BROWSER_READY_SUBSET_CONVERGENCE_NOTE = `${BROWSER_READY_SUBSET_NOTE} ${SECURITY_FINALIZER_DEPENDENCY_NOTE}`
+const SECURITY_FINALIZER_RUN_ID_HINTS = [
+  {
+    workflow: 'image-publish-sign-ci.yml',
+    group: 'image-signing-source',
+    actionOrders: [],
+    runIdParameter: 'ImageSigningRunId',
+    recommendedRunId: '',
+    artifactName: 'osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68',
+    requiredForReadiness: false,
+    readyForArtifactDownload: false,
+    runsUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml',
+    runListJsonPath: '.\\.osmu-run\\workflow-run-lists\\image-publish-sign-ci.yml.json',
+    queryCommand: 'gh run list --workflow image-publish-sign-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle',
+    gitHubApiQueryUrl: 'https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20',
+    sourceSelected: false,
+    supplementalForSecurityFinalizer: true,
+  },
+  {
+    workflow: 'container-security-ci.yml',
+    group: 'container-security-source',
+    actionOrders: [6],
+    runIdParameter: 'ContainerSecurityRunId',
+    recommendedRunId: '',
+    artifactName: 'osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68',
+    requiredForReadiness: false,
+    readyForArtifactDownload: false,
+    runsUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+    runListJsonPath: '.\\.osmu-run\\workflow-run-lists\\container-security-ci.yml.json',
+    queryCommand: 'gh run list --workflow container-security-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle',
+    gitHubApiQueryUrl: 'https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20',
+    sourceSelected: true,
+    supplementalForSecurityFinalizer: false,
+  },
+]
 
 let state = createInitialState()
 
@@ -63,6 +100,10 @@ function createInitialState() {
     storageProfileAssignments: new Map(),
     storageProfileRequests: [],
     storageProfileRequestSequence: 1,
+    storageExpansionRequests: [],
+    storageExpansionExecutions: [],
+    storageExpansionRequestSequence: 1,
+    storageExpansionExecutionSequence: 1,
     billingPricingPolicy: defaultBillingPricingPolicy(),
     billingPricingPolicyProposals: [],
     billingPricingPolicyProposalSequence: 1,
@@ -122,6 +163,9 @@ function bucketRecord(name, quotaBytes = BYTES_PER_GIB) {
     objectCount: 0,
     ownerType: 'USER',
     ownerId: 1,
+    lifecycleXml: '',
+    lifecycleRuleCount: 0,
+    tags: {},
     createdAt: new Date().toISOString(),
   }
 }
@@ -458,19 +502,76 @@ function handleBucketRoute(request, response, bucketName, suffix, bodyBuffer, js
     sendJson(response, 200, apiItems([]))
     return
   }
-  if (request.method === 'GET' && suffix === '/lifecycle') {
-    sendJson(response, 200, apiData({ xml: '<LifecycleConfiguration />', ruleCount: 0 }))
-    return
+  if (suffix === '/lifecycle') {
+    const bucket = findBucket(bucketName)
+    if (!bucket) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Bucket not found.' } })
+      return
+    }
+    if (request.method === 'GET') {
+      sendJson(response, 200, apiData({ xml: bucket.lifecycleXml || '', ruleCount: bucket.lifecycleRuleCount || 0 }))
+      return
+    }
+    if (request.method === 'PUT') {
+      const xml = String(jsonBody.xml || '')
+      const ruleCount = countLifecycleRules(xml)
+      bucket.lifecycleXml = xml
+      bucket.lifecycleRuleCount = ruleCount
+      state.auditLogs.unshift(auditLog('BUCKET_LIFECYCLE_PUT', 'BUCKET', bucketName))
+      sendJson(response, 200, apiData({ xml, ruleCount, savedCount: ruleCount, importedCount: ruleCount }))
+      return
+    }
+    if (request.method === 'DELETE') {
+      bucket.lifecycleXml = ''
+      bucket.lifecycleRuleCount = 0
+      state.auditLogs.unshift(auditLog('BUCKET_LIFECYCLE_DELETE', 'BUCKET', bucketName))
+      sendJson(response, 200, apiData({ xml: '', ruleCount: 0, savedCount: 0 }))
+      return
+    }
   }
-  if (request.method === 'GET' && suffix === '/tags') {
-    sendJson(response, 200, apiData({ tags: { project: 'osmu', runtime: 'mock' } }))
-    return
+  if (suffix === '/tags') {
+    const bucket = findBucket(bucketName)
+    if (!bucket) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Bucket not found.' } })
+      return
+    }
+    if (request.method === 'GET') {
+      sendJson(response, 200, apiData({ tags: bucket.tags || {}, tagCount: Object.keys(bucket.tags || {}).length }))
+      return
+    }
+    if (request.method === 'PUT') {
+      bucket.tags = { ...(jsonBody.tags || {}) }
+      state.auditLogs.unshift(auditLog('BUCKET_TAGS_PUT', 'BUCKET', bucketName))
+      sendJson(response, 200, apiData({ tags: bucket.tags, tagCount: Object.keys(bucket.tags).length }))
+      return
+    }
+    if (request.method === 'DELETE') {
+      bucket.tags = {}
+      state.auditLogs.unshift(auditLog('BUCKET_TAGS_DELETE', 'BUCKET', bucketName))
+      sendJson(response, 200, apiData({ tags: {}, tagCount: 0 }))
+      return
+    }
   }
-  if (request.method === 'GET' && suffix === '/objects') {
+  if (request.method === 'PUT' && suffix === '/objects/tags') {
+    const objectKey = String(jsonBody.key || '')
+    const object = objectsFor(bucketName).find((item) => item.key === objectKey)
+    if (!object) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Object not found.' } })
+      return
+    }
+    object.tags = typeof jsonBody.tags === 'string' ? parseTags(jsonBody.tags) : { ...(jsonBody.tags || {}) }
+    object.updatedAt = new Date().toISOString()
+    state.auditLogs.unshift(auditLog('OBJECT_TAGS_PUT', 'OBJECT', `${bucketName}/${objectKey}`))
+    sendJson(response, 200, apiData({ key: object.key, tags: object.tags, tagCount: Object.keys(object.tags).length }))
+    return
+  }  if (request.method === 'GET' && suffix === '/objects') {
+    const prefix = url.searchParams.get('prefix') || ''
+    const delimiter = url.searchParams.get('delimiter') || ''
     const search = url.searchParams.get('search') || ''
-    const items = objectsFor(bucketName).filter((item) => !search || item.key.includes(search))
+    const tagFilter = parseTags(url.searchParams.get('tag') || '')
+    const listed = listObjectsForMock(bucketName, { prefix, delimiter, search, tagFilter })
     recordDataFlow('LIST', 'list', 'METADATA', bucketName, '', currentUser(request).loginId, 'SUCCESS', 0, 'Object list read', 'REST')
-    sendJson(response, 200, { items, prefixes: [], nextCursor: '' })
+    sendJson(response, 200, { items: listed.items, prefixes: listed.prefixes, nextCursor: '' })
     return
   }
   if (request.method === 'POST' && suffix === '/objects') {
@@ -484,7 +585,34 @@ function handleBucketRoute(request, response, bucketName, suffix, bodyBuffer, js
     sendJson(response, 200, apiData(record))
     return
   }
-  if (request.method === 'GET' && isObjectDataPath(suffix)) {
+  const objectMetadataMatch = /^\/objects\/metadata\/(.+)$/.exec(suffix)
+  if (objectMetadataMatch && request.method === 'GET') {
+    const objectKey = decodeURIComponent(objectMetadataMatch[1])
+    const object = objectsFor(bucketName).find((item) => item.key === objectKey)
+    if (!object) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Object not found.' } })
+      return
+    }
+    const etag = object.etag || `mock-${Math.max(1, Number(object.sizeBytes || 0)).toString(16)}`
+    const checksums = object.checksums && Object.keys(object.checksums).length > 0 ? object.checksums : { SHA256: `mock-sha256-${Math.max(1, Number(object.sizeBytes || 0)).toString(16)}` }
+    sendJson(response, 200, apiData({
+      key: object.key,
+      syncStatus: object.status || 'SYNCED',
+      sizeBytes: object.sizeBytes,
+      storageSizeBytes: object.sizeBytes,
+      contentType: object.contentType,
+      storageContentType: object.contentType,
+      etag,
+      storageEtag: etag,
+      checksums,
+      storageChecksums: checksums,
+      lastModifiedAt: object.updatedAt || object.createdAt,
+      storageLastModifiedAt: object.updatedAt || object.createdAt,
+      tags: object.tags || {},
+      storageTags: object.tags || {},
+    }))
+    return
+  }  if (request.method === 'GET' && isObjectDataPath(suffix)) {
     const objectKey = decodeURIComponent(suffix.slice('/objects/'.length))
     const object = objectsFor(bucketName).find((item) => item.key === objectKey)
     if (!object) {
@@ -664,8 +792,12 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(backupStatus()))
     return
   }
+  if (request.method === 'GET' && path === '/admin/audit-logs/export.csv') {
+    sendCsv(response, 'osmu-audit.csv', auditLogsCsv(url))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/audit-logs') {
-    sendJson(response, 200, { items: state.auditLogs, nextCursor: '' })
+    sendJson(response, 200, pagedAuditLogs(url))
     return
   }
   if (request.method === 'GET' && path === '/access-keys') {
@@ -766,7 +898,87 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     return
   }
   if (request.method === 'GET' && path === '/admin/storage-expansion/requests') {
-    sendJson(response, 200, apiItems([]))
+    sendJson(response, 200, apiItems(state.storageExpansionRequests))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/storage-expansion/requests') {
+    const requestRecord = storageExpansionRequestRecord(jsonBody, currentUser(request).loginId)
+    state.storageExpansionRequests.unshift(requestRecord)
+    state.auditLogs.unshift(auditLog('STORAGE_EXPANSION_REQUEST_CREATE', 'STORAGE_EXPANSION_REQUEST', requestRecord.poolName))
+    sendJson(response, 200, apiData(requestRecord))
+    return
+  }
+  const storageExpansionManifestMatch = /^\/admin\/storage-expansion\/requests\/(\d+)\/manifest$/.exec(path)
+  if (storageExpansionManifestMatch && request.method === 'GET') {
+    const requestRecord = findStorageExpansionRequest(Number(storageExpansionManifestMatch[1]))
+    if (!requestRecord) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Storage expansion request not found.' } })
+      return
+    }
+    sendJson(response, 200, apiData(storageExpansionManifest(requestRecord)))
+    return
+  }
+  const storageExpansionManifestArtifactMatch = /^\/admin\/storage-expansion\/requests\/(\d+)\/manifest\/([^/]+)$/.exec(path)
+  if (storageExpansionManifestArtifactMatch && request.method === 'GET') {
+    const requestRecord = findStorageExpansionRequest(Number(storageExpansionManifestArtifactMatch[1]))
+    if (!requestRecord) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Storage expansion request not found.' } })
+      return
+    }
+    const artifact = decodeURIComponent(storageExpansionManifestArtifactMatch[2])
+    const manifest = storageExpansionManifest(requestRecord)
+    const payload = artifact === 'tenant' ? manifest.tenantPatchYaml : artifact === 'helm' ? manifest.helmValuesPatchYaml : `${manifest.tenantPatchYaml}\n---\n${manifest.helmValuesPatchYaml}`
+    setCorsHeaders(response)
+    response.writeHead(200, {
+      'Content-Type': 'application/x-yaml; charset=utf-8',
+      'Content-Disposition': `attachment; filename="osmu-storage-expansion-${requestRecord.poolName}-${artifact}.yaml"`,
+    })
+    response.end(payload)
+    return
+  }
+  const storageExpansionExecutionPlanMatch = /^\/admin\/storage-expansion\/requests\/(\d+)\/execution-plan$/.exec(path)
+  if (storageExpansionExecutionPlanMatch && request.method === 'POST') {
+    const requestRecord = findStorageExpansionRequest(Number(storageExpansionExecutionPlanMatch[1]))
+    if (!requestRecord) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Storage expansion request not found.' } })
+      return
+    }
+    if (requestRecord.status !== 'APPROVED') {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Storage expansion request must be APPROVED before dry-run planning.' } })
+      return
+    }
+    sendJson(response, 200, apiData(storageExpansionExecutionPlan(requestRecord)))
+    return
+  }
+  const storageExpansionStatusMatch = /^\/admin\/storage-expansion\/requests\/(\d+)\/status$/.exec(path)
+  if (storageExpansionStatusMatch && request.method === 'PATCH') {
+    const requestRecord = findStorageExpansionRequest(Number(storageExpansionStatusMatch[1]))
+    if (!requestRecord) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Storage expansion request not found.' } })
+      return
+    }
+    const status = String(jsonBody.status || '').trim().toUpperCase()
+    if (!['APPROVED', 'REJECTED', 'APPLIED'].includes(status)) {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Invalid storage expansion status.' } })
+      return
+    }
+    if (status === 'APPROVED' && requestRecord.status !== 'PLANNED') {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Only PLANNED storage expansion requests can be approved.' } })
+      return
+    }
+    if (status === 'APPLIED' && requestRecord.status !== 'APPROVED') {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Only APPROVED storage expansion requests can be applied.' } })
+      return
+    }
+    updateStorageExpansionStatusRecord(requestRecord, status, jsonBody.appliedEvidence || '')
+    state.auditLogs.unshift(auditLog('STORAGE_EXPANSION_REQUEST_STATUS', 'STORAGE_EXPANSION_REQUEST', requestRecord.poolName))
+    sendJson(response, 200, apiData(requestRecord))
+    return
+  }
+  const storageExpansionExecutionsMatch = /^\/admin\/storage-expansion\/requests\/(\d+)\/executions$/.exec(path)
+  if (storageExpansionExecutionsMatch && request.method === 'GET') {
+    const requestId = Number(storageExpansionExecutionsMatch[1])
+    sendJson(response, 200, apiItems(state.storageExpansionExecutions.filter((execution) => execution.requestId === requestId)))
     return
   }
   if (request.method === 'GET' && path === '/admin/storage-expansion/summary') {
@@ -2633,22 +2845,25 @@ function sendChargebackPaymentProviderAdapter(handoffId) {
 function chargebackPaymentProviderAdapterReadiness() {
   const profiles = ['GENERIC', 'CARD', 'BANK', 'TAX', 'ERP'].map((profile) => {
     const sampleProvider = profile === 'GENERIC' ? 'MANUAL_AP' : `${profile}_PROVIDER`
+    const nativeApiSupported = profile !== 'GENERIC'
     return {
       providerProfile: profile,
       sampleProvider,
-      adapterMode: 'UNCONFIGURED',
-      status: 'ACTION_REQUIRED',
+      adapterMode: nativeApiSupported ? 'NATIVE_API_UNCONFIGURED' : 'UNCONFIGURED',
+      status: nativeApiSupported ? 'NATIVE_API_CONFIGURATION_REQUIRED' : 'ACTION_REQUIRED',
       webhookProfileConfigured: false,
-      nativeApiSupported: false,
+      nativeApiSupported,
       nativeApiReady: false,
       requiredConfiguration: paymentProviderAdapterRequirement(profile),
-      note: `${profile} handoff needs a configured webhook profile or native provider API adapter before external send.`,
+      note: nativeApiSupported
+        ? `${profile} handoff can use the native API bridge after endpoint URL and auth-header value are configured.`
+        : `${profile} handoff needs a configured webhook profile before external send.`,
     }
   })
   return {
     mode: 'PAYMENT_PROVIDER_ADAPTER_READINESS',
     status: 'ACTION_REQUIRED',
-    nativeApiSupported: false,
+    nativeApiSupported: true,
     nativeApiReady: false,
     profileCount: profiles.length,
     webhookReadyProfileCount: 0,
@@ -2656,8 +2871,8 @@ function chargebackPaymentProviderAdapterReadiness() {
     profiles,
     generatedAt: new Date().toISOString(),
     scopePolicy: 'Mock readiness checks configuration shape only and does not call provider APIs.',
-    secretPolicy: 'Webhook URLs, signing secrets, provider credentials, raw provider responses, and customer payment data are never returned.',
-    note: 'Configure generic or provider-specific webhook profiles before sending handoff rows. Native provider API adapters remain a follow-up implementation.',
+    secretPolicy: 'Webhook/native endpoint URLs, secret/auth header values, signing secrets, provider credentials, raw provider responses, and customer payment data are never returned.',
+    note: 'Configure generic/provider-specific webhook profiles or CARD/BANK/TAX/ERP native API bridge endpoint URL plus auth-header value before sending handoff rows.',
   }
 }
 
@@ -2705,16 +2920,16 @@ function paymentProviderProfile(provider) {
 
 function paymentProviderAdapterRequirement(profile) {
   if (profile === 'CARD') {
-    return 'Set osmu.billing.payment-provider.card.webhook-url or the generic payment-provider webhook; native card processor API support is not implemented yet.'
+    return 'Set osmu.billing.payment-provider.card.webhook-url, the generic payment-provider webhook, or osmu.billing.payment-provider.card.native-api-url plus osmu.billing.payment-provider.card.native-api-auth-header-value.'
   }
   if (profile === 'BANK') {
-    return 'Set osmu.billing.payment-provider.bank.webhook-url or the generic payment-provider webhook; native bank-transfer API support is not implemented yet.'
+    return 'Set osmu.billing.payment-provider.bank.webhook-url, the generic payment-provider webhook, or osmu.billing.payment-provider.bank.native-api-url plus osmu.billing.payment-provider.bank.native-api-auth-header-value.'
   }
   if (profile === 'TAX') {
-    return 'Set osmu.billing.payment-provider.tax.webhook-url or the generic payment-provider webhook; native tax invoice API support is not implemented yet.'
+    return 'Set osmu.billing.payment-provider.tax.webhook-url, the generic payment-provider webhook, or osmu.billing.payment-provider.tax.native-api-url plus osmu.billing.payment-provider.tax.native-api-auth-header-value.'
   }
   if (profile === 'ERP') {
-    return 'Set osmu.billing.payment-provider.erp.webhook-url or the generic payment-provider webhook; native ERP API support is not implemented yet.'
+    return 'Set osmu.billing.payment-provider.erp.webhook-url, the generic payment-provider webhook, or osmu.billing.payment-provider.erp.native-api-url plus osmu.billing.payment-provider.erp.native-api-auth-header-value.'
   }
   return 'Set osmu.billing.payment-provider.webhook-url for generic/manual payment-provider handoff delivery.'
 }
@@ -3316,37 +3531,115 @@ function readinessSummary() {
     status: 'REVIEW',
     runtimeProfile: 'Frontend mock API demo',
     blockerCount: 0,
-    warningCount: 4,
+    warningCount: 10,
     blockers: [],
     warnings: [
       'Java backend tests pending',
       'Docker MariaDB/MinIO smoke pending',
+      'Operations evidence plan action required',
+      'Operations evidence invocation planned for action 6',
+      'Operations dispatch preflight needs browser dispatch for action 6',
+      'Operations workflow run id plan is waiting for container-security-ci.yml run id',
+      'Operations artifact collection is waiting for container security evidence',
+      'Operations evidence handoff action required',
       'Operations readiness convergence action required',
       'Data-flow storage plan target evidence pending',
-    ],
-    severitySummaries: [
-      { severity: 'WARNING', count: 4 },
+    ],    severitySummaries: [
+      { severity: 'WARNING', count: 10 },
     ],
     categorySummaries: [
       { category: 'RUNTIME', count: 1 },
       { category: 'STORAGE', count: 1 },
-      { category: 'OPERATIONS', count: 2 },
+      { category: 'OPERATIONS', count: 8 },
     ],
     items: [
       { code: 'METADATA_ENGINE', category: 'RUNTIME', severity: 'WARNING', title: 'Mock metadata engine', message: 'Java/MariaDB gate is pending.', targetPage: 'dashboard', targetPanel: 'overview' },
       { code: 'OBJECT_STORAGE', category: 'STORAGE', severity: 'WARNING', title: 'Mock object store', message: 'Docker/MinIO gate is pending.', targetPage: 'storage', targetPanel: 'storage-buckets' },
       {
+        code: 'OPERATIONS_EVIDENCE_PLAN',
+        category: 'OPERATIONS',
+        severity: 'WARNING',
+        title: 'Evidence plan',
+        message: 'Operations evidence plan is action-required: passed=82 pending=20, actions=20, selected ready subset is action 6.',
+        targetPage: 'dashboard',
+        targetPanel: 'dashboard-readiness-panel',
+        evidencePath: '.osmu-run/latest-operations-evidence-plan.json',
+        remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-evidence-plan.ps1',
+        remediationNote: 'Mock readiness mirrors the current local evidence chain and keeps the action 6 browser dispatch path visible.',
+      },
+      {
+        code: 'OPERATIONS_EVIDENCE_PLAN_INVOCATION',
+        category: 'OPERATIONS',
+        severity: 'WARNING',
+        title: 'Evidence invocation',
+        message: 'Operations evidence invocation is planned for selected action 6 with zero blocked actions.',
+        targetPage: 'dashboard',
+        targetPanel: 'dashboard-readiness-panel',
+        evidencePath: '.osmu-run/latest-operations-evidence-plan-invocation.json',
+        remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+        remediationNote: 'Run plan-only first, review the generated workflow dispatch, then dispatch the GitHub workflow from the browser.',
+      },
+      {
+        code: 'OPERATIONS_DISPATCH_PREFLIGHT',
+        category: 'OPERATIONS',
+        severity: 'WARNING',
+        title: 'Dispatch preflight',
+        message: 'Dispatch preflight is action-required only because GitHub CLI is unavailable; action 6 is ready for browser dispatch.',
+        targetPage: 'dashboard',
+        targetPanel: 'dashboard-readiness-panel',
+        evidencePath: '.osmu-run/latest-operations-dispatch-preflight.json',
+        remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+        remediationWorkflow: '.github/workflows/container-security-ci.yml',
+        remediationWorkflowCommand: 'gh workflow run container-security-ci.yml --repo chefbeom/object-storage-osmu --ref main',
+        remediationNote: 'Browser dispatch URL: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+      },
+      {
+        code: 'OPERATIONS_WORKFLOW_RUN_ID_PLAN',
+        category: 'OPERATIONS',
+        severity: 'WARNING',
+        title: 'Workflow run id plan',
+        message: 'Workflow run id plan is query-required: container-security-ci.yml run id is missing for action 6.',
+        targetPage: 'dashboard',
+        targetPanel: 'dashboard-readiness-panel',
+        evidencePath: '.osmu-run/latest-operations-workflow-run-ids.json',
+        remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1',
+        remediationNote: 'After container-security-ci.yml finishes, collect the run id before artifact collection.',
+      },
+      {
+        code: 'OPERATIONS_ARTIFACT_COLLECTION_PLAN',
+        category: 'OPERATIONS',
+        severity: 'WARNING',
+        title: 'Artifact collection',
+        message: 'Artifact collection has no readiness artifacts yet and is waiting for the container security source artifact.',
+        targetPage: 'dashboard',
+        targetPanel: 'dashboard-readiness-panel',
+        evidencePath: '.osmu-run/latest-operations-artifact-collection-plan.json',
+        remediationCommand: 'gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=<image-signing-run-id> -f image_signing_artifact_name=osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68 -f container_security_run_id=<container-security-run-id> -f container_security_artifact_name=osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68 -f fail_if_not_passed=true',
+        remediationNote: 'Security evidence finalizer remains blocked until image signing and container security run ids are available.',
+      },
+      {
+        code: 'OPERATIONS_EVIDENCE_HANDOFF',
+        category: 'OPERATIONS',
+        severity: 'WARNING',
+        title: 'Evidence handoff',
+        message: 'Operations evidence handoff is action-required: currentBottleneck=dispatch-ready-subset-browser, selected action=6.',
+        targetPage: 'dashboard',
+        targetPanel: 'dashboard-readiness-panel',
+        evidencePath: '.osmu-run/latest-operations-evidence-handoff.json',
+        remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+        remediationNote: 'Open the container-security-ci.yml browser dispatch after reviewing the ready subset plan.',
+      },      {
         code: 'OPERATIONS_READINESS_CONVERGENCE',
         category: 'OPERATIONS',
         severity: 'WARNING',
         title: 'Convergence',
-        message: 'Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/7, finalizerGaps=1.',
+        message: 'Operations readiness convergence is action-required: bottleneck=dispatch-ready-subset-browser, stages=2/8, missingWorkflowRuns=1, handoffStale=false, kubernetesReportSyncStale=false.',
         targetPage: 'dashboard',
         targetPanel: 'dashboard-readiness-panel',
         evidencePath: '.osmu-run/latest-operations-readiness-convergence.json',
-        remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1',
+        remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
         remediationNote:
-          'The invocation report still has blocked actions. This mock report does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands.',
+          'The ready subset is action 6. This mock report does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands.',
       },
       {
         code: 'DATA_FLOW_STORAGE_PLAN',
@@ -3361,6 +3654,584 @@ function readinessSummary() {
         remediationNote: 'OSMU operations analytics only. This mock plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.',
       },
     ],
+    operationsReadinessSummary: {
+      result: 'pending',
+      summary: 'passed=82 pending=20',
+      reportPath: '.osmu-run/latest-operations-readiness.json',
+      generatedAt: '2026-06-30T12:48:07.4142068+09:00',
+      passedCount: 82,
+      pendingCount: 20,
+      totalCount: 102,
+      checkCount: 102,
+      pendingCategorySummary: 'chargeback-closeout=1, commercial-approval=1, commercial-integration=1, data-flow=3, enterprise-auth=2, ha-dr=2, monitoring=1, operations-handoff-package=1, security-hardening=6, storage-backend=1, storage-expansion=1',
+      pendingCategoryCounts: [
+        { category: 'chargeback-closeout', count: 1 },
+        { category: 'commercial-approval', count: 1 },
+        { category: 'commercial-integration', count: 1 },
+        { category: 'data-flow', count: 3 },
+        { category: 'enterprise-auth', count: 2 },
+        { category: 'ha-dr', count: 2 },
+        { category: 'monitoring', count: 1 },
+        { category: 'operations-handoff-package', count: 1 },
+        { category: 'security-hardening', count: 6 },
+        { category: 'storage-backend', count: 1 },
+        { category: 'storage-expansion', count: 1 },
+      ],
+      pendingRemediationCount: 20,
+      pendingRemediations: [
+        {
+          name: 'Container scan/SBOM evidence',
+          category: 'security-hardening',
+          evidencePath: '.osmu-run/latest-container-security-evidence.json',
+          requiredEvidence: 'container scan/SBOM result=passed from GitHub-hosted workflow',
+          detail: 'report not found',
+          command: 'Dispatch .github/workflows/container-security-ci.yml on the target commit',
+          workflow: '.github/workflows/container-security-ci.yml',
+          workflowCommand: 'gh workflow run container-security-ci.yml',
+          note: 'Mock source readiness keeps action 6 visible as the next browser-dispatchable evidence run.',
+        },
+      ],
+      decisionRule: 'Operations readiness remains pending until all target evidence checks pass and the final handoff package is generated from non-secret target evidence.',
+    },
+    operationsEvidencePlan: {
+      result: 'action-required',
+      sourceSummary: 'passed=82 pending=20',
+      sourceReport: '.osmu-run/latest-operations-readiness.json',
+      sourcePassedCount: 82,
+      sourcePendingCount: 20,
+      sourceTotalCount: 102,
+      sourceCheckCount: 102,
+      sourcePendingRemediationCount: 20,
+      sourcePendingRemediationEntryCount: 20,
+      sourcePendingRemediationActionCount: 20,
+      sourcePendingRemediationMissingActionCount: 0,
+      sourcePendingRemediationCoverageReady: true,
+      pendingCount: 20,
+      actionCount: 20,
+      unplannedCount: 0,
+      pendingCategorySummary: 'chargeback-closeout=1, commercial-approval=1, commercial-integration=1, data-flow=3, enterprise-auth=2, ha-dr=2, monitoring=1, operations-handoff-package=1, security-hardening=6, storage-backend=1, storage-expansion=1',
+      pendingCategoryCounts: [
+        { category: 'security-hardening', count: 6 },
+        { category: 'data-flow', count: 3 },
+        { category: 'enterprise-auth', count: 2 },
+        { category: 'ha-dr', count: 2 },
+      ],
+      actionSummary: {
+        totalActions: 20,
+        kubernetesLiveActions: 3,
+        securityCiActions: 6,
+        operatorRemediationActions: 11,
+        requiresOperatorApprovalCount: 17,
+        requiresKubeconfigSecretCount: 3,
+        actionsWithPlaceholdersCount: 16,
+        unplannedCheckCount: 0,
+      },
+      actions: [
+        {
+          order: 6,
+          name: 'Container scan/SBOM evidence',
+          category: 'security-hardening',
+          currentDetail: 'report not found',
+          command: 'gh workflow run container-security-ci.yml',
+          workflowCommand: 'gh workflow run container-security-ci.yml',
+          recommendedCommand: 'gh workflow run container-security-ci.yml',
+          workflow: '.github/workflows/container-security-ci.yml',
+          dispatchUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+          requiresOperatorApproval: true,
+          requiresKubeconfigSecret: false,
+          reason: 'Container security scan and SBOM evidence is the ready subset currently blocking convergence.',
+        },
+      ],
+    },
+    operationsEvidenceInvocation: {
+      result: 'planned',
+      sourceSummary: 'passed=82 pending=20',
+      sourcePlan: '.osmu-run/latest-operations-evidence-plan.json',
+      sourcePassedCount: 82,
+      sourcePendingCount: 20,
+      sourceTotalCount: 102,
+      sourceCheckCount: 102,
+      commandMode: 'Workflow',
+      executionMode: 'plan-only',
+      selectedActionCount: 1,
+      selectedActionOrders: [6],
+      plannedCount: 1,
+      blockedCount: 0,
+      executedCount: 0,
+      failedCount: 0,
+      actions: [
+        {
+          order: 6,
+          name: 'Container scan/SBOM evidence',
+          status: 'planned',
+          command: 'gh workflow run container-security-ci.yml',
+          workflow: '.github/workflows/container-security-ci.yml',
+          dispatchUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+          blockReasons: [],
+        },
+      ],
+    },
+    operationsInvocationUnblockPlan: {
+      result: 'ready',
+      sourceInvocationReport: '.osmu-run/latest-operations-evidence-plan-invocation.json',
+      sourceResult: 'planned',
+      sourceSummary: 'passed=82 pending=20',
+      sourcePassedCount: 82,
+      sourcePendingCount: 20,
+      sourceTotalCount: 102,
+      sourceCheckCount: 102,
+      selectedActionCount: 1,
+      plannedCount: 1,
+      blockedCount: 0,
+      failedCount: 0,
+      needsKubeconfigSecretConfirmation: false,
+      needsOperatorApprovalConfirmation: false,
+      requiredPlaceholderCount: 0,
+      ambiguousRepeatedPlaceholderCount: 0,
+      confirmationGroupCount: 0,
+      requiredInputGroupCount: 0,
+      blockedActionOrders: [],
+      plannedActionOrders: [6],
+      confirmedPlanCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+      blockedOnlyPlanCommand: '',
+      plannedOnlyCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+      decisionRule: 'Selected action 6 can proceed in plan-only/browser dispatch mode because no placeholder or confirmation blockers remain.',
+      confirmationGroups: [],
+      requiredInputGroups: [],
+      actions: [],
+    },
+    operationsDispatchPreflight: {
+      result: 'action-required',
+      sourceUnblockPlan: '.osmu-run/latest-operations-invocation-unblock-plan.json',
+      sourceResult: 'ready',
+      sourcePassedCount: 82,
+      sourcePendingCount: 20,
+      sourceTotalCount: 102,
+      sourceCheckCount: 102,
+      selectedActionCount: 1,
+      selectedActionOrders: [6],
+      readyActionCount: 1,
+      readyActionOrders: [6],
+      blockedActionCount: 0,
+      blockedActionOrders: [],
+      needsKubeconfigSecretConfirmation: false,
+      needsOperatorApprovalConfirmation: false,
+      requiredInputCount: 0,
+      missingInputCount: 0,
+      ambiguousInputCount: 0,
+      unsafeInputCount: 0,
+      invalidInputCount: 0,
+      failedCheckCount: 2,
+      warningCheckCount: 0,
+      requiredGitHubSecrets: [],
+      githubCliPath: '',
+      githubRepository: 'chefbeom/object-storage-osmu',
+      githubRef: 'main',
+      gitRefSafety: {
+        checked: true,
+        status: 'action-required',
+        githubRef: 'main',
+        currentBranch: 'main',
+        commitSha: 'a0730b64636a22c38639b5f5c647f2e13792fc68',
+        shortCommitSha: 'a0730b64',
+        upstreamRef: 'origin/main',
+        upstreamCommitSha: '572eb099aacdc3ed03929bf24c34e251e37885bd',
+        aheadCount: 25,
+        behindCount: 0,
+        workingTreeDirty: true,
+        githubRefMatchesCurrentBranch: true,
+        githubRefLikelyContainsCommit: false,
+        suggestedGitHubRef: 'codex/operations-readiness-a0730b64',
+        note: 'Working tree has uncommitted changes; GitHub Actions will only run committed content from GitHubRef main, not local dirty files. Current branch main is also 25 commit(s) ahead of origin/main. Commit or intentionally exclude the changes, rerun preflight, then push a branch and dispatch that ref.',
+      },
+      workflowFiles: [
+        {
+          actionOrder: 6,
+          workflow: 'container-security-ci.yml',
+          path: '.github/workflows/container-security-ci.yml',
+          exists: true,
+          readyToDispatch: true,
+          dispatchUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+        },
+      ],
+      checks: [
+        {
+          id: 'GITHUB_CLI_AVAILABLE',
+          code: 'GITHUB_CLI_AVAILABLE',
+          status: 'fail',
+          severity: 'ERROR',
+          message: 'GitHub CLI was not found on PATH.',
+          detail: 'GitHub CLI was not found on PATH in the mock/demo environment.',
+          remediation: 'Use the browser dispatch URL or install gh before using CLI dispatch.',
+        },
+        {
+          id: 'GITHUB_REF_SYNC',
+          code: 'GITHUB_REF_SYNC',
+          status: 'fail',
+          severity: 'ERROR',
+          message: 'Working tree has uncommitted changes; GitHub Actions will only run committed content from GitHubRef main, not local dirty files. Current branch main is also 25 commit(s) ahead of origin/main. Commit or intentionally exclude the changes, rerun preflight, then push a branch and dispatch that ref.',
+          detail: 'Commit or intentionally exclude local changes, then rerun preflight to get a push command for codex/operations-readiness-a0730b64.',
+          remediation: 'Review git status, commit intended changes, then rerun dispatch preflight before push/dispatch.',
+        },
+      ],
+      readyPlanCommand: '',
+      executeCommand: '',
+      apiExecuteCommand: '',
+      readySubsetPlanCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+      readySubsetExecuteCommand: '',
+      readySubsetApiExecuteCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -GitHubRef main -Execute',
+      requiredInputs: [],
+      inputTemplates: [],
+      decisionRule: 'Browser or GitHub REST API dispatch is available for ready action 6 after pushing a GitHub ref that contains commit a0730b64.',
+    },
+    operationsWorkflowRunIdPlan: {
+      result: 'query-required',
+      sourceInvocationReport: '.osmu-run/latest-operations-evidence-plan-invocation.json',
+      invocationResult: 'planned',
+      sourceSummary: 'passed=82 pending=20',
+      sourcePassedCount: 82,
+      sourcePendingCount: 20,
+      sourceTotalCount: 102,
+      sourceCheckCount: 102,
+      selectedActionOrders: [6],
+      branch: 'main',
+      githubRepository: 'chefbeom/object-storage-osmu',
+      queryMode: 'plan-only',
+      runListJsonDirectory: '.\\.osmu-run\\workflow-run-lists',
+      runListJsonDirectoryCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory .\\.osmu-run\\workflow-run-lists',
+      githubApiRunListCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1',
+      githubApiBaseUrl: 'https://api.github.com',
+      runListJsonFilePattern: '<workflow>.json',
+      runListJsonHandoffNote: 'Save each workflow run-list JSON as .\\.osmu-run\\workflow-run-lists\\<workflow>.json. Each file may contain an array of runs or an object with a runs array.',
+      browserWorkflowRunsUrls: ['https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml', 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml'],
+      workflowRunIdInputs: [
+        {
+          workflow: 'container-security-ci.yml',
+          group: 'container-security-source',
+          actionOrders: [6],
+          runIdParameter: 'ContainerSecurityRunId',
+          recommendedRunId: '',
+          artifactName: 'osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68',
+          requiredForReadiness: false,
+          readyForArtifactDownload: false,
+          runsUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+          runListJsonPath: '.\\.osmu-run\\workflow-run-lists\\container-security-ci.yml.json',
+          queryCommand: 'gh run list --workflow container-security-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle',
+          gitHubApiQueryUrl: 'https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20',
+          sourceSelected: true,
+          supplementalForSecurityFinalizer: false,
+        },
+      ],
+      recommendedCommands: [
+        {
+          order: 1,
+          name: 'Collect run ids from saved run-list JSON',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory .\\.osmu-run\\workflow-run-lists',
+          reason: 'Use after browser dispatch when GitHub CLI is unavailable locally.',
+          note: 'Save each workflow run-list JSON as .\\.osmu-run\\workflow-run-lists\\<workflow>.json. Each file may contain an array of runs or an object with a runs array.',
+          dispatchUrls: ['https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml', 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml'],
+        },
+        {
+          order: 2,
+          name: 'Collect workflow run ids with GitHub REST API',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1',
+          reason: 'Use after browser dispatch when GitHub CLI is unavailable and the repository Actions API is readable.',
+          note: 'Queries workflow_dispatch runs through the GitHub REST API, using GH_TOKEN or GITHUB_TOKEN if present, and never writes token values to the report.',
+          dispatchUrls: ['https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml', 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml'],
+        },
+        {
+          order: 3,
+          name: 'Collect workflow run ids with GitHub CLI',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -Execute',
+          reason: 'Use after workflow dispatch when gh is installed and authenticated.',
+          note: 'Regenerates this plan by querying workflow_dispatch runs directly.',
+          dispatchUrls: [],
+        },
+        {
+          order: 4,
+          name: 'Write artifact collection plan with browser run ids',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ContainerSecurityRunId <ContainerSecurityRunId> -ImageSigningRunId <ImageSigningRunId> -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68',
+          reason: 'Use when a browser workflow run page shows the run id but gh/run-list JSON is unavailable.',
+          note: `Replace each <RunIdParameter> placeholder with either the numeric GitHub Actions run id or the full workflow run URL; artifact collection normalizes /actions/runs/<id> before regenerating the same selected-action scope. ${SECURITY_FINALIZER_DEPENDENCY_NOTE}`,
+          dispatchUrls: ['https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml', 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml'],
+        },
+        {
+          order: 5,
+          name: 'Write artifact collection plan',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68',
+          reason: 'Use after recommended run ids are available.',
+          note: 'Feeds run ids into the artifact collection/import chain.',
+          dispatchUrls: [],
+        },
+        {
+          order: 6,
+          name: 'Run security evidence finalizer',
+          command: 'gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=<image-signing-run-id> -f image_signing_artifact_name=osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68 -f container_security_run_id=<container-security-run-id> -f container_security_artifact_name=osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68 -f fail_if_not_passed=true',
+          reason: 'Use after image signing and container security run ids are collected.',
+          note: 'Promotes signed-image and container scan/SBOM evidence into the security finalizer artifact. Missing run id inputs: ImageSigningRunId, ContainerSecurityRunId.',
+          dispatchUrls: [],
+        },
+      ],
+      limit: 20,
+      workflowCount: 1,
+      readyWorkflowCount: 0,
+      missingWorkflowCount: 1,
+      staleWorkflowCount: 0,
+      imageSigningVersion: 'v0.1.0-rc.1',
+      commitSha: 'a0730b64636a22c38639b5f5c647f2e13792fc68',
+      artifactCollectionPlanCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68',
+      manualArtifactCollectionPlanCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ContainerSecurityRunId <ContainerSecurityRunId> -ImageSigningRunId <ImageSigningRunId> -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68',
+      securityEvidenceFinalizerReady: false,
+      securityEvidenceFinalizerRunIdInputs: ['ImageSigningRunId', 'ContainerSecurityRunId'],
+      securityEvidenceFinalizerRunIdInputHints: [
+        {
+          workflow: 'image-publish-sign-ci.yml',
+          group: 'image-signing-source',
+          actionOrders: [],
+          runIdParameter: 'ImageSigningRunId',
+          recommendedRunId: '',
+          artifactName: 'osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68',
+          requiredForReadiness: false,
+          readyForArtifactDownload: false,
+          runsUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml',
+          runListJsonPath: '.\\.osmu-run\\workflow-run-lists\\image-publish-sign-ci.yml.json',
+          queryCommand: 'gh run list --workflow image-publish-sign-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle',
+          gitHubApiQueryUrl: 'https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/image-publish-sign-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20',
+          sourceSelected: false,
+          supplementalForSecurityFinalizer: true,
+        },
+        {
+          workflow: 'container-security-ci.yml',
+          group: 'container-security-source',
+          actionOrders: [6],
+          runIdParameter: 'ContainerSecurityRunId',
+          recommendedRunId: '',
+          artifactName: 'osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68',
+          requiredForReadiness: false,
+          readyForArtifactDownload: false,
+          runsUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+          runListJsonPath: '.\\.osmu-run\\workflow-run-lists\\container-security-ci.yml.json',
+          queryCommand: 'gh run list --workflow container-security-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle',
+          gitHubApiQueryUrl: 'https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20',
+          sourceSelected: true,
+          supplementalForSecurityFinalizer: false,
+        },
+      ],
+      securityEvidenceFinalizerMissingRunIdInputs: ['ImageSigningRunId', 'ContainerSecurityRunId'],
+      securityEvidenceFinalizerDependencyNote: SECURITY_FINALIZER_DEPENDENCY_NOTE,
+      securityEvidenceFinalizerCommand: 'gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=<image-signing-run-id> -f image_signing_artifact_name=osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68 -f container_security_run_id=<container-security-run-id> -f container_security_artifact_name=osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68 -f fail_if_not_passed=true',
+      decisionRule: 'Query workflow runs after browser dispatch completes, then feed run ids into artifact collection.',
+      workflows: [
+        {
+          actionOrder: 6,
+          workflow: 'container-security-ci.yml',
+          workflowFile: '.github/workflows/container-security-ci.yml',
+          runId: '',
+          runStatus: '',
+          runConclusion: '',
+          queryCommand: 'gh run list --workflow container-security-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle',
+          gitHubApiQueryUrl: 'https://api.github.com/repos/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml/runs?branch=main&event=workflow_dispatch&per_page=20',
+          runListJsonFile: 'container-security-ci.yml.json',
+          runListJsonPath: '.\\.osmu-run\\workflow-run-lists\\container-security-ci.yml.json',
+          runListJsonExists: false,
+          runListJsonNote: 'Save a run-list JSON array or object with a runs array here when collecting run ids without GitHub CLI on this machine.',
+          runsUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+          missing: true,
+          stale: false,
+        },
+      ],
+    },
+    operationsArtifactCollectionPlan: {
+      result: 'security-source-action-required',
+      sourceInvocationReport: '.osmu-run/latest-operations-evidence-plan-invocation.json',
+      invocationResult: 'planned',
+      sourceSummary: 'passed=82 pending=20',
+      sourcePassedCount: 82,
+      sourcePendingCount: 20,
+      sourceTotalCount: 102,
+      sourceCheckCount: 102,
+      selectedActionOrders: [6],
+      invocationSummary: 'selected=1 planned=1 blocked=0 executed=0 failed=0',
+      artifactCount: 1,
+      requiredArtifactCount: 0,
+      readyArtifactCount: 0,
+      missingRequiredArtifactCount: 0,
+      securitySourceArtifactCount: 1,
+      readySecuritySourceArtifactCount: 0,
+      missingSecuritySourceArtifactCount: 1,
+      securityEvidenceFinalizerReady: false,
+      securityEvidenceFinalizerInputs: [
+        {
+          name: 'ImageSigningRunId',
+          runIdParameter: 'image_signing_run_id',
+          workflow: 'image-publish-sign-ci.yml',
+          artifactName: 'osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68',
+          artifactNameParameter: 'image_signing_artifact_name',
+          runId: '<image-signing-run-id>',
+          ready: false,
+          sourceArtifactSelected: false,
+          sourceArtifactReady: false,
+          requiredForSecurityFinalizer: true,
+          note: 'Source artifact for security-evidence-finalizer-ci.yml.',
+        },
+        {
+          name: 'ContainerSecurityRunId',
+          runIdParameter: 'container_security_run_id',
+          workflow: 'container-security-ci.yml',
+          artifactName: 'osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68',
+          artifactNameParameter: 'container_security_artifact_name',
+          runId: '<container-security-run-id>',
+          ready: false,
+          sourceArtifactSelected: true,
+          sourceArtifactReady: false,
+          requiredForSecurityFinalizer: true,
+          note: 'Source artifact for security-evidence-finalizer-ci.yml.',
+        },
+      ],
+      securityEvidenceFinalizerMissingRunIdInputs: ['ImageSigningRunId', 'ContainerSecurityRunId'],
+      securityEvidenceFinalizerCommand: 'gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=<image-signing-run-id> -f image_signing_artifact_name=osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68 -f container_security_run_id=<container-security-run-id> -f container_security_artifact_name=osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68 -f fail_if_not_passed=true',
+      operationsArtifactFinalizerCommand: '',
+      dataFlowStoragePlanInputNote: '',
+      dataFlowQueryRetentionBudgetInputNote: '',
+      dataFlowStorageTransitionRunbookInputNote: '',
+      minioBucketCorsInputNote: '',
+      localImportCommand: '',
+      decisionRule: 'Security evidence finalizer is not ready until image signing and container security workflow run ids are collected.',
+      artifacts: [
+        {
+          actionOrder: 6,
+          workflow: 'container-security-ci.yml',
+          artifactName: 'osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68',
+          requiredForReadiness: false,
+          ready: false,
+          missing: true,
+          downloadCommand: 'gh run download <container-security-run-id> -n osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68',
+        },
+      ],
+    },
+    operationsEvidenceHandoff: {
+      result: 'action-required',
+      generatedAt: '2026-06-30T12:48:10.6661472+09:00',
+      nextStep: {
+        code: 'dispatch-ready-subset-browser',
+        title: 'Open browser dispatch for ready subset',
+        command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+        reason: 'The invocation is planned and dispatch preflight only failed because GitHub CLI is unavailable; ready web dispatch URL exists for action 6.',
+        note: BROWSER_READY_SUBSET_NOTE,
+        dispatchUrls: ['https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml'],
+      },
+      currentBottleneck: {
+        code: 'dispatch-ready-subset-browser',
+        title: 'Open browser dispatch for ready subset',
+        command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+        reason: 'The invocation is planned and dispatch preflight only failed because GitHub CLI is unavailable; ready web dispatch URL exists for action 6.',
+        note: BROWSER_READY_SUBSET_NOTE,
+        dispatchUrls: ['https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml'],
+      },
+      stageCount: 8,
+      readyStageCount: 2,
+      readinessSummary: 'passed=82 pending=20',
+      readinessPassedCount: 82,
+      readinessPendingCount: 20,
+      readinessTotalCount: 102,
+      readinessCheckCount: 102,
+      dispatchPreflightResult: 'action-required',
+      dispatchGithubRepository: 'chefbeom/object-storage-osmu',
+      readyDispatchTemplateCount: 1,
+      blockedDispatchTemplateCount: 0,
+      readyDispatchActionOrders: [6],
+      blockedDispatchActionOrders: [],
+      invocationSelectedActionOrders: [6],
+      dispatchPreflightSelectedActionOrders: [6],
+      workflowRunIdPlanActionOrders: [6],
+      artifactCollectionActionOrders: [6],
+      dispatchPreflightScopeMismatch: false,
+      workflowRunIdPlanStale: false,
+      artifactCollectionStale: false,
+      artifactCollectionScopeMismatch: false,
+      staleReportCount: 0,
+      readyDispatchWorkflows: [
+        {
+          actionOrder: 6,
+          workflow: 'container-security-ci.yml',
+          dispatchUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+        },
+      ],
+      blockedDispatchWorkflows: [],
+      browserDispatchChecklistCount: 1,
+      browserDispatchChecklist: [
+        {
+          actionOrder: 6,
+          name: 'Container scan/SBOM evidence',
+          category: 'security-hardening',
+          actionType: 'security-ci',
+          workflow: 'container-security-ci.yml',
+          dispatchUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+          runsUrl: 'https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml',
+          runIdParameter: 'ContainerSecurityRunId',
+          artifactName: 'osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68',
+          runListJsonPath: '.\\.osmu-run\\workflow-run-lists\\container-security-ci.yml.json',
+          runListJsonDirectoryCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory .\\.osmu-run\\workflow-run-lists',
+          manualArtifactCollectionCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ContainerSecurityRunId <ContainerSecurityRunId> -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68',
+          securityFinalizerRunIdInputs: ['ImageSigningRunId', 'ContainerSecurityRunId'],
+          securityFinalizerMissingRunIdInputs: ['ImageSigningRunId', 'ContainerSecurityRunId'],
+          securityFinalizerDependencyNote: SECURITY_FINALIZER_DEPENDENCY_NOTE,
+          workflowInputNames: [],
+          operatorChecklist: [],
+          steps: [
+            'Open the workflow dispatch URL and select branch main.',
+            'No workflow inputs are required for this dispatch template.',
+            'Run the workflow and open the workflow run page from the runs URL.',
+            'Copy the numeric run id or full workflow run URL into ContainerSecurityRunId.',
+            'Regenerate artifact collection with the manual run-id command.',
+            SECURITY_FINALIZER_DEPENDENCY_NOTE,
+          ],
+        },
+      ],
+      securityEvidenceFinalizerRunIdInputHintCount: 2,
+      securityEvidenceFinalizerRunIdInputHints: SECURITY_FINALIZER_RUN_ID_HINTS,
+      blockedActionCount: 0,
+      missingWorkflowRunCount: 1,
+      missingRequiredArtifactCount: 0,
+      failedImportCount: 0,
+      finalizerFailedCount: 0,
+      finalizerGapCount: 0,
+      postDispatchCommands: [
+        {
+          name: 'Collect workflow run ids from saved run-list JSON',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory <run-list-json-dir>',
+          note: 'Use after browser dispatch when GitHub CLI is unavailable locally. Store gh run list JSON per workflow in the directory, then let the run-id plan derive artifact commands.',
+        },
+        {
+          name: 'Collect workflow run ids with GitHub REST API',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1',
+          note: 'Use after browser dispatch when GitHub CLI is unavailable and the repository Actions API is readable. Uses GH_TOKEN or GITHUB_TOKEN if present and never writes token values.',
+        },
+        {
+          name: 'Collect workflow run ids with GitHub CLI',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -Execute',
+          note: 'Use after browser dispatch when gh is installed and authenticated.',
+        },
+        {
+          name: 'Regenerate artifact collection plan with browser run ids',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ContainerSecurityRunId <ContainerSecurityRunId> -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68',
+          note: 'Use when the workflow run page URL is available but gh/run-list JSON is not. Replace any <RunIdParameter> placeholders with numeric GitHub Actions run ids or full workflow run URLs before running.',
+        },
+        {
+          name: 'Regenerate artifact collection plan after run id collection',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68',
+          note: 'Use after one of the run-id collection commands has produced recommended run ids so artifact names, download commands, and finalizer commands stay in the same selected-action scope.',
+        },
+      ],
+      stages: [
+        { name: 'operations-readiness', result: 'pending', ready: false, command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-readiness.ps1', note: 'Production/B2B readiness gate summary.' },
+        { name: 'evidence-plan', result: 'action-required', ready: true, command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-evidence-plan.ps1', note: 'Ordered remediation plan.' },
+        { name: 'evidence-invocation', result: 'planned', ready: true, command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1', note: 'Guarded workflow/local command invocation report.' },
+        { name: 'dispatch-preflight', result: 'action-required', ready: false, command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-dispatch-preflight.ps1 -CheckGitHubCli', note: 'GitHub CLI is unavailable; use browser dispatch for action 6.' },
+        { name: 'workflow-run-ids', result: 'query-required', ready: false, command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1', note: 'GitHub workflow run id handoff. Prefer the GitHub REST API command when gh is unavailable; it uses GH_TOKEN or GITHUB_TOKEN only if present and never writes token values. Browser workflow runs URL(s): container-security-ci.yml: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml.' },
+        { name: 'artifact-collection', result: 'security-source-action-required', ready: false, command: 'gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=<image-signing-run-id> -f image_signing_artifact_name=osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68 -f container_security_run_id=<container-security-run-id> -f container_security_artifact_name=osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68 -f fail_if_not_passed=true', note: 'Artifact finalizer waits for security source run ids.' },
+      ],
+    },
     dataFlowStoragePlan: {
       result: 'plan-ready-execute-required',
       recordedAt: '2026-06-21T09:15:00Z',
@@ -3445,68 +4316,225 @@ function readinessSummary() {
     },
     operationsReadinessConvergence: {
       result: 'action-required',
-      generatedAt: '2026-06-16T09:00:00+09:00',
+      generatedAt: '2026-06-30T12:48:11.1058503+09:00',
       handoffReportPath: '.osmu-run/latest-operations-evidence-handoff.json',
       readinessReportPath: '.osmu-run/latest-operations-readiness.json',
       operationsReadinessFinalizeReportPath: '.osmu-run/latest-operations-readiness-finalize.json',
       handoffExists: true,
-      handoffResult: 'blocked',
+      handoffResult: 'action-required',
       readinessExists: true,
       readinessResult: 'pending',
-      readinessSummary: 'passed=36 pending=6',
-      finalizerExists: true,
-      finalizerResult: 'pending',
-      finalizerReadinessResult: 'pending',
+      readinessSummary: 'passed=82 pending=20',
+      readinessPassedCount: 82,
+      readinessPendingCount: 20,
+      readinessTotalCount: 102,
+      readinessCheckCount: 102,
+      finalizerExists: false,
+      finalizerResult: '',
+      finalizerReadinessResult: '',
       finalizerFailedCount: 0,
-      finalizerGapCount: 1,
-      stageCount: 7,
-      readyStageCount: 1,
-      blockedActionCount: 5,
-      missingWorkflowRunCount: 6,
-      missingRequiredArtifactCount: 4,
+      finalizerGapCount: 0,
+      stageCount: 8,
+      readyStageCount: 2,
+      blockedActionCount: 0,
+      missingWorkflowRunCount: 1,
+      missingRequiredArtifactCount: 0,
       failedImportCount: 0,
       currentBottleneck: {
-        code: 'resolve-invocation-blockers',
-        title: 'Resolve invocation blockers',
-        reason: 'The invocation report still has blocked actions.',
-        command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1',
+        code: 'dispatch-ready-subset-browser',
+        title: 'Open browser dispatch for ready subset',
+        reason: 'The invocation is planned and dispatch preflight only failed because GitHub CLI is unavailable; ready web dispatch URL exists for action 6.',
+        command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+        note: BROWSER_READY_SUBSET_CONVERGENCE_NOTE,
+        dispatchUrls: ['https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml'],
       },
+      handoffBrowserDispatchDependencyNotes: [SECURITY_FINALIZER_DEPENDENCY_NOTE],
+      handoffSecurityEvidenceFinalizerRunIdInputHintCount: 2,
+      handoffSecurityEvidenceFinalizerRunIdInputHints: SECURITY_FINALIZER_RUN_ID_HINTS,
+
+      handoffPostDispatchCommands: [
+        {
+          name: 'Collect workflow run ids from saved run-list JSON',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory <run-list-json-dir>',
+          note: 'Use after browser dispatch when GitHub CLI is unavailable locally. Store gh run list JSON per workflow in the directory, then let the run-id plan derive artifact commands.',
+        },
+        {
+          name: 'Collect workflow run ids with GitHub REST API',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1',
+          note: 'Use after browser dispatch when GitHub CLI is unavailable and the repository Actions API is readable. Uses GH_TOKEN or GITHUB_TOKEN if present and never writes token values.',
+        },
+        {
+          name: 'Collect workflow run ids with GitHub CLI',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -Execute',
+          note: 'Use after browser dispatch when gh is installed and authenticated.',
+        },
+        {
+          name: 'Regenerate artifact collection plan with browser run ids',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ContainerSecurityRunId <ContainerSecurityRunId> -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68',
+          note: 'Use when the workflow run page URL is available but gh/run-list JSON is not. Replace any <RunIdParameter> placeholders with numeric GitHub Actions run ids or full workflow run URLs before running.',
+        },
+        {
+          name: 'Regenerate artifact collection plan after run id collection',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ImageSigningVersion v0.1.0-rc.1 -CommitSha a0730b64636a22c38639b5f5c647f2e13792fc68',
+          note: 'Use after one of the run-id collection commands has produced recommended run ids so artifact names, download commands, and finalizer commands stay in the same selected-action scope.',
+        },
+      ],
       recommendedCommands: [
         {
           order: 1,
-          name: 'Resolve invocation blockers',
-          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1',
-          reason: 'The invocation report still has blocked actions.',
+          name: 'Open browser dispatch for ready subset',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6',
+          reason: 'The invocation is planned and dispatch preflight only failed because GitHub CLI is unavailable; ready web dispatch URL exists for action 6.',
+          note: BROWSER_READY_SUBSET_CONVERGENCE_NOTE,
+          dispatchUrls: ['https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml'],
+        },
+        {
+          order: 2,
+          name: 'Review workflow-run-ids',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1',
+          reason: 'GitHub workflow run id handoff. Prefer the GitHub REST API command when gh is unavailable; browser workflow runs URL(s): container-security-ci.yml: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml.',
+          note: '',
+        },
+        {
+          order: 3,
+          name: 'Review artifact-collection',
+          command: 'gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=<image-signing-run-id> -f image_signing_artifact_name=osmu-image-signing-v0.1.0-rc.1-a0730b64636a22c38639b5f5c647f2e13792fc68 -f container_security_run_id=<container-security-run-id> -f container_security_artifact_name=osmu-container-security-a0730b64636a22c38639b5f5c647f2e13792fc68 -f fail_if_not_passed=true',
+          reason: 'Run the security evidence finalizer once source run ids and artifacts exist.',
+          note: '',
         },
       ],
-      decisionRule:
-        'Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready and readinessResult=ready, and the Kubernetes operations report sync evidence confirms result=applied with zero failed checks.',
-      safetyPolicy:
-        'This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance.',
-    },
-    generatedAt: new Date().toISOString(),
+      handoffStale: false,
+      handoffTimestamp: '2026-06-30T12:48:10.6661472+09:00',
+      handoffTimestampSource: 'generatedAt',
+      readinessTimestamp: '2026-06-30T12:48:07.4142068+09:00',
+      readinessTimestampSource: 'generatedAt',
+      kubernetesOperationsReportSyncReportPath: '.osmu-run/latest-kubernetes-operations-report-sync.json',
+      kubernetesReportSyncExists: true,
+      kubernetesReportSyncResult: 'planned',
+      kubernetesReportSyncStale: false,
+      kubernetesReportSyncTimestamp: '2026-06-16T09:33:30.1080022+09:00',
+      kubernetesReportSyncTimestampSource: 'generatedAt',
+      kubernetesReportSyncFreshnessReason: 'Kubernetes operations report sync evidence is older than the latest handoff/readiness/finalizer input.',
+      kubernetesReportSyncFailedCount: 0,
+      kubernetesReportSyncFailedCountValid: true,
+      kubernetesReportSyncFailedCountRaw: '0',
+      kubernetesReportSyncConfigMapName: 'osmu-operations-reports',
+      kubernetesReportSyncConfigMapKey: 'latest-operations-readiness-convergence.json',
+      kubernetesReportSyncSourceReportResult: 'action-required',
+      kubernetesReportSyncWorkflowCommand: 'gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_query_retention_budget_json_base64=<base64-latest-data-flow-query-retention-budget-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>',
+      kubernetesReportSyncWorkflowNote: 'Latest plan-mode sync evidence is fresh against the convergence report; production readiness still requires applied target Kubernetes operations report sync evidence. Include optional data_flow_storage_plan_json_base64, data_flow_query_retention_budget_json_base64, and data_flow_storage_transition_runbook_json_base64 only for passed sanitized target data-flow evidence.',
+      kubernetesReportSyncReady: false,
+      decisionRule: 'Operations readiness convergence is ready only when handoff, readiness finalizer, workflow artifacts, and Kubernetes report sync are all current and ready.',
+      safetyPolicy: 'This mock report does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only mirrors the current local evidence chain.',
+    },    generatedAt: new Date().toISOString(),
   }
 }
 
 function storageExpansionSummary() {
+  const requests = state.storageExpansionRequests
+  const executions = state.storageExpansionExecutions
+  const openRequests = requests.filter((request) => ['PLANNED', 'APPROVED'].includes(request.status))
   return {
-    requestCount: 0,
-    openRequestCount: 0,
-    plannedRequestCount: 0,
-    approvedRequestCount: 0,
-    appliedRequestCount: 0,
-    rejectedRequestCount: 0,
-    totalRequestedCapacityBytes: 0,
-    openRequestedCapacityBytes: 0,
-    totalEstimatedUsableCapacityBytes: 0,
-    openEstimatedUsableCapacityBytes: 0,
-    executionCount: 0,
-    successExecutionCount: 0,
-    failedExecutionCount: 0,
-    skippedExecutionCount: 0,
-    timedOutExecutionCount: 0,
-    recentExecutions: [],
+    requestCount: requests.length,
+    openRequestCount: openRequests.length,
+    plannedRequestCount: requests.filter((request) => request.status === 'PLANNED').length,
+    approvedRequestCount: requests.filter((request) => request.status === 'APPROVED').length,
+    appliedRequestCount: requests.filter((request) => request.status === 'APPLIED').length,
+    rejectedRequestCount: requests.filter((request) => request.status === 'REJECTED').length,
+    totalRequestedCapacityBytes: requests.reduce((sum, request) => sum + Number(request.requestedCapacityBytes || 0), 0),
+    openRequestedCapacityBytes: openRequests.reduce((sum, request) => sum + Number(request.requestedCapacityBytes || 0), 0),
+    totalEstimatedUsableCapacityBytes: requests.reduce((sum, request) => sum + Number(request.estimatedUsableCapacityBytes || 0), 0),
+    openEstimatedUsableCapacityBytes: openRequests.reduce((sum, request) => sum + Number(request.estimatedUsableCapacityBytes || 0), 0),
+    executionCount: executions.length,
+    successExecutionCount: executions.filter((execution) => execution.result === 'SUCCESS').length,
+    failedExecutionCount: executions.filter((execution) => execution.result === 'FAILED').length,
+    skippedExecutionCount: executions.filter((execution) => execution.result === 'SKIPPED').length,
+    timedOutExecutionCount: executions.filter((execution) => execution.result === 'TIMED_OUT').length,
+    recentExecutions: executions.slice(0, 5),
   }
+}
+
+function findStorageExpansionRequest(id) {
+  return state.storageExpansionRequests.find((request) => request.id === id)
+}
+
+function storageExpansionRequestRecord(payload = {}, requestedBy = 'admin') {
+  const id = state.storageExpansionRequestSequence++
+  const now = new Date().toISOString()
+  const serverCount = Math.max(4, Number(payload.serverCount || 4))
+  const volumesPerServer = Math.max(1, Number(payload.volumesPerServer || 1))
+  const requestedCapacityBytes = Math.max(BYTES_PER_GIB, Number(payload.requestedCapacityBytes || BYTES_PER_GIB))
+  const volumeSizeBytes = Math.max(BYTES_PER_GIB, Math.ceil(requestedCapacityBytes / (serverCount * volumesPerServer)))
+  const estimatedRawCapacityBytes = serverCount * volumesPerServer * volumeSizeBytes
+  const estimatedUsableCapacityBytes = Math.floor(estimatedRawCapacityBytes * 0.75)
+  return {
+    id,
+    poolName: `pool-${id}`,
+    status: 'PLANNED',
+    requestedCapacityBytes,
+    estimatedRawCapacityBytes,
+    estimatedUsableCapacityBytes,
+    serverCount,
+    volumesPerServer,
+    volumeSizeBytes,
+    reason: payload.reason || '',
+    requestedBy,
+    requestedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    approvedBy: '',
+    approvedAt: '',
+    appliedBy: '',
+    appliedAt: '',
+    appliedEvidence: '',
+  }
+}
+
+function storageExpansionManifest(requestRecord) {
+  return {
+    requestId: requestRecord.id,
+    poolName: requestRecord.poolName,
+    status: requestRecord.status,
+    artifactSha256: `mock-${requestRecord.poolName}-manifest-sha256`,
+    tenantPatchYaml: `apiVersion: minio.min.io/v2\nkind: Tenant\nmetadata:\n  name: osmu-minio\nspec:\n  pools:\n  - name: ${requestRecord.poolName}\n    servers: ${requestRecord.serverCount}\n    volumesPerServer: ${requestRecord.volumesPerServer}\n`,
+    helmValuesPatchYaml: `tenant:\n  pools:\n    - name: ${requestRecord.poolName}\n      servers: ${requestRecord.serverCount}\n      volumesPerServer: ${requestRecord.volumesPerServer}\n`,
+    warnings: [],
+  }
+}
+
+function storageExpansionExecutionPlan(requestRecord) {
+  return {
+    requestId: requestRecord.id,
+    poolName: requestRecord.poolName,
+    status: requestRecord.status,
+    artifactSha256: `mock-${requestRecord.poolName}-dry-run-sha256`,
+    evidenceTemplate: `mock dry-run evidence for ${requestRecord.poolName}`,
+    preflightChecks: ['mock manifest generated', 'mock dry-run commands prepared'],
+    suggestedCommands: [
+      `kubectl -n osmu diff -f osmu-storage-expansion-${requestRecord.poolName}-bundle.yaml`,
+      `helm upgrade osmu-minio ./infra/helm/osmu -f osmu-storage-expansion-${requestRecord.poolName}-bundle.yaml --dry-run`,
+    ],
+  }
+}
+
+function updateStorageExpansionStatusRecord(requestRecord, status, appliedEvidence = '') {
+  const now = new Date().toISOString()
+  requestRecord.status = status
+  requestRecord.updatedAt = now
+  if (status === 'APPROVED') {
+    requestRecord.approvedBy = 'admin'
+    requestRecord.approvedAt = now
+  }
+  if (status === 'APPLIED') {
+    requestRecord.appliedBy = 'admin'
+    requestRecord.appliedAt = now
+    requestRecord.appliedEvidence = appliedEvidence || `mock apply evidence for ${requestRecord.poolName}`
+  }
+  if (status === 'REJECTED') {
+    requestRecord.rejectedBy = 'admin'
+    requestRecord.rejectedAt = now
+  }
+  return requestRecord
 }
 
 function storageProfiles() {
@@ -3653,11 +4681,43 @@ function findBucket(bucketName) {
   return state.buckets.find((bucket) => bucket.name === bucketName) || null
 }
 
+function countLifecycleRules(xml = '') {
+  return (String(xml).match(/<Rule(?:\s|>)/g) || []).length
+}
+
 function objectsFor(bucketName) {
   if (!state.objects.has(bucketName)) {
     state.objects.set(bucketName, [])
   }
   return state.objects.get(bucketName)
+}
+
+function listObjectsForMock(bucketName, { prefix = '', delimiter = '', search = '', tagFilter = {} } = {}) {
+  const prefixes = new Set()
+  const items = []
+  for (const item of objectsFor(bucketName)) {
+    if (prefix && !item.key.startsWith(prefix)) {
+      continue
+    }
+    const remainder = prefix ? item.key.slice(prefix.length) : item.key
+    if (delimiter && remainder.includes(delimiter)) {
+      const nextPrefix = `${prefix}${remainder.slice(0, remainder.indexOf(delimiter) + 1)}`
+      prefixes.add(nextPrefix)
+      continue
+    }
+    if (search && !item.key.includes(search)) {
+      continue
+    }
+    if (!objectMatchesTagFilter(item, tagFilter)) {
+      continue
+    }
+    items.push(item)
+  }
+  return { items, prefixes: Array.from(prefixes).sort() }
+}
+
+function objectMatchesTagFilter(item, tagFilter = {}) {
+  return Object.entries(tagFilter).every(([key, value]) => String(item.tags?.[key] || '') === String(value))
 }
 
 function isObjectDataPath(suffix) {
@@ -3754,6 +4814,44 @@ function parseJsonBody(buffer) {
   }
 }
 
+function filteredAuditLogs(url) {
+  const filters = {
+    eventType: url.searchParams.get('eventType') || '',
+    actorId: url.searchParams.get('actorId') || '',
+    requestId: url.searchParams.get('requestId') || '',
+    targetType: url.searchParams.get('targetType') || '',
+    targetId: url.searchParams.get('targetId') || '',
+    result: url.searchParams.get('result') || '',
+  }
+  return state.auditLogs.filter((entry) => Object.entries(filters).every(([key, value]) => {
+    if (!value) return true
+    return String(entry[key] || '').toUpperCase().includes(String(value).toUpperCase())
+  }))
+}
+
+function pagedAuditLogs(url) {
+  const items = filteredAuditLogs(url)
+  const limit = Math.max(1, Math.min(500, Number(url.searchParams.get('limit') || 50)))
+  const cursor = Math.max(0, Number(url.searchParams.get('cursor') || 0))
+  const page = items.slice(cursor, cursor + limit)
+  const nextCursor = cursor + limit < items.length ? String(cursor + limit) : ''
+  return { items: page, nextCursor }
+}
+
+function auditLogsCsv(url) {
+  const rows = filteredAuditLogs(url)
+  const header = '"eventType","actorId","targetType","targetId","result","requestId","createdAt"'
+  const lines = rows.map((entry) => [
+    entry.eventType,
+    entry.actorId,
+    entry.targetType,
+    entry.targetId,
+    entry.result,
+    entry.requestId,
+    entry.createdAt,
+  ].map((value) => `"${String(value || '').replaceAll('"', '""')}"`).join(','))
+  return [header, ...lines].join('\n')
+}
 function sendJson(response, status, payload) {
   setCorsHeaders(response)
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -3815,11 +4913,92 @@ async function runSelfTest() {
     const readiness = await (await fetch(`${base}/admin/dashboard/readiness`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },
     })).json()
-    if (readiness.data.operationsReadinessConvergence?.result !== 'action-required') {
+    if (readiness.data.operationsReadinessSummary?.pendingCount !== 20 || readiness.data.operationsReadinessSummary?.totalCount !== 102) {
+      throw new Error('readiness source summary self-test failed')
+    }
+    if (readiness.data.operationsReadinessSummary?.pendingRemediationCount !== 20 || !readiness.data.operationsReadinessSummary?.pendingRemediations?.[0]?.workflowCommand?.includes('container-security-ci.yml')) {
+      throw new Error('readiness source remediation summary self-test failed')
+    }
+    if (readiness.data.operationsEvidenceInvocation?.selectedActionOrders?.[0] !== 6) {
+      throw new Error('readiness invocation selected-action self-test failed')
+    }
+    if (readiness.data.operationsEvidencePlan?.actions?.[0]?.currentDetail !== 'report not found') {
+      throw new Error('readiness evidence plan current-detail self-test failed')
+    }
+    if (!readiness.data.operationsEvidencePlan?.actions?.[0]?.recommendedCommand?.includes('container-security-ci.yml')) {
+      throw new Error('readiness evidence plan recommended-command self-test failed')
+    }
+    if (readiness.data.operationsEvidencePlan?.sourcePendingRemediationCoverageReady !== true || readiness.data.operationsEvidencePlan?.sourcePendingRemediationActionCount !== 20) {
+      throw new Error('readiness evidence plan remediation coverage self-test failed')
+    }
+    if (readiness.data.operationsDispatchPreflight?.readyActionOrders?.[0] !== 6) {
+      throw new Error('readiness dispatch preflight selected-action self-test failed')
+    }
+    if (readiness.data.operationsDispatchPreflight?.githubRef !== 'main' || !readiness.data.operationsDispatchPreflight?.readySubsetApiExecuteCommand?.includes('-UseGitHubApi')) {
+      throw new Error('readiness dispatch preflight GitHub API dispatch self-test failed')
+    }
+    if (readiness.data.operationsDispatchPreflight?.gitRefSafety?.status !== 'action-required' || readiness.data.operationsDispatchPreflight?.gitRefSafety?.workingTreeDirty !== true || readiness.data.operationsDispatchPreflight?.gitRefSafety?.suggestedPushCommand) {
+      throw new Error('readiness dispatch preflight Git ref safety self-test failed')
+    }
+    if (!readiness.data.operationsWorkflowRunIdPlan?.runListJsonDirectoryCommand?.includes('-RunListJsonDirectory') || !readiness.data.operationsWorkflowRunIdPlan?.workflows?.[0]?.runListJsonPath?.endsWith('container-security-ci.yml.json')) {
+      throw new Error('readiness workflow run-id saved JSON handoff self-test failed')
+    }
+    if (!readiness.data.operationsWorkflowRunIdPlan?.browserWorkflowRunsUrls?.[0]?.includes('container-security-ci.yml') || !readiness.data.operationsWorkflowRunIdPlan?.browserWorkflowRunsUrls?.some((url) => url.includes('image-publish-sign-ci.yml')) || readiness.data.operationsWorkflowRunIdPlan?.workflowRunIdInputs?.[0]?.runIdParameter !== 'ContainerSecurityRunId' || !readiness.data.operationsWorkflowRunIdPlan?.workflowRunIdInputs?.[0]?.queryCommand?.includes('gh run list') || !readiness.data.operationsWorkflowRunIdPlan?.recommendedCommands?.[0]?.command?.includes('-RunListJsonDirectory') || !readiness.data.operationsWorkflowRunIdPlan?.githubApiRunListCommand?.includes('-UseGitHubApi') || !readiness.data.operationsWorkflowRunIdPlan?.recommendedCommands?.[1]?.command?.includes('-UseGitHubApi')) {
+      throw new Error('readiness workflow run-id top-level handoff self-test failed')
+    }
+    const workflowRunIdHints = readiness.data.operationsWorkflowRunIdPlan?.securityEvidenceFinalizerRunIdInputHints || []
+    const imageSigningRunIdHint = workflowRunIdHints.find((hint) => hint.runIdParameter === 'ImageSigningRunId')
+    const containerSecurityRunIdHint = workflowRunIdHints.find((hint) => hint.runIdParameter === 'ContainerSecurityRunId')
+    if (readiness.data.operationsWorkflowRunIdPlan?.securityEvidenceFinalizerReady !== false || !readiness.data.operationsWorkflowRunIdPlan?.securityEvidenceFinalizerRunIdInputs?.includes('ImageSigningRunId') || !readiness.data.operationsWorkflowRunIdPlan?.securityEvidenceFinalizerRunIdInputs?.includes('ContainerSecurityRunId') || workflowRunIdHints.length !== 2 || imageSigningRunIdHint?.workflow !== 'image-publish-sign-ci.yml' || imageSigningRunIdHint?.sourceSelected !== false || imageSigningRunIdHint?.supplementalForSecurityFinalizer !== true || containerSecurityRunIdHint?.sourceSelected !== true || containerSecurityRunIdHint?.supplementalForSecurityFinalizer !== false || !readiness.data.operationsWorkflowRunIdPlan?.securityEvidenceFinalizerMissingRunIdInputs?.includes('ImageSigningRunId') || !readiness.data.operationsWorkflowRunIdPlan?.securityEvidenceFinalizerMissingRunIdInputs?.includes('ContainerSecurityRunId') || !readiness.data.operationsWorkflowRunIdPlan?.securityEvidenceFinalizerDependencyNote?.includes('ImageSigningRunId') || !readiness.data.operationsWorkflowRunIdPlan?.recommendedCommands?.[3]?.command?.includes('-ImageSigningRunId <ImageSigningRunId>') || !readiness.data.operationsWorkflowRunIdPlan?.recommendedCommands?.[3]?.note?.includes('ImageSigningRunId') || !readiness.data.operationsWorkflowRunIdPlan?.recommendedCommands?.[5]?.note?.includes('Missing run id inputs')) {
+      throw new Error('readiness workflow run-id security finalizer self-test failed')
+    }
+    if (readiness.data.operationsEvidenceHandoff?.currentBottleneck?.code !== 'dispatch-ready-subset-browser') {
+      throw new Error('readiness handoff bottleneck self-test failed')
+    }
+    if (readiness.data.operationsEvidenceHandoff?.browserDispatchChecklistCount !== 1 || readiness.data.operationsEvidenceHandoff?.browserDispatchChecklist?.[0]?.runIdParameter !== 'ContainerSecurityRunId' || !readiness.data.operationsEvidenceHandoff?.browserDispatchChecklist?.[0]?.dispatchUrl?.includes('container-security-ci.yml') || !readiness.data.operationsEvidenceHandoff?.browserDispatchChecklist?.[0]?.securityFinalizerDependencyNote?.includes('ImageSigningRunId') || !readiness.data.operationsEvidenceHandoff?.browserDispatchChecklist?.[0]?.securityFinalizerMissingRunIdInputs?.includes('ContainerSecurityRunId')) {
+      throw new Error('readiness handoff browser dispatch checklist self-test failed')
+    }
+    const handoffRunIdHints = readiness.data.operationsEvidenceHandoff?.securityEvidenceFinalizerRunIdInputHints || []
+    const handoffImageSigningRunIdHint = handoffRunIdHints.find((hint) => hint.runIdParameter === 'ImageSigningRunId')
+    const handoffContainerSecurityRunIdHint = handoffRunIdHints.find((hint) => hint.runIdParameter === 'ContainerSecurityRunId')
+    if (readiness.data.operationsEvidenceHandoff?.securityEvidenceFinalizerRunIdInputHintCount !== 2 || handoffRunIdHints.length !== 2 || handoffImageSigningRunIdHint?.workflow !== 'image-publish-sign-ci.yml' || handoffImageSigningRunIdHint?.supplementalForSecurityFinalizer !== true || handoffContainerSecurityRunIdHint?.sourceSelected !== true) {
+      throw new Error('readiness handoff security finalizer run-id hint self-test failed')
+    }
+    if (readiness.data.operationsEvidenceHandoff?.postDispatchCommands?.length !== 5 || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[0].command.includes('-RunListJsonDirectory') || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[1].command.includes('-UseGitHubApi') || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[3].command.includes('-ContainerSecurityRunId <ContainerSecurityRunId>') || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[4].command.includes('write-operations-artifact-collection-plan.ps1')) {
+      throw new Error('readiness handoff post-dispatch command self-test failed')
+    }
+    const securityFinalizerInputs = readiness.data.operationsArtifactCollectionPlan?.securityEvidenceFinalizerInputs || []
+    const imageSigningInput = securityFinalizerInputs.find((input) => input.name === 'ImageSigningRunId')
+    const containerSecurityInput = securityFinalizerInputs.find((input) => input.name === 'ContainerSecurityRunId')
+    if (readiness.data.operationsArtifactCollectionPlan?.result !== 'security-source-action-required' || !readiness.data.operationsArtifactCollectionPlan?.securityEvidenceFinalizerMissingRunIdInputs?.includes('ImageSigningRunId') || !readiness.data.operationsArtifactCollectionPlan?.securityEvidenceFinalizerMissingRunIdInputs?.includes('ContainerSecurityRunId') || securityFinalizerInputs.length !== 2 || imageSigningInput?.runIdParameter !== 'image_signing_run_id' || imageSigningInput?.sourceArtifactSelected !== false || containerSecurityInput?.runIdParameter !== 'container_security_run_id' || containerSecurityInput?.sourceArtifactSelected !== true || containerSecurityInput?.ready !== false) {
+      throw new Error('readiness artifact collection security finalizer input self-test failed')
+    }
+    if (!readiness.data.operationsReadinessConvergence?.recommendedCommands?.[1]?.command?.includes('-UseGitHubApi')) {
+      throw new Error('readiness convergence workflow run-id GitHub API command self-test failed')
+    }
+    if (readiness.data.operationsReadinessConvergence?.currentBottleneck?.code !== 'dispatch-ready-subset-browser' || !readiness.data.operationsReadinessConvergence?.currentBottleneck?.note?.includes('ImageSigningRunId') || !readiness.data.operationsReadinessConvergence?.handoffBrowserDispatchDependencyNotes?.[0]?.includes('security-evidence-finalizer-ci.yml')) {
       throw new Error('readiness convergence self-test failed')
+    }
+    const convergenceRunIdHints = readiness.data.operationsReadinessConvergence?.handoffSecurityEvidenceFinalizerRunIdInputHints || []
+    const convergenceImageSigningRunIdHint = convergenceRunIdHints.find((hint) => hint.runIdParameter === 'ImageSigningRunId')
+    const convergenceContainerSecurityRunIdHint = convergenceRunIdHints.find((hint) => hint.runIdParameter === 'ContainerSecurityRunId')
+    if (readiness.data.operationsReadinessConvergence?.handoffSecurityEvidenceFinalizerRunIdInputHintCount !== 2 || convergenceRunIdHints.length !== 2 || convergenceImageSigningRunIdHint?.supplementalForSecurityFinalizer !== true || convergenceContainerSecurityRunIdHint?.sourceSelected !== true) {
+      throw new Error('readiness convergence security finalizer run-id hint self-test failed')
+    }
+    if (!readiness.data.operationsReadinessConvergence?.currentBottleneck?.dispatchUrls?.[0]?.includes('container-security-ci.yml')) {
+      throw new Error('readiness convergence bottleneck dispatch URL self-test failed')
+    }
+    if (readiness.data.operationsReadinessConvergence?.handoffPostDispatchCommands?.length !== 5 || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[0].command.includes('-RunListJsonDirectory') || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[1].command.includes('-UseGitHubApi') || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[3].command.includes('-ContainerSecurityRunId <ContainerSecurityRunId>') || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[4].command.includes('write-operations-artifact-collection-plan.ps1')) {
+      throw new Error('readiness convergence post-dispatch command self-test failed')
     }
     if (!readiness.data.items.some((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE')) {
       throw new Error('readiness convergence item self-test failed')
+    }
+    if (!readiness.data.items.some((item) => item.code === 'OPERATIONS_EVIDENCE_HANDOFF')) {
+      throw new Error('readiness handoff item self-test failed')
+    }
+    if (readiness.data.warningCount !== readiness.data.warnings.length) {
+      throw new Error('readiness warning count self-test failed')
     }
     if (readiness.data.dataFlowStoragePlan?.result !== 'plan-ready-execute-required') {
       throw new Error('readiness data-flow storage plan self-test failed')
@@ -3833,7 +5012,49 @@ async function runSelfTest() {
     if (storageBackendStatus.data?.capacitySource !== 'bucket_metadata_usage' || storageBackendStatus.data?.directStorageMetricsStatus !== 'DISABLED') {
       throw new Error('storage backend status self-test failed')
     }
-    const dataFlowMonthlyRollup = await (await fetch(`${base}/admin/monitoring/data-flow/monthly-rollup?months=12&limit=200`, {
+    const createdStorageExpansion = await (await fetch(`${base}/admin/storage-expansion/requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
+      body: JSON.stringify({ requestedCapacityBytes: 2 * BYTES_PER_GIB, serverCount: 4, volumesPerServer: 1, reason: 'self-test expansion' }),
+    })).json()
+    if (createdStorageExpansion.data?.status !== 'PLANNED' || !createdStorageExpansion.data?.poolName) {
+      throw new Error('storage expansion create self-test failed')
+    }
+    const listedStorageExpansion = await (await fetch(`${base}/admin/storage-expansion/requests`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!listedStorageExpansion.items?.some((item) => item.id === createdStorageExpansion.data.id && item.reason === 'self-test expansion')) {
+      throw new Error('storage expansion list self-test failed')
+    }
+    const approvedStorageExpansion = await (await fetch(`${base}/admin/storage-expansion/requests/${createdStorageExpansion.data.id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
+      body: JSON.stringify({ status: 'APPROVED' }),
+    })).json()
+    if (approvedStorageExpansion.data?.status !== 'APPROVED') {
+      throw new Error('storage expansion approval self-test failed')
+    }
+    const storageExpansionPlan = await (await fetch(`${base}/admin/storage-expansion/requests/${createdStorageExpansion.data.id}/execution-plan`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!storageExpansionPlan.data?.suggestedCommands?.[0]?.includes('kubectl') || !storageExpansionPlan.data?.evidenceTemplate?.includes(createdStorageExpansion.data.poolName)) {
+      throw new Error('storage expansion execution plan self-test failed')
+    }
+    const appliedStorageExpansion = await (await fetch(`${base}/admin/storage-expansion/requests/${createdStorageExpansion.data.id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
+      body: JSON.stringify({ status: 'APPLIED', appliedEvidence: 'self-test apply evidence' }),
+    })).json()
+    if (appliedStorageExpansion.data?.status !== 'APPLIED' || appliedStorageExpansion.data?.appliedEvidence !== 'self-test apply evidence') {
+      throw new Error('storage expansion apply self-test failed')
+    }
+    const storageExpansionSummaryResult = await (await fetch(`${base}/admin/storage-expansion/summary`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (storageExpansionSummaryResult.data?.requestCount !== 1 || storageExpansionSummaryResult.data?.appliedRequestCount !== 1 || storageExpansionSummaryResult.data?.openRequestCount !== 0) {
+      throw new Error('storage expansion summary self-test failed')
+    }    const dataFlowMonthlyRollup = await (await fetch(`${base}/admin/monitoring/data-flow/monthly-rollup?months=12&limit=200`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },
     })).json()
     if (!dataFlowMonthlyRollup.data || dataFlowMonthlyRollup.data.granularity !== 'UTC_MONTH' || !Array.isArray(dataFlowMonthlyRollup.data.points)) {

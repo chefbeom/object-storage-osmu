@@ -97,6 +97,10 @@ function Write-OperationsConvergenceFixture([string] $Path) {
     $directory = Split-Path -Parent $resolvedPath
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
 
+    $browserReadySubsetNote = "Run the ready subset plan command first without -Execute, then use the web dispatch URL(s) after operator review. GITHUB_CLI_AVAILABLE: GitHub CLI was not found on PATH. Web dispatch URL(s) for ready templates: action 6: https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml. Review failed preflight checks and operator approvals before using browser dispatch."
+    $securityFinalizerDependencyNote = "Security finalizer dependency: this dispatch can supply ContainerSecurityRunId; also collect ImageSigningRunId before running security-evidence-finalizer-ci.yml."
+    $browserReadySubsetConvergenceNote = "$browserReadySubsetNote $securityFinalizerDependencyNote"
+
     $fixture = [ordered]@{
         formatVersion = "osmu.operations-readiness-convergence.v1"
         generatedAt = (Get-Date).ToString("o")
@@ -105,43 +109,56 @@ function Write-OperationsConvergenceFixture([string] $Path) {
         readinessReportPath = ".osmu-run/latest-operations-readiness.json"
         operationsReadinessFinalizeReportPath = ".osmu-run/latest-operations-readiness-finalize.json"
         handoffExists = $true
-        handoffResult = "blocked"
+        handoffResult = "action-required"
         readinessExists = $true
         readinessResult = "pending"
-        readinessSummary = "passed=36 pending=6"
-        finalizerExists = $true
-        finalizerResult = "pending"
-        finalizerReadinessResult = "pending"
+        readinessSummary = "passed=82 pending=20"
+        readinessPassedCount = 82
+        readinessPendingCount = 20
+        readinessTotalCount = 102
+        readinessCheckCount = 102
+        finalizerExists = $false
+        finalizerResult = ""
+        finalizerReadinessResult = ""
         finalizerFailedCount = 0
         kubernetesOperationsReportSyncReportPath = ".osmu-run/latest-kubernetes-operations-report-sync.json"
         kubernetesReportSyncExists = $true
-        kubernetesReportSyncResult = "applied"
+        kubernetesReportSyncResult = "planned"
         kubernetesReportSyncFailedCount = 0
         kubernetesReportSyncConfigMapName = "osmu-operations-reports"
         kubernetesReportSyncConfigMapKey = "latest-operations-readiness-convergence.json"
         kubernetesReportSyncSourceReportResult = "action-required"
+        kubernetesReportSyncStale = $false
         kubernetesReportSyncWorkflowCommand = "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>"
-        kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap, and include data_flow_storage_transition_runbook_json_base64 only when .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json should be carried into the same ConfigMap. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary, and transition runbook evidence must be result=passed with no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content. Omit inputs when no target analytics-storage evidence is ready."
+        kubernetesReportSyncWorkflowNote = "Latest plan-mode sync evidence is fresh against the convergence report; production readiness still requires applied target Kubernetes operations report sync evidence."
         kubernetesReportSyncReady = $false
-        finalizerGapCount = 1
-        stageCount = 7
-        readyStageCount = 1
-        blockedActionCount = 5
-        missingWorkflowRunCount = 6
-        missingRequiredArtifactCount = 4
+        finalizerGapCount = 0
+        stageCount = 8
+        readyStageCount = 2
+        blockedActionCount = 0
+        missingWorkflowRunCount = 1
+        missingRequiredArtifactCount = 0
         failedImportCount = 0
         currentBottleneck = [ordered]@{
-            code = "resolve-invocation-blockers"
-            title = "Resolve invocation blockers"
-            reason = "The invocation report still has blocked actions."
-            command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1"
+            code = "dispatch-ready-subset-browser"
+            title = "Open browser dispatch for ready subset"
+            reason = "The invocation is planned and dispatch preflight only failed because GitHub CLI is unavailable; ready web dispatch URL exists for action 6."
+            command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 6"
+            note = $browserReadySubsetConvergenceNote
+            dispatchUrls = @("https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml")
         }
+        handoffBrowserDispatchDependencyNotes = @($securityFinalizerDependencyNote)
+        handoffStale = $false
+        handoffTimestamp = (Get-Date).AddSeconds(-1).ToString("o")
+        readinessTimestamp = (Get-Date).AddSeconds(-4).ToString("o")
         recommendedCommands = @(
             [ordered]@{
                 order = 1
-                name = "Resolve invocation blockers"
-                command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1"
-                reason = "The invocation report still has blocked actions."
+                name = "Open browser dispatch for ready subset"
+                command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 6"
+                reason = "The invocation is planned and dispatch preflight only failed because GitHub CLI is unavailable; ready web dispatch URL exists for action 6."
+                note = $browserReadySubsetConvergenceNote
+                dispatchUrls = @("https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml")
             }
         )
         decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, typed integer failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, typed integer failedCount=0, and sourceReportResult=ready."

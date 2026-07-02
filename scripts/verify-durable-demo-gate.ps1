@@ -12,6 +12,9 @@ param(
     [switch] $SkipBrowserE2E,
     [switch] $SkipDockerIntegration,
     [switch] $SkipS3ClientSmoke,
+    [switch] $EnableRealMultipartEvidence,
+    [string] $BrowserMultipartResumeEvidenceJsonPath = ".\.osmu-run\latest-browser-multipart-resume-evidence.json",
+    [string] $BrowserMultipartResumeEvidenceMarkdownPath = ".\.osmu-run\latest-browser-multipart-resume-evidence.md",
     [switch] $NoReport
 )
 
@@ -151,6 +154,10 @@ try {
 
     if ($SkipBrowserE2E) {
         Add-Check "Docker local demo Browser E2E" "SKIPPED" "skipped by parameter" "verify-browser-e2e-local-demo.ps1"
+        if ($EnableRealMultipartEvidence) {
+            Add-Check "Browser multipart resume evidence" "FAIL" "requires Docker local demo Browser E2E" "verify-durable-demo-gate.ps1 -EnableRealMultipartEvidence"
+            throw "Browser multipart resume evidence requires Browser E2E to run."
+        }
     }
     else {
         Step "Docker local demo Browser E2E"
@@ -163,9 +170,25 @@ try {
         if ($NoBuild) {
             $browserArgs += "-NoBuild"
         }
+        if ($EnableRealMultipartEvidence) {
+            $browserArgs += "-EnableRealMultipartFixture"
+            $browserArgs += "-RunFullSuiteWithRealMultipartFixture"
+            $browserArgs += "-BrowserMultipartResumeEvidenceJsonPath"
+            $browserArgs += $BrowserMultipartResumeEvidenceJsonPath
+            $browserArgs += "-BrowserMultipartResumeEvidenceMarkdownPath"
+            $browserArgs += $BrowserMultipartResumeEvidenceMarkdownPath
+        }
         Invoke-RequiredStep "Docker local demo Browser E2E" {
             Invoke-ProjectScript "verify-browser-e2e-local-demo.ps1" $browserArgs
         } "verify-browser-e2e-local-demo.ps1"
+        if ($EnableRealMultipartEvidence) {
+            $resolvedBrowserMultipartEvidencePath = Resolve-ProjectPath $BrowserMultipartResumeEvidenceJsonPath
+            if (-not (Test-Path -LiteralPath $resolvedBrowserMultipartEvidencePath)) {
+                Add-Check "Browser multipart resume evidence" "FAIL" "evidence report was not written" $resolvedBrowserMultipartEvidencePath
+                throw "Browser multipart resume evidence report was not written: $resolvedBrowserMultipartEvidencePath"
+            }
+            Add-Check "Browser multipart resume evidence" "PASS" "real MinIO-backed browser multipart pause/resume evidence recorded" $resolvedBrowserMultipartEvidencePath
+        }
     }
 
     if (Test-Path -LiteralPath $resolvedEnvFile) {
@@ -244,6 +267,13 @@ else {
     "failed"
 }
 
+$browserMultipartResumeEvidenceExists = if ($EnableRealMultipartEvidence) {
+    Test-Path -LiteralPath (Resolve-ProjectPath $BrowserMultipartResumeEvidenceJsonPath)
+}
+else {
+    $false
+}
+
 $report = [pscustomobject]@{
     generatedAt = [DateTimeOffset]::Now.ToString("o")
     result = $result
@@ -251,6 +281,9 @@ $report = [pscustomobject]@{
     failureMessage = $gateFailureMessage
     selectedS3Client = $S3Client
     durablePreflightReportPath = Resolve-ProjectPath $preflightReportPath
+    browserMultipartResumeEvidenceRequested = [bool] $EnableRealMultipartEvidence
+    browserMultipartResumeEvidencePath = if ($browserMultipartResumeEvidenceExists) { Resolve-ProjectPath $BrowserMultipartResumeEvidenceJsonPath } else { "" }
+    browserMultipartResumeEvidenceMarkdownPath = if ($browserMultipartResumeEvidenceExists) { Resolve-ProjectPath $BrowserMultipartResumeEvidenceMarkdownPath } else { "" }
     completionEstimate = [pscustomobject]@{
         mvpDemo = if ($result -eq "ready") { "90-95%" } else { "70-85%" }
         product = if ($result -eq "ready") { "20-25%" } else { "15-20%" }
@@ -259,7 +292,9 @@ $report = [pscustomobject]@{
     nextCommands = @(
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -S3Client $S3Client",
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-gate.ps1 -S3Client $S3Client",
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-gate.ps1 -S3Client $S3Client -EnableRealMultipartEvidence",
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-durable-mvp-demo.ps1 -S3Client $S3Client",
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-durable-mvp-demo.ps1 -S3Client $S3Client -EnableRealMultipartEvidence",
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -S3Client $S3Client -FailIfDurablePending",
         "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-durable-release-artifacts.ps1 -DurableGateReportPath .\.osmu-run\latest-durable-demo-gate.json -BackendTestsIncluded"
     )
@@ -273,6 +308,9 @@ $summaryLines = @(
     "Current demo status: $($report.currentDemoStatus)",
     "Selected S3 client: $($report.selectedS3Client)",
     "Durable preflight report: $($report.durablePreflightReportPath)",
+    "Browser multipart resume evidence requested: $($report.browserMultipartResumeEvidenceRequested)",
+    "Browser multipart resume evidence: $($report.browserMultipartResumeEvidencePath)",
+    "Browser multipart resume evidence summary: $($report.browserMultipartResumeEvidenceMarkdownPath)",
     "",
     "## Checks",
     ""

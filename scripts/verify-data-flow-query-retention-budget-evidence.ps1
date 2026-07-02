@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $Condition, [string] $Message) {
     if (-not $Condition) {
         throw $Message
@@ -46,6 +50,10 @@ $plannedJsonPath = Join-Path $resolvedOutputDirectory "planned.json"
 $plannedMarkdownPath = Join-Path $resolvedOutputDirectory "planned.md"
 $passedJsonPath = Join-Path $resolvedOutputDirectory "passed.json"
 $passedMarkdownPath = Join-Path $resolvedOutputDirectory "passed.md"
+$slowQueryJsonPath = Join-Path $resolvedOutputDirectory "slow-query.json"
+$slowQueryMarkdownPath = Join-Path $resolvedOutputDirectory "slow-query.md"
+$slowRetentionJsonPath = Join-Path $resolvedOutputDirectory "slow-retention.json"
+$slowRetentionMarkdownPath = Join-Path $resolvedOutputDirectory "slow-retention.md"
 $scriptPath = Resolve-ProjectPath ".\scripts\write-data-flow-query-retention-budget-evidence.ps1"
 
 [ordered]@{
@@ -93,8 +101,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "planned write-data-flow-query-retention-budget-evidence.ps1 failed with exit code $LASTEXITCODE."
 }
 
-$plannedReport = Get-Content -Raw -LiteralPath $plannedJsonPath | ConvertFrom-Json
-$plannedMarkdown = Get-Content -Raw -LiteralPath $plannedMarkdownPath
+$plannedReport = Read-Utf8Text $plannedJsonPath | ConvertFrom-Json
+$plannedMarkdown = Read-Utf8Text $plannedMarkdownPath
 Assert-True ($plannedReport.formatVersion -eq "osmu.data-flow-query-retention-budget-evidence.v1") "Unexpected query/retention evidence formatVersion."
 Assert-True ($plannedReport.result -eq "planned") "Default query/retention evidence should be planned."
 Assert-True ($plannedReport.summary.failureCount -gt 0) "Planned query/retention evidence should include missing checks."
@@ -133,8 +141,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "passed write-data-flow-query-retention-budget-evidence.ps1 failed with exit code $LASTEXITCODE."
 }
 
-$reportText = Get-Content -Raw -LiteralPath $passedJsonPath
-$markdown = Get-Content -Raw -LiteralPath $passedMarkdownPath
+$reportText = Read-Utf8Text $passedJsonPath
+$markdown = Read-Utf8Text $passedMarkdownPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 
@@ -187,6 +195,8 @@ try {
         -ConfirmNoObjectKeysInEvidence `
         -ConfirmNoRawSqlOrExplain `
         -ConfirmNoSecretValues `
+        -JsonOutputPath $slowQueryJsonPath `
+        -MarkdownOutputPath $slowQueryMarkdownPath `
         -FailIfNotPassed 2>&1
     $slowQueryExitCode = $LASTEXITCODE
 }
@@ -222,6 +232,8 @@ try {
         -ConfirmNoObjectKeysInEvidence `
         -ConfirmNoRawSqlOrExplain `
         -ConfirmNoSecretValues `
+        -JsonOutputPath $slowRetentionJsonPath `
+        -MarkdownOutputPath $slowRetentionMarkdownPath `
         -FailIfNotPassed 2>&1
     $slowRetentionExitCode = $LASTEXITCODE
 }
@@ -260,3 +272,4 @@ Assert-True ($secretRefExitCode -ne 0) "Secret-like evidence reference should be
 Assert-Contains ($secretRefOutput | Out-String) "secret" "secret ref output"
 
 Write-Host "Data-flow query and retention budget evidence verification passed: $passedJsonPath"
+exit 0

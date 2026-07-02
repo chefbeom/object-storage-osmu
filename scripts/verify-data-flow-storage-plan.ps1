@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -31,6 +35,8 @@ $planJsonPath = Join-Path $resolvedOutputDir "plan.json"
 $planMarkdownPath = Join-Path $resolvedOutputDir "plan.md"
 $passedJsonPath = Join-Path $resolvedOutputDir "passed.json"
 $passedMarkdownPath = Join-Path $resolvedOutputDir "passed.md"
+$externalJsonPath = Join-Path $resolvedOutputDir "external-time-series.json"
+$externalMarkdownPath = Join-Path $resolvedOutputDir "external-time-series.md"
 $queryPlanEvidencePath = Join-Path $resolvedOutputDir "query-plan-passed.json"
 $failedQueryPlanEvidencePath = Join-Path $resolvedOutputDir "query-plan-failed.json"
 $unsafeQueryPlanEvidencePath = Join-Path $resolvedOutputDir "query-plan-unsafe.json"
@@ -107,8 +113,8 @@ $unsafeQueryPlanEvidencePath = Join-Path $resolvedOutputDir "query-plan-unsafe.j
     -JsonOutputPath $planJsonPath `
     -MarkdownOutputPath $planMarkdownPath
 
-$planReport = Get-Content -Raw -LiteralPath $planJsonPath | ConvertFrom-Json
-$planMarkdown = Get-Content -Raw -LiteralPath $planMarkdownPath
+$planReport = Read-Utf8Text $planJsonPath | ConvertFrom-Json
+$planMarkdown = Read-Utf8Text $planMarkdownPath
 Assert-True ($planReport.formatVersion -eq "osmu.data-flow-storage-plan.v1") "Unexpected data-flow storage plan formatVersion."
 Assert-True ($planReport.result -eq "plan-ready-execute-required") "Default data-flow storage plan should require target evidence."
 Assert-True ($planReport.pendingCount -gt 0) "Default data-flow storage plan should include pending checks."
@@ -138,16 +144,52 @@ Assert-Contains $planMarkdown "Target p95 query latency ms" "plan markdown"
     -MarkdownOutputPath $passedMarkdownPath `
     -FailIfNotPassed
 
-$passedReport = Get-Content -Raw -LiteralPath $passedJsonPath | ConvertFrom-Json
-$passedMarkdown = Get-Content -Raw -LiteralPath $passedMarkdownPath
+$passedReport = Read-Utf8Text $passedJsonPath | ConvertFrom-Json
+$passedMarkdown = Read-Utf8Text $passedMarkdownPath
 Assert-True ($passedReport.result -eq "passed") "Confirmed data-flow storage plan should pass."
 Assert-True ($passedReport.pendingCount -eq 0) "Confirmed data-flow storage plan should have no pending checks."
 Assert-True ($passedReport.candidateStore -eq "DUAL_WRITE") "Confirmed data-flow storage plan should preserve candidate store."
 Assert-True ($passedReport.targetP95QueryLatencyMs -eq 500) "Confirmed data-flow storage plan should preserve target p95 query latency budget."
+Assert-True ($passedReport.candidateDecision.candidateStore -eq "DUAL_WRITE") "Confirmed data-flow storage plan should expose candidate decision."
+Assert-True ($passedReport.candidateDecision.requiresMariaDbQueryEvidence -eq $true) "Dual-write candidate should require MariaDB query evidence."
+Assert-True ($passedReport.candidateDecision.requiresTargetStoreEvidence -eq $true) "Dual-write candidate should require target-store evidence."
+Assert-True ($passedReport.candidateDecision.queryPlanEvidencePassed -eq $true) "Dual-write candidate should surface passed query-plan evidence."
+Assert-True ($passedReport.candidateDecision.targetStoreEvidenceConfirmed -eq $true) "Dual-write candidate should surface confirmed target-store evidence."
 Assert-True ($passedReport.queryPlanEvidence.result -eq "passed") "Confirmed data-flow storage plan should embed passed query plan evidence summary."
 Assert-True (@($passedReport.checks | Where-Object { $_.id -eq "target_query_latency_budget" -and $_.status -eq "passed" }).Count -eq 1) "Confirmed data-flow storage plan should include passed query latency budget check."
 Assert-True (@($passedReport.checks | Where-Object { $_.id -eq "mariadb_query_plan_evidence" -and $_.status -eq "passed" }).Count -eq 1) "Confirmed data-flow storage plan should include passed MariaDB query plan check."
 Assert-Contains $passedMarkdown "Query Plan Evidence" "passed markdown"
+Assert-Contains $passedMarkdown "Candidate Decision" "passed markdown"
+
+& (Join-Path $PSScriptRoot "write-data-flow-storage-plan.ps1") `
+    -EnvironmentName "target-fixture" `
+    -TargetCluster "fixture-cluster" `
+    -Operator "data-flow-storage-plan-self-test" `
+    -CandidateStore "EXTERNAL_TIME_SERIES" `
+    -ExpectedPeakEventsPerDay 1000000 `
+    -ExpectedQueryWindowDays 365 `
+    -TargetP95QueryLatencyMs 500 `
+    -EvidenceRef "fixture-run-external-123" `
+    -ConfirmNoObjectKeyInAggregates `
+    -ConfirmBackfillPlan `
+    -ConfirmRollbackPlan `
+    -ConfirmDashboardCutoverPlan `
+    -ConfirmRetentionJobBudget `
+    -ConfirmExplainEvidence `
+    -JsonOutputPath $externalJsonPath `
+    -MarkdownOutputPath $externalMarkdownPath `
+    -FailIfNotPassed
+
+$externalReport = Read-Utf8Text $externalJsonPath | ConvertFrom-Json
+$externalMarkdown = Read-Utf8Text $externalMarkdownPath
+Assert-True ($externalReport.result -eq "passed") "External time-series data-flow storage plan should pass without MariaDB query evidence."
+Assert-True ($externalReport.queryPlanEvidence.provided -eq $false) "External time-series plan should not require MariaDB query evidence."
+Assert-True ($externalReport.candidateDecision.candidateStore -eq "EXTERNAL_TIME_SERIES") "External time-series plan should expose candidate decision."
+Assert-True ($externalReport.candidateDecision.requiresMariaDbQueryEvidence -eq $false) "External time-series candidate should not require MariaDB query evidence."
+Assert-True ($externalReport.candidateDecision.requiresTargetStoreEvidence -eq $true) "External time-series candidate should require target-store evidence."
+Assert-True ($externalReport.candidateDecision.targetStoreEvidenceConfirmed -eq $true) "External time-series candidate should surface confirmed target-store evidence."
+Assert-True (@($externalReport.checks | Where-Object { $_.id -eq "mariadb_query_plan_evidence" }).Count -eq 0) "External time-series plan should not add a MariaDB query-plan check."
+Assert-Contains $externalMarkdown "Target store evidence confirmed: True" "external markdown"
 
 $rejectedFailedQueryPlan = $false
 try {

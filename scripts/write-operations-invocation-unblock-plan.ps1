@@ -15,6 +15,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Get-JsonProperty([object] $Object, [string] $Name) {
     if ($null -eq $Object) {
         return $null
@@ -301,7 +305,7 @@ if (-not (Test-Path -LiteralPath $resolvedInvocationPath)) {
     throw "Operations evidence invocation report not found: $resolvedInvocationPath"
 }
 
-$invocation = Get-Content -Raw -LiteralPath $resolvedInvocationPath | ConvertFrom-Json
+$invocation = Read-Utf8Text $resolvedInvocationPath | ConvertFrom-Json
 if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1") {
     throw "Unexpected operations evidence invocation formatVersion: $($invocation.formatVersion)"
 }
@@ -453,6 +457,10 @@ $report = [ordered]@{
     sourceInvocationReport = $resolvedInvocationPath
     sourceResult = (Get-Text $invocation "result")
     sourceSummary = (Get-Text $invocation "sourceSummary")
+    sourcePassedCount = (Get-Int $invocation "sourcePassedCount")
+    sourcePendingCount = (Get-Int $invocation "sourcePendingCount")
+    sourceTotalCount = (Get-Int $invocation "sourceTotalCount")
+    sourceCheckCount = (Get-Int $invocation "sourceCheckCount")
     selectedActionCount = (Get-Int $invocation "selectedActionCount")
     plannedCount = (Get-Int $invocation "plannedCount")
     blockedCount = (Get-Int $invocation "blockedCount")
@@ -480,6 +488,7 @@ $markdownLines = @(
     "Generated at: $generatedAt",
     "Result: $result",
     "Source invocation report: $resolvedInvocationPath",
+    "Source counts: passed=$($report.sourcePassedCount) pending=$($report.sourcePendingCount) total=$($report.sourceTotalCount) checks=$($report.sourceCheckCount)",
     "",
     "## Summary",
     "",

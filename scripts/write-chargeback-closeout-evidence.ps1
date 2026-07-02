@@ -55,6 +55,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     if ([System.IO.Path]::IsPathRooted($PathValue)) { return [System.IO.Path]::GetFullPath($PathValue) }
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-SafeText([string] $Value, [string] $Label) {
     if ([string]::IsNullOrWhiteSpace($Value)) { return }
@@ -82,7 +86,7 @@ function Read-SanitizedJson([string] $PathValue, [string] $Label) {
     }
     $resolved = Resolve-ProjectPath $PathValue
     if (-not (Test-Path -LiteralPath $resolved)) { throw "$Label JSON missing: $resolved" }
-    $raw = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolved
+    $raw = Read-Utf8Text $resolved
     Assert-SanitizedJsonText $raw $Label
     try {
         return [pscustomobject]@{ provided = $true; parsed = $true; path = $resolved; data = ($raw | ConvertFrom-Json); detail = "Parsed $Label JSON." }
@@ -215,7 +219,7 @@ function Parse-ChargebackCloseoutSnapshot([string] $PathValue) {
     $snapshotBillingPeriod = Get-PropertyText $data "billingPeriod"
     $resultText = Get-PropertyText $data "result"
     if ([string]::IsNullOrWhiteSpace($resultText)) { $resultText = Get-PropertyText $data "closeoutStatus" }
-    $intNames = @("invoiceDraftCount", "finalInvoiceCount", "paymentRequestedCount", "paymentHandoffCount", "paidInvoiceCount", "reconciliationDifferenceMinorUnits", "failureCount")
+    $intNames = @("invoiceDraftCount", "finalInvoiceCount", "paymentRequestedCount", "paymentHandoffCount", "paidInvoiceCount", "reconciliationDifferenceMinorUnits", "failureCount", "blockerCount", "missingFinalInvoiceBlockerCount", "missingPaymentRequestBlockerCount", "unpaidInvoiceBlockerCount", "openHandoffBlockerCount", "openNotificationBlockerCount", "reconciliationBlockerCount")
     $counts = [ordered]@{}
     $intInvalid = 0
     foreach ($name in $intNames) {
@@ -223,7 +227,7 @@ function Parse-ChargebackCloseoutSnapshot([string] $PathValue) {
         $counts[$name] = $parsed.value
         if (-not $parsed.valid) { $intInvalid++ }
     }
-    $boolNames = @("rawCustomerPaymentDataStored", "rawProviderResponseStored", "rawSecretValuesStored")
+    $boolNames = @("closeoutReady", "invoiceFinalizationComplete", "paymentRequestsComplete", "paymentsSettled", "paymentHandoffsClosed", "notificationDeliveriesClosed", "reconciliationBalanced", "rawCustomerPaymentDataStored", "rawProviderResponseStored", "rawSecretValuesStored")
     $bools = [ordered]@{}
     $boolInvalid = 0
     foreach ($name in $boolNames) {
@@ -235,11 +239,14 @@ function Parse-ChargebackCloseoutSnapshot([string] $PathValue) {
     $statusClosed = Test-StatusClosed $resultText
     $noRawDataStored = (-not $bools["rawCustomerPaymentDataStored"]) -and (-not $bools["rawProviderResponseStored"]) -and (-not $bools["rawSecretValuesStored"])
     $failureCountZero = $counts["failureCount"] -eq 0
-    $valid = $readResult.parsed -and (-not [string]::IsNullOrWhiteSpace($snapshotBillingPeriod)) -and $billingPeriodMatches -and $statusClosed -and ($intInvalid -eq 0) -and ($boolInvalid -eq 0) -and $noRawDataStored -and $failureCountZero
+    $blockerCountZero = $counts["blockerCount"] -eq 0
+    $closeoutReady = [bool] $bools["closeoutReady"]
+    $readinessBooleansClosed = ([bool] $bools["invoiceFinalizationComplete"]) -and ([bool] $bools["paymentRequestsComplete"]) -and ([bool] $bools["paymentsSettled"]) -and ([bool] $bools["paymentHandoffsClosed"]) -and ([bool] $bools["notificationDeliveriesClosed"]) -and ([bool] $bools["reconciliationBalanced"])
+    $valid = $readResult.parsed -and (-not [string]::IsNullOrWhiteSpace($snapshotBillingPeriod)) -and $billingPeriodMatches -and $statusClosed -and ($intInvalid -eq 0) -and ($boolInvalid -eq 0) -and $noRawDataStored -and $failureCountZero -and $blockerCountZero -and $closeoutReady -and $readinessBooleansClosed
     return [pscustomobject][ordered]@{
         provided = $true; parsed = $readResult.parsed; valid = $valid; path = $readResult.path; billingPeriod = $snapshotBillingPeriod; result = $resultText
-        statusClosed = $statusClosed; billingPeriodMatches = $billingPeriodMatches; integersValid = ($intInvalid -eq 0); booleansValid = ($boolInvalid -eq 0); failureCountZero = $failureCountZero; noRawDataStored = $noRawDataStored
-        counts = $counts; rawDataFlags = $bools; detail = "result=$resultText; billingPeriod=$snapshotBillingPeriod; failures=$($counts['failureCount']); reconciliationDifferenceMinorUnits=$($counts['reconciliationDifferenceMinorUnits'])"
+        statusClosed = $statusClosed; billingPeriodMatches = $billingPeriodMatches; integersValid = ($intInvalid -eq 0); booleansValid = ($boolInvalid -eq 0); failureCountZero = $failureCountZero; blockerCountZero = $blockerCountZero; closeoutReady = $closeoutReady; readinessBooleansClosed = $readinessBooleansClosed; noRawDataStored = $noRawDataStored
+        counts = $counts; readinessFlags = $bools; rawDataFlags = $bools; detail = "result=$resultText; billingPeriod=$snapshotBillingPeriod; failures=$($counts['failureCount']); blockers=$($counts['blockerCount']); ready=$closeoutReady; reconciliationDifferenceMinorUnits=$($counts['reconciliationDifferenceMinorUnits'])"
     }
 }
 
@@ -262,6 +269,8 @@ $hasTargetInput = $hasReferenceInput -or $hasSwitchInput -or $hasSnapshotInput -
 
 $paymentSnapshot = Parse-PaymentProviderAdapterReadinessSnapshot $PaymentProviderAdapterReadinessJsonPath
 $closeoutSnapshot = Parse-ChargebackCloseoutSnapshot $ChargebackCloseoutSnapshotJsonPath
+$closeoutSnapshotBlockerCount = $null
+if ($null -ne $closeoutSnapshot.counts) { $closeoutSnapshotBlockerCount = $closeoutSnapshot.counts["blockerCount"] }
 
 if (-not $hasTargetInput) {
     Add-PlannedCheck "target-closeout-planned" "Target chargeback closeout evidence planned" "Run this writer after a target billing period has been closed."
@@ -337,12 +346,14 @@ $summaryInfo = [pscustomobject][ordered]@{
     requiredEvidenceRefCount = $evidenceRefs.Count
     providedEvidenceRefCount = $providedEvidenceRefs
     chargebackCloseoutSnapshotValid = $closeoutSnapshot.valid
+    chargebackCloseoutSnapshotReady = $closeoutSnapshot.closeoutReady
+    chargebackCloseoutSnapshotBlockerCount = $closeoutSnapshotBlockerCount
     paymentProviderAdapterReadinessSnapshotValid = $paymentSnapshot.valid
     paymentProviderAdapterReadinessReviewed = [bool] $ConfirmPaymentProviderAdapterReadinessReviewed
     commercialEvidenceReviewed = (([bool] $ConfirmCommercialIntegrationReviewed) -and ([bool] $ConfirmCommercialApprovalReviewed))
 }
-$decisionRule = "Production/B2B chargeback closeout readiness requires result=passed from the target environment after pricing policy/proposal, usage window, preview/trend exports, draft/final invoice, payment request, payment-provider handoff, notification delivery, adapter retry, reconciliation, commercial integration, and commercial approval evidence are all reviewed; the sanitized closeout snapshot must be typed, reconciled, and free of raw customer/payment/provider data."
-$scopePolicy = "OSMU tenant billing/chargeback closeout evidence only. This proves internal chargeback and handoff readiness for the target billing period; it does not claim native card, bank, tax, ERP, or external payment processor implementation."
+$decisionRule = "Production/B2B chargeback closeout readiness requires result=passed from the target environment after pricing policy/proposal, usage window, preview/trend exports, draft/final invoice, payment request, payment-provider handoff, notification delivery, adapter retry, reconciliation, commercial integration, and commercial approval evidence are all reviewed; the sanitized closeout snapshot must be typed, closeoutReady=true, blockerCount=0, reconciled, and free of raw customer/payment/provider data."
+$scopePolicy = "OSMU tenant billing/chargeback closeout evidence only. This proves internal chargeback and handoff readiness for the target billing period, including sanitized payment-provider adapter/native-bridge readiness; it does not claim vendor-specific fixed SDK/schema card, bank, tax, ERP, or external payment processor implementation."
 $secretPolicy = "Evidence stores target labels, timestamps, external references, booleans, typed counts, and reduced readiness metadata only; it must not contain passwords, bearer tokens, private keys, endpoint URLs with credentials, raw customer data, raw payment data, raw price tables, invoices, contracts, provider responses, or provider credentials."
 $report = New-Object psobject
 $report | Add-Member -NotePropertyName formatVersion -NotePropertyValue "osmu.chargeback-closeout-evidence.v1"

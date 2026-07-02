@@ -12,9 +12,19 @@ function Resolve-ProjectPath($path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Assert-Contains([string] $content, [string] $expected, [string] $label) {
     if (-not $content.Contains($expected)) {
         throw "$label does not contain expected text: $expected"
+    }
+}
+
+function Assert-NotContains([string] $content, [string] $unexpected, [string] $label) {
+    if ($content.Contains($unexpected)) {
+        throw "$label contains unexpected text: $unexpected"
     }
 }
 
@@ -23,7 +33,7 @@ if (-not (Test-Path -LiteralPath $resolvedPath)) {
     throw "Commercial readiness draft missing: $resolvedPath"
 }
 
-$content = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedPath
+$content = Read-Utf8Text $resolvedPath
 
 Assert-Contains $content "private S3-compatible object storage platform" "Commercial readiness draft"
 Assert-Contains $content "streaming/media teams" "Commercial readiness draft"
@@ -43,10 +53,11 @@ Assert-Contains $content 'GET /api/admin/billing/payment-provider-adapter-readin
 Assert-Contains $content 'GET /api/admin/billing/chargeback-closeout-summary' "Commercial readiness draft"
 Assert-Contains $content 'GET /api/admin/billing/pricing-policy-proposals/commercial-approval-summary' "Commercial readiness draft"
 Assert-Contains $content 'configured generic webhook/Slack/EMAIL SMTP relay send, private/local webhook and SMTP relay host blocking, outbound payload size caps, optional generic notification/payment webhook HMAC signature headers' "Commercial readiness draft"
-Assert-Contains $content 'payment provider handoff outbox/history with adapter retry state and configured generic/CARD/BANK/TAX/ERP webhook profile handoff send' "Commercial readiness draft"
+Assert-Contains $content 'payment provider handoff outbox/history with adapter retry state, native payment provider adapter SPI/composite dispatch, CARD/BANK/TAX/ERP configurable native API bridge handoff send before configured generic/CARD/BANK/TAX/ERP webhook fallback' "Commercial readiness draft"
 Assert-Contains $content 'ADMIN-only payment provider adapter readiness' "Commercial readiness draft"
 Assert-Contains $content 'native payment provider adapter SPI/composite dispatch' "Commercial readiness draft"
-Assert-Contains $content 'concrete card/bank/tax/ERP native processor implementations and raw provider response storage remain out of scope.' "Commercial readiness draft"
+Assert-Contains $content 'vendor-specific fixed SDK/schema implementations and raw provider response storage remain out of scope.' "Commercial readiness draft"
+Assert-NotContains $content 'configured generic/CARD/BANK/TAX/ERP webhook profile handoff send' "Commercial readiness draft"
 Assert-Contains $content "Docker/MariaDB/MinIO integration gate passes." "Commercial readiness draft"
 Assert-Contains $content 'Real S3 client gate passes with AWS CLI, boto3, AWS SDK JavaScript, AWS SDK Java via `OSMU_AWS_SDK_JAVA_CLASSPATH`, host MinIO Client, or Dockerized MinIO Client.' "Commercial readiness draft"
 Assert-Contains $content "Browser E2E gate passes." "Commercial readiness draft"
@@ -68,24 +79,25 @@ Assert-Contains $content 'monitoring threshold promotion requires target metadat
 Assert-Contains $content 'Commercial integration evidence is generated as `.osmu-run/latest-commercial-integration-evidence.json` with `result=passed` from the target environment through `scripts/write-commercial-integration-evidence.ps1` or `.github/workflows/manual-commercial-integration-evidence.yml`' "Commercial readiness draft"
 Assert-Contains $content 'requires typed integer count fields and typed boolean readiness/profile fields' "Commercial readiness draft"
 Assert-Contains $content 'Chargeback closeout evidence is generated as `.osmu-run/latest-chargeback-closeout-evidence.json` with `result=passed` through `scripts/write-chargeback-closeout-evidence.ps1`' "Commercial readiness draft"
-Assert-Contains $content 'The sanitized closeout snapshot can be exported from `GET /api/admin/billing/chargeback-closeout-summary` and must include typed invoice/payment/reconciliation counts, zero failure count, typed false raw-customer-payment/raw-provider-response/raw-secret flags' "Commercial readiness draft"
+Assert-Contains $content 'The sanitized closeout snapshot can be exported from `GET /api/admin/billing/chargeback-closeout-summary` and must include typed invoice/payment/reconciliation counts, `closeoutReady=true`, `blockerCount=0`, zero failure count, typed stage-complete booleans, typed false raw-customer-payment/raw-provider-response/raw-secret flags' "Commercial readiness draft"
 Assert-Contains $content 'Commercial approval evidence is generated as `.osmu-run/latest-commercial-approval-evidence.json` with `result=passed` through `scripts/write-commercial-approval-evidence.ps1` or `.github/workflows/manual-commercial-approval-evidence.yml`' "Commercial readiness draft"
 Assert-Contains $content 'sanitized `GET /api/admin/billing/pricing-policy-proposals/commercial-approval-summary` snapshot' "Commercial readiness draft"
 Assert-Contains $content 'snapshot showing product-side commercial price-list approval state with typed boolean approval flags' "Commercial readiness draft"
 Assert-Contains $content 'Operations handoff package evidence is generated as `.osmu-run/latest-operations-handoff-package.json` with `result=passed` from the target environment through `scripts/write-operations-handoff-package.ps1` or `.github/workflows/manual-operations-handoff-package.yml`' "Commercial readiness draft"
-Assert-Contains $content 'requires MariaDB/dual-write data-flow plan snapshots to include passed query-plan evidence with typed count and boolean summary fields' "Commercial readiness draft"
+Assert-Contains $content 'requires MariaDB/dual-write data-flow plan snapshots to preserve `candidateDecision` evidence-model and required-evidence flags and include passed query-plan evidence with typed count and boolean summary fields' "Commercial readiness draft"
+Assert-Contains $content 'candidate-decision/query-plan/runbook' "Commercial readiness draft"
 Assert-Contains $content 'requires typed commercial integration/approval count fields, typed chargeback closeout invoice/payment/reconciliation counts and no-raw-data flags, and typed approval/review booleans before commercial target snapshots can pass' "Commercial readiness draft"
 Assert-Contains $content 'requires enterprise auth `result=passed` snapshots to include typed integer counts with passCount>0 and fail/block/planned counts at zero' "Commercial readiness draft"
 Assert-Contains $content 'Operations readiness finalizer report is generated as `.osmu-run/latest-operations-readiness-finalize.json` and the underlying operations readiness result is `ready`; operations readiness includes the storage backend telemetry target evidence check, secret/certificate rotation target evidence check, commercial integration target evidence check, chargeback closeout target evidence check, commercial approval target evidence check, enterprise auth target smoke evidence check, and operations handoff package target evidence check.' "Commercial readiness draft"
 Assert-Contains $content '- Chargeback preview: API, persistent pricing policy' "Commercial readiness draft"
 Assert-Contains $content 'optional generic notification/payment webhook HMAC signature headers, adapter retry worker dry-run/run controls for notification/payment adapter retry' "Commercial readiness draft"
-Assert-Contains $content 'payment provider handoff outbox/history with configured generic/CARD/BANK/TAX/ERP webhook profile handoff send and adapter result retry state' "Commercial readiness draft"
+Assert-Contains $content 'payment provider handoff outbox/history with adapter result retry state, native payment provider adapter SPI/composite dispatch, CARD/BANK/TAX/ERP configurable native API bridge handoff send before configured generic/CARD/BANK/TAX/ERP webhook fallback' "Commercial readiness draft"
 Assert-Contains $content 'commercial integration evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'chargeback closeout evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'commercial approval evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'dashboard readiness visibility for commercial integration/approval and enterprise auth JIT rollback evidence summaries' "Commercial readiness draft"
 Assert-Contains $content 'operations handoff package evidence writer/workflow implemented' "Commercial readiness draft"
-Assert-Contains $content 'concrete native card/bank/tax/ERP provider API adapters, target secret/certificate rotation `result=passed` evidence, target chargeback closeout `result=passed` evidence, target commercial integration `result=passed` evidence, target commercial approval `result=passed` evidence, and target operations handoff package `result=passed` evidence remain pending.' "Commercial readiness draft"
+Assert-Contains $content 'vendor-specific fixed SDK/schema adapters, target secret/certificate rotation `result=passed` evidence, target chargeback closeout `result=passed` evidence, target commercial integration `result=passed` evidence, target commercial approval `result=passed` evidence, and target operations handoff package `result=passed` evidence remain pending.' "Commercial readiness draft"
 Assert-Contains $content 'Final legal/commercial approval: evidence writer implemented; target `result=passed` approval evidence pending.' "Commercial readiness draft"
 
 Write-Host "Commercial readiness draft verified."

@@ -2,6 +2,7 @@ param(
     [string] $ReadinessReportPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-evidence-plan.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-evidence-plan.md",
+    [string] $GitHubRepository = "",
     [switch] $IncludePassed,
     [switch] $NoWrite
 )
@@ -16,6 +17,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Get-JsonProperty([object] $Object, [string] $Name) {
     if ($null -eq $Object) {
         return $null
@@ -33,6 +38,24 @@ function Get-Text([object] $Object, [string] $Name) {
         return ""
     }
     return [string] $value
+}
+
+function Get-IntOrDefault([object] $Object, [string] $Name, [int] $DefaultValue) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return $DefaultValue
+    }
+    if ($value -is [int]) {
+        return [int] $value
+    }
+    if ($value -is [long]) {
+        return [int] $value
+    }
+    $parsed = 0
+    if ([int]::TryParse(([string] $value), [ref] $parsed)) {
+        return $parsed
+    }
+    return $DefaultValue
 }
 
 function Get-Placeholders([string[]] $Values) {
@@ -100,17 +123,104 @@ function Test-KubeconfigRequired([string] $Category, [string] $Name, [string[]] 
         $combined.Contains("kubernetes")
     )
 }
+function Get-PendingCategoryCounts([object[]] $Checks) {
+    return @($Checks |
+        Where-Object { -not $_.passed } |
+        Group-Object category |
+        Sort-Object Name |
+        ForEach-Object {
+            [ordered]@{
+                category = $_.Name
+                count = $_.Count
+            }
+        })
+}
+
+function Format-PendingCategorySummary([object[]] $CategoryCounts) {
+    $summary = @($CategoryCounts | ForEach-Object { "$($_.category)=$($_.count)" }) -join ", "
+    if ([string]::IsNullOrWhiteSpace($summary)) {
+        return "none"
+    }
+    return $summary
+}
+function Get-WorkflowName([string] $Command) {
+    if ([string]::IsNullOrWhiteSpace($Command)) {
+        return ""
+    }
+    $match = [regex]::Match($Command.Trim(), "^gh\s+workflow\s+run\s+([^\s]+)")
+    if (-not $match.Success) {
+        return ""
+    }
+    $workflow = $match.Groups[1].Value
+    if ($workflow.Contains("/") -or $workflow.Contains("\")) {
+        return [System.IO.Path]::GetFileName($workflow)
+    }
+    return $workflow
+}
+
+function Get-WorkflowFileName([string] $WorkflowPath, [string] $WorkflowCommand) {
+    if (-not [string]::IsNullOrWhiteSpace($WorkflowPath)) {
+        return [System.IO.Path]::GetFileName($WorkflowPath.Trim())
+    }
+    return Get-WorkflowName $WorkflowCommand
+}
+
+function Normalize-GitHubRepositorySlug([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+    $trimmed = $Value.Trim()
+    if ($trimmed -match '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
+        if ($trimmed.EndsWith(".git", [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $trimmed.Substring(0, $trimmed.Length - 4)
+        }
+        return $trimmed
+    }
+    if ($trimmed -match '^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?$') {
+        return $matches[1]
+    }
+    if ($trimmed -match '^git@github\.com:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?$') {
+        return $matches[1]
+    }
+    return ""
+}
+
+function Resolve-GitHubRepositorySlug([string] $ExplicitRepository) {
+    $explicit = Normalize-GitHubRepositorySlug $ExplicitRepository
+    if (-not [string]::IsNullOrWhiteSpace($explicit)) {
+        return $explicit
+    }
+    $environmentRepository = Normalize-GitHubRepositorySlug $env:GITHUB_REPOSITORY
+    if (-not [string]::IsNullOrWhiteSpace($environmentRepository)) {
+        return $environmentRepository
+    }
+    try {
+        $remote = git -C $root config --get remote.origin.url 2>$null
+        return Normalize-GitHubRepositorySlug ([string] $remote)
+    }
+    catch {
+        return ""
+    }
+}
+
+function Get-GitHubWorkflowDispatchUrl([string] $RepositorySlug, [string] $WorkflowName) {
+    if ([string]::IsNullOrWhiteSpace($RepositorySlug) -or [string]::IsNullOrWhiteSpace($WorkflowName)) {
+        return ""
+    }
+    return "https://github.com/$RepositorySlug/actions/workflows/$WorkflowName"
+}
 
 $resolvedReadinessReportPath = Resolve-ProjectPath $ReadinessReportPath
 if (-not (Test-Path -LiteralPath $resolvedReadinessReportPath)) {
     throw "Operations readiness report not found: $resolvedReadinessReportPath"
 }
 
-$readiness = Get-Content -Raw -LiteralPath $resolvedReadinessReportPath | ConvertFrom-Json
+$readiness = Read-Utf8Text $resolvedReadinessReportPath | ConvertFrom-Json
 if ($readiness.formatVersion -ne "osmu.operations-readiness.v1") {
     throw "Unexpected operations readiness formatVersion: $($readiness.formatVersion)"
 }
 
+$githubRepositorySlug = Resolve-GitHubRepositorySlug $GitHubRepository
 $actions = New-Object System.Collections.Generic.List[object]
 $unplannedChecks = New-Object System.Collections.Generic.List[object]
 $checks = @($readiness.checks)
@@ -139,6 +249,8 @@ foreach ($check in $selectedChecks) {
     $command = Get-Text $remediation "command"
     $workflow = Get-Text $remediation "workflow"
     $workflowCommand = Get-Text $remediation "workflowCommand"
+    $workflowName = Get-WorkflowFileName $workflow $workflowCommand
+    $dispatchUrl = Get-GitHubWorkflowDispatchUrl $githubRepositorySlug $workflowName
     $note = Get-Text $remediation "note"
     $name = Get-Text $check "name"
     $category = Get-Text $check "category"
@@ -160,9 +272,11 @@ foreach ($check in $selectedChecks) {
         evidencePath = (Get-Text $check "evidencePath")
         requiredEvidence = (Get-Text $check "requiredEvidence")
         currentDetail = (Get-Text $check "detail")
+        sourcePassed = [bool] $check.passed
         localCommand = $command
         workflow = $workflow
         workflowCommand = $workflowCommand
+        dispatchUrl = $dispatchUrl
         recommendedCommand = if (-not [string]::IsNullOrWhiteSpace($workflowCommand)) { $workflowCommand } else { $command }
         operatorInputs = @($placeholders)
         hasPlaceholders = @($placeholders).Count -gt 0
@@ -174,6 +288,14 @@ foreach ($check in $selectedChecks) {
 }
 
 $pendingCount = @($checks | Where-Object { -not $_.passed }).Count
+$passedCount = @($checks | Where-Object { $_.passed }).Count
+$sourcePassedCount = Get-IntOrDefault $readiness "passedCount" $passedCount
+$sourcePendingCount = Get-IntOrDefault $readiness "pendingCount" $pendingCount
+$sourceTotalCount = Get-IntOrDefault $readiness "totalCount" $checks.Count
+$sourceCheckCount = Get-IntOrDefault $readiness "checkCount" $checks.Count
+$sourcePendingRemediationCount = Get-IntOrDefault $readiness "pendingRemediationCount" $actions.Count
+$sourcePendingRemediationNodes = Get-JsonProperty $readiness "pendingRemediations"
+$sourcePendingRemediationEntryCount = if ($null -eq $sourcePendingRemediationNodes) { $sourcePendingRemediationCount } else { @($sourcePendingRemediationNodes).Count }
 $actionCount = $actions.Count
 $unplannedCount = $unplannedChecks.Count
 $result = if ($pendingCount -eq 0) {
@@ -191,6 +313,25 @@ $resolvedJsonOutputPath = Resolve-ProjectPath $JsonOutputPath
 $resolvedMarkdownOutputPath = Resolve-ProjectPath $MarkdownOutputPath
 $actionArray = @($actions | ForEach-Object { $_ })
 $unplannedCheckArray = @($unplannedChecks | ForEach-Object { $_ })
+$sourcePendingRemediationActionCount = @($actionArray | Where-Object { -not $_.sourcePassed }).Count
+$sourcePendingRemediationMissingActionCount = [Math]::Max(0, $sourcePendingRemediationCount - $sourcePendingRemediationActionCount)
+$sourcePendingRemediationCoverageReady = (
+    $sourcePendingRemediationCount -eq $sourcePendingRemediationEntryCount -and
+    $sourcePendingRemediationCount -eq $sourcePendingRemediationActionCount -and
+    ($sourcePendingRemediationCount + $unplannedCount) -eq $pendingCount
+)
+$pendingCategoryCounts = @(Get-PendingCategoryCounts $checks)
+$pendingCategorySummary = Format-PendingCategorySummary $pendingCategoryCounts
+$actionSummary = [ordered]@{
+    totalActions = $actionCount
+    kubernetesLiveActions = @($actionArray | Where-Object { $_.actionType -eq "kubernetes-live" }).Count
+    securityCiActions = @($actionArray | Where-Object { $_.actionType -eq "security-ci" }).Count
+    operatorRemediationActions = @($actionArray | Where-Object { $_.actionType -eq "operator-remediation" }).Count
+    requiresOperatorApprovalCount = @($actionArray | Where-Object { $_.requiresOperatorApproval }).Count
+    requiresKubeconfigSecretCount = @($actionArray | Where-Object { $_.requiresKubeconfigSecret }).Count
+    actionsWithPlaceholdersCount = @($actionArray | Where-Object { $_.hasPlaceholders }).Count
+    unplannedCheckCount = $unplannedCount
+}
 $report = [ordered]@{
     formatVersion = "osmu.operations-evidence-plan.v1"
     generatedAt = $generatedAt
@@ -198,9 +339,22 @@ $report = [ordered]@{
     sourceReport = $resolvedReadinessReportPath
     sourceResult = (Get-Text $readiness "result")
     sourceSummary = (Get-Text $readiness "summary")
+    sourcePassedCount = $sourcePassedCount
+    sourcePendingCount = $sourcePendingCount
+    sourceTotalCount = $sourceTotalCount
+    sourceCheckCount = $sourceCheckCount
+    sourcePendingRemediationCount = $sourcePendingRemediationCount
+    sourcePendingRemediationEntryCount = $sourcePendingRemediationEntryCount
+    sourcePendingRemediationActionCount = $sourcePendingRemediationActionCount
+    sourcePendingRemediationMissingActionCount = $sourcePendingRemediationMissingActionCount
+    sourcePendingRemediationCoverageReady = $sourcePendingRemediationCoverageReady
+    githubRepository = $githubRepositorySlug
     pendingCount = $pendingCount
     actionCount = $actionCount
     unplannedCount = $unplannedCount
+    pendingCategorySummary = $pendingCategorySummary
+    pendingCategoryCounts = $pendingCategoryCounts
+    actionSummary = $actionSummary
     decisionRule = "Execute or import passing evidence for every pending operations readiness check, then regenerate operations readiness until result=ready."
     actions = $actionArray
     unplannedChecks = $unplannedCheckArray
@@ -214,6 +368,18 @@ $markdownLines = @(
     "Source report: $resolvedReadinessReportPath",
     "Source result: $($report.sourceResult)",
     "Source summary: $($report.sourceSummary)",
+    "Source counts: passed=$sourcePassedCount pending=$sourcePendingCount total=$sourceTotalCount checks=$sourceCheckCount",
+    "Source remediations: entries=$sourcePendingRemediationEntryCount actions=$sourcePendingRemediationActionCount missingActions=$sourcePendingRemediationMissingActionCount coverageReady=$sourcePendingRemediationCoverageReady",
+    "",
+    "## Action Summary",
+    "",
+    "- Total actions: $($actionSummary.totalActions)",
+    "- By type: kubernetes-live=$($actionSummary.kubernetesLiveActions), security-ci=$($actionSummary.securityCiActions), operator-remediation=$($actionSummary.operatorRemediationActions)",
+    "- Operator approval required: $($actionSummary.requiresOperatorApprovalCount)",
+    "- Kubeconfig secret required: $($actionSummary.requiresKubeconfigSecretCount)",
+    "- Actions with placeholders: $($actionSummary.actionsWithPlaceholdersCount)",
+    "- Unplanned checks: $($actionSummary.unplannedCheckCount)",
+    "- Pending categories: $pendingCategorySummary",
     "",
     "## Decision Rule",
     "",
@@ -233,6 +399,12 @@ else {
         $inputs = if ($action.operatorInputs.Count -gt 0) { $action.operatorInputs -join ", " } else { "none" }
         $markdownLines += "- [$($action.order)] $($action.category) / $($action.name)"
         $markdownLines += "  - Evidence: $($action.requiredEvidence); path=$($action.evidencePath)"
+        if (-not [string]::IsNullOrWhiteSpace($action.currentDetail)) {
+            $markdownLines += "  - Current detail: $($action.currentDetail)"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($action.recommendedCommand)) {
+            $markdownLines += "  - Recommended command: ``$($action.recommendedCommand)``"
+        }
         if (-not [string]::IsNullOrWhiteSpace($action.localCommand)) {
             $markdownLines += "  - Local command: ``$($action.localCommand)``"
         }
@@ -241,6 +413,9 @@ else {
         }
         if (-not [string]::IsNullOrWhiteSpace($action.workflowCommand)) {
             $markdownLines += "  - Workflow command: ``$($action.workflowCommand)``"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($action.dispatchUrl)) {
+            $markdownLines += "  - Web dispatch URL: $($action.dispatchUrl)"
         }
         $markdownLines += "  - Operator inputs: $inputs"
         $markdownLines += "  - Operator approval: $approval"

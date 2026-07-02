@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-Equal($Actual, $Expected, [string] $Message) {
     if ($Actual -ne $Expected) {
         throw "$Message. Expected '$Expected' but got '$Actual'."
@@ -58,10 +62,13 @@ $invalidJsonPath = Join-Path $resolvedOutputDirectory "invalid-preflight.json"
 $invalidMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-preflight.md"
 $githubCliJsonPath = Join-Path $resolvedOutputDirectory "github-cli-path-preflight.json"
 $githubCliMarkdownPath = Join-Path $resolvedOutputDirectory "github-cli-path-preflight.md"
+$gitRefJsonPath = Join-Path $resolvedOutputDirectory "git-ref-safety-preflight.json"
+$gitRefMarkdownPath = Join-Path $resolvedOutputDirectory "git-ref-safety-preflight.md"
 $fakeGitHubCliDirectory = Join-Path $resolvedOutputDirectory "fake-github-cli"
 $fakeGitHubCliPath = Join-Path $fakeGitHubCliDirectory "gh.cmd"
 New-Item -ItemType Directory -Force -Path $fakeGitHubCliDirectory | Out-Null
 Set-Content -LiteralPath $fakeGitHubCliPath -Value "@echo off`r`necho fake gh %*`r`nexit /b 0`r`n" -Encoding ASCII
+$env:GITHUB_REPOSITORY = "chefbeom/object-storage-osmu"
 
 Write-JsonFixture $unblockPlanPath ([ordered]@{
     formatVersion = "osmu.operations-invocation-unblock-plan.v1"
@@ -70,6 +77,10 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
     sourceInvocationReport = ".osmu-run/latest-operations-evidence-plan-invocation.json"
     sourceResult = "blocked"
     sourceSummary = "passed=36 pending=6"
+    sourcePassedCount = 36
+    sourcePendingCount = 6
+    sourceTotalCount = 42
+    sourceCheckCount = 42
     selectedActionCount = 4
     plannedCount = 1
     blockedCount = 3
@@ -182,11 +193,12 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-dispatch-preflight.ps1 missing fixture failed with exit code $LASTEXITCODE."
 }
 
-$missingReport = Get-Content -Raw -LiteralPath $missingJsonPath | ConvertFrom-Json
-$missingMarkdown = Get-Content -Raw -LiteralPath $missingMarkdownPath
+$missingReport = Read-Utf8Text $missingJsonPath | ConvertFrom-Json
+$missingMarkdown = Read-Utf8Text $missingMarkdownPath
 Assert-Equal $missingReport.formatVersion "osmu.operations-dispatch-preflight.v1" "missing formatVersion"
 Assert-Equal $missingReport.result "action-required" "missing result"
 Assert-Equal $missingReport.selectedActionCount 4 "missing selected action count"
+Assert-Equal $missingReport.githubRepository "chefbeom/object-storage-osmu" "missing GitHub repository"
 Assert-Equal $missingReport.readyActionCount 1 "missing ready action count"
 Assert-Equal $missingReport.blockedActionCount 3 "missing blocked action count"
 Assert-Equal $missingReport.readyActionOrders[0] 4 "missing ready action order"
@@ -207,6 +219,7 @@ Assert-Equal $missingDrTemplate.invalidInputCount 0 "missing DR template invalid
 Assert-True (-not $missingDrTemplate.readyToDispatch) "missing DR template should not be ready to dispatch"
 Assert-True (@($missingDrTemplate.requiredSecrets) -contains "OSMU_ADMIN_PASSWORD") "missing DR template admin password secret"
 Assert-True (@($missingDrTemplate.workflowInputNames) -contains "backup_timestamp") "missing DR template workflow input summary"
+Assert-Equal $missingDrTemplate.dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml" "missing DR template dispatch URL"
 Assert-True (@($missingDrTemplate.missingInputParameters) -contains "BackupTimestamp") "missing DR template missing parameter summary"
 Assert-Equal @($missingDrTemplate.unsafeInputParameters).Count 0 "missing DR template unsafe parameter summary"
 Assert-Equal @($missingDrTemplate.invalidInputParameters).Count 0 "missing DR template invalid parameter summary"
@@ -217,8 +230,13 @@ $missingContainerTemplate = @($missingReport.inputTemplates | Where-Object { $_.
 Assert-True $missingContainerTemplate.readyToDispatch "missing container template should be ready to dispatch"
 Assert-Equal @($missingContainerTemplate.requiredSecrets).Count 0 "missing container template should not carry blank required secrets"
 Assert-Equal @($missingContainerTemplate.operatorChecklist).Count 0 "missing container template should not carry blank checklist items"
+Assert-Equal $missingContainerTemplate.dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "missing container template dispatch URL"
+$missingContainerWorkflow = @($missingReport.workflowFiles | Where-Object { $_.actionOrder -eq 4 })[0]
+Assert-Equal $missingContainerWorkflow.dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "missing container workflow dispatch URL"
 Assert-Contains $missingMarkdown "Result: action-required" "missing markdown"
 Assert-Contains $missingMarkdown "## Input Templates" "missing markdown input templates section"
+Assert-Contains $missingMarkdown "## Workflow Dispatch URLs" "missing markdown workflow dispatch URL section"
+Assert-Contains $missingMarkdown "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "missing markdown container dispatch URL"
 Assert-Contains $missingMarkdown "Ready actions: 1 (4)" "missing markdown ready action count"
 Assert-Contains $missingMarkdown "Ready subset plan command" "missing markdown ready subset command"
 Assert-Contains $missingMarkdown "action 2 - Kubernetes DR finalizer live evidence" "missing markdown DR template"
@@ -234,15 +252,37 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-dispatch-preflight.ps1 GitHubCliPath fixture failed with exit code $LASTEXITCODE."
 }
 
-$githubCliReport = Get-Content -Raw -LiteralPath $githubCliJsonPath | ConvertFrom-Json
-$githubCliMarkdown = Get-Content -Raw -LiteralPath $githubCliMarkdownPath
+$githubCliReport = Read-Utf8Text $githubCliJsonPath | ConvertFrom-Json
+$githubCliMarkdown = Read-Utf8Text $githubCliMarkdownPath
 Assert-Equal $githubCliReport.result "ready" "GitHubCliPath result"
 Assert-Equal $githubCliReport.githubCliPath $fakeGitHubCliPath "GitHubCliPath report path"
 Assert-Contains $githubCliReport.readyPlanCommand "-GitHubCliPath" "GitHubCliPath ready plan command"
 Assert-Contains $githubCliReport.readySubsetPlanCommand "-GitHubCliPath" "GitHubCliPath ready subset plan command"
+Assert-Equal $githubCliReport.githubRepository "chefbeom/object-storage-osmu" "GitHubCliPath repository"
 Assert-Contains $githubCliReport.executeCommand "-GitHubCliPath" "GitHubCliPath execute command"
 Assert-Contains (($githubCliReport.checks | ConvertTo-Json -Depth 8)) "explicit path" "GitHubCliPath check message"
 Assert-Contains $githubCliMarkdown "GitHub CLI path:" "GitHubCliPath markdown"
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -UnblockPlanPath $unblockPlanPath `
+    -JsonOutputPath $gitRefJsonPath `
+    -MarkdownOutputPath $gitRefMarkdownPath `
+    -ActionOrder 4 `
+    -GitHubRepository "chefbeom/object-storage-osmu" `
+    -GitHubRef "main" `
+    -CheckGitRefSafety | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-dispatch-preflight.ps1 git ref safety fixture failed with exit code $LASTEXITCODE."
+}
+
+$gitRefReport = Read-Utf8Text $gitRefJsonPath | ConvertFrom-Json
+$gitRefMarkdown = Read-Utf8Text $gitRefMarkdownPath
+Assert-True $gitRefReport.gitRefSafety.checked "git ref safety should be checked"
+Assert-True (-not [string]::IsNullOrWhiteSpace($gitRefReport.gitRefSafety.status)) "git ref safety status should be populated"
+Assert-True (-not [string]::IsNullOrWhiteSpace($gitRefReport.gitRefSafety.githubRef)) "git ref safety githubRef should be populated"
+Assert-Contains (($gitRefReport.checks | ConvertTo-Json -Depth 8)) "GITHUB_REF_SYNC" "git ref safety check code"
+Assert-Contains $gitRefMarkdown "## Git Ref Safety" "git ref safety markdown section"
+Assert-Contains $gitRefMarkdown "Suggested push command" "git ref safety markdown push command"
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -UnblockPlanPath $unblockPlanPath `
     -JsonOutputPath $readyJsonPath `
@@ -254,8 +294,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-dispatch-preflight.ps1 ready fixture failed with exit code $LASTEXITCODE."
 }
 
-$readyReport = Get-Content -Raw -LiteralPath $readyJsonPath | ConvertFrom-Json
-$readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownPath
+$readyReport = Read-Utf8Text $readyJsonPath | ConvertFrom-Json
+$readyMarkdown = Read-Utf8Text $readyMarkdownPath
 Assert-Equal $readyReport.result "ready" "ready result"
 Assert-Equal $readyReport.failedCheckCount 0 "ready failed checks"
 Assert-Equal $readyReport.readyActionCount 4 "ready action count"
@@ -263,6 +303,11 @@ Assert-Equal $readyReport.blockedActionCount 0 "ready blocked action count"
 Assert-Equal $readyReport.readyActionOrders[0] 1 "ready first action order"
 Assert-Equal $readyReport.readyActionOrders[3] 4 "ready last action order"
 Assert-Contains $readyReport.readySubsetPlanCommand "-ActionOrder 1,2,3,4" "ready subset plan command"
+Assert-Equal $readyReport.githubRepository "chefbeom/object-storage-osmu" "ready GitHub repository"
+Assert-Equal $readyReport.sourcePassedCount 36 "ready source passed count"
+Assert-Equal $readyReport.sourcePendingCount 6 "ready source pending count"
+Assert-Equal $readyReport.sourceTotalCount 42 "ready source total count"
+Assert-Equal $readyReport.sourceCheckCount 42 "ready source check count"
 Assert-Contains $readyReport.readySubsetExecuteCommand "-Execute" "ready subset execute command"
 Assert-Equal $readyReport.missingInputCount 0 "ready missing inputs"
 Assert-Equal $readyReport.unsafeInputCount 0 "ready unsafe inputs"
@@ -282,6 +327,7 @@ Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AU
 Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD") "expected enterprise auth LDAP password secret"
 Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_CODE") "expected enterprise auth OIDC code secret"
 Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_STATE") "expected enterprise auth OIDC state secret"
+Assert-True (@($readyReport.workflowFiles | Where-Object { $_.dispatchUrl -like "https://github.com/chefbeom/object-storage-osmu/actions/workflows/*" }).Count -eq 4) "expected dispatch URLs for every workflow file"
 $readyDrTemplate = @($readyReport.inputTemplates | Where-Object { $_.actionOrder -eq 2 })[0]
 Assert-Equal $readyDrTemplate.missingInputCount 0 "ready DR template missing input count"
 Assert-Equal $readyDrTemplate.unsafeInputCount 0 "ready DR template unsafe input count"
@@ -302,6 +348,7 @@ Assert-True (@($drWorkflow.requiredSecrets) -contains "OSMU_ADMIN_PASSWORD") "co
 Assert-True (-not (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64")) "enterprise auth workflow should not require kubeconfig"
 Assert-True (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD") "enterprise auth workflow should require admin password when run_live=true"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown"
+Assert-Contains $readyMarkdown "Source counts: passed=36 pending=6 total=42 checks=42" "ready markdown source counts"
 Assert-Contains $readyMarkdown "Ready actions: 4 (1,2,3,4)" "ready markdown action count"
 Assert-Contains $readyMarkdown "Ready subset execute command" "ready markdown ready subset execute command"
 Assert-Contains $readyMarkdown "readyToDispatch=True" "ready markdown template readiness"
@@ -318,8 +365,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-dispatch-preflight.ps1 unsafe fixture failed with exit code $LASTEXITCODE."
 }
 
-$unsafeReport = Get-Content -Raw -LiteralPath $unsafeJsonPath | ConvertFrom-Json
-$unsafeMarkdown = Get-Content -Raw -LiteralPath $unsafeMarkdownPath
+$unsafeReport = Read-Utf8Text $unsafeJsonPath | ConvertFrom-Json
+$unsafeMarkdown = Read-Utf8Text $unsafeMarkdownPath
 Assert-Equal $unsafeReport.result "action-required" "unsafe result"
 Assert-Equal $unsafeReport.unsafeInputCount 1 "unsafe input count"
 Assert-True ($unsafeReport.failedCheckCount -ge 1) "unsafe preflight should fail"
@@ -338,8 +385,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "write-operations-dispatch-preflight.ps1 invalid fixture failed with exit code $LASTEXITCODE."
 }
 
-$invalidReport = Get-Content -Raw -LiteralPath $invalidJsonPath | ConvertFrom-Json
-$invalidMarkdown = Get-Content -Raw -LiteralPath $invalidMarkdownPath
+$invalidReport = Read-Utf8Text $invalidJsonPath | ConvertFrom-Json
+$invalidMarkdown = Read-Utf8Text $invalidMarkdownPath
 Assert-Equal $invalidReport.result "action-required" "invalid result"
 Assert-Equal $invalidReport.invalidInputCount 1 "invalid input count"
 Assert-True ($invalidReport.failedCheckCount -ge 1) "invalid preflight should fail"
@@ -350,5 +397,6 @@ Assert-Contains $invalidMarkdown "Invalid inputs: 1" "invalid markdown"
 Write-Host "Operations dispatch preflight verified."
 Write-Host "Missing report: $missingJsonPath"
 Write-Host "Ready report: $readyJsonPath"
+Write-Host "Git ref safety report: $gitRefJsonPath"
 Write-Host "Unsafe report: $unsafeJsonPath"
 Write-Host "Invalid report: $invalidJsonPath"

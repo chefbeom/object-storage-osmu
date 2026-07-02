@@ -18,6 +18,10 @@ function Resolve-ProjectPath($path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Gate-Line([bool] $passed, [string] $label, [string] $detail = "") {
     $status = if ($passed) { "PASS" } else { "PENDING" }
@@ -41,7 +45,7 @@ function Read-DurableGateReport([string] $path) {
     }
 
     try {
-        $gateReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $gateReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $gateReport.result -eq "ready" -and $gateReport.currentDemoStatus -eq "docker-durable-demo-verified"
         return [pscustomobject]@{
             path = $resolvedPath
@@ -77,7 +81,7 @@ function Read-StorageExpansionFinalizeReport([string] $path) {
     }
 
     try {
-        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $finalizeReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $finalizeReport.result -eq "passed"
         $backend = $finalizeReport.backend
         return [pscustomobject]@{
@@ -112,7 +116,7 @@ function Read-KubernetesDrFinalizeReport([string] $path) {
     }
 
     try {
-        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $finalizeReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $finalizeReport.result -eq "ready"
         return [pscustomobject]@{
             path = $resolvedPath
@@ -146,7 +150,7 @@ function Read-SecurityEvidenceFinalizeReport([string] $path) {
     }
 
     try {
-        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $finalizeReport = Read-Utf8Text $resolvedPath | ConvertFrom-Json
         $passed = $finalizeReport.result -eq "passed"
         return [pscustomobject]@{
             path = $resolvedPath
@@ -172,7 +176,7 @@ if (-not (Test-Path -LiteralPath $resolvedReleaseReportPath)) {
     throw "Release report not found: $resolvedReleaseReportPath. Run scripts\verify-prototype-release.ps1 first."
 }
 
-$report = Get-Content -Raw -LiteralPath $resolvedReleaseReportPath | ConvertFrom-Json
+$report = Read-Utf8Text $resolvedReleaseReportPath | ConvertFrom-Json
 $scope = $report.scope
 $optionalGates = $report.optionalGates
 

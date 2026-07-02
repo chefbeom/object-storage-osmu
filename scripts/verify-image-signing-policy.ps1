@@ -20,7 +20,7 @@ function Read-RequiredFile([string] $path, [string] $label) {
     }
     return [pscustomobject]@{
         Path = $resolvedPath
-        Content = Get-Content -Raw -LiteralPath $resolvedPath
+        Content = [System.IO.File]::ReadAllText($resolvedPath, [System.Text.Encoding]::UTF8)
     }
 }
 

@@ -37,6 +37,10 @@ function Resolve-ProjectPath($path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolved = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -50,7 +54,7 @@ function Decode-Utf8Base64([string] $Value) {
 function Read-RequiredFile([string] $path, [string] $label) {
     $resolved = Resolve-ProjectPath $path
     Assert-True (Test-Path -LiteralPath $resolved) "$label not found: $resolved"
-    $content = Get-Content -Raw -LiteralPath $resolved
+    $content = Read-Utf8Text $resolved
     Assert-True (-not $content.Contains("`t")) "Tabs are not allowed in $label."
     return $content
 }
@@ -59,6 +63,9 @@ function Assert-Contains([string] $content, [string] $expected, [string] $label)
     Assert-True $content.Contains($expected) "$label does not contain expected text: $expected"
 }
 
+function Assert-NotContains([string] $content, [string] $unexpected, [string] $label) {
+    Assert-True (-not $content.Contains($unexpected)) "$label contains unexpected text: $unexpected"
+}
 $matrix = Read-RequiredFile $MatrixPath "IAM/RBAC matrix"
 Assert-Contains $matrix "# OSMU IAM/RBAC Matrix" "IAM/RBAC matrix"
 Assert-Contains $matrix 'Role Definition' "IAM/RBAC matrix"
@@ -105,8 +112,10 @@ Assert-Contains $matrix 'GET /api/admin/billing/chargeback-payment-provider-hand
 Assert-Contains $matrix 'GET /api/admin/billing/payment-provider-adapter-readiness' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-result' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-send' "IAM/RBAC matrix"
-Assert-Contains $matrix 'configured generic/CARD/BANK/TAX/ERP webhook profile handoff send' "IAM/RBAC matrix"
+Assert-Contains $matrix 'configured CARD/BANK/TAX/ERP native bridge before provider-specific/generic webhook fallback' "IAM/RBAC matrix"
 Assert-Contains $matrix 'payment provider adapter readiness' "IAM/RBAC matrix"
+Assert-Contains $matrix 'native bridge supported, configuration-required, and ready states' "IAM/RBAC matrix"
+Assert-NotContains $matrix 'native API pending status' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-record' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET/POST /api/admin/teams' "IAM/RBAC matrix"
 Assert-Contains $matrix '`TEAM` subject' "IAM/RBAC matrix"
@@ -157,15 +166,20 @@ Assert-Contains $securityDesign "POST /api/admin/billing/chargeback-adapter-retr
 Assert-Contains $securityDesign "POST /api/admin/billing/pricing-policy-proposals/{proposalId}/commercial-approval" "Security design"
 Assert-Contains $securityDesign "osmu.billing.notification-delivery.max-payload-bytes" "Security design"
 Assert-Contains $securityDesign "osmu.billing.payment-provider.max-payload-bytes" "Security design"
+Assert-Contains $securityDesign "osmu.billing.payment-provider.native-api.max-payload-bytes" "Security design"
+Assert-Contains $securityDesign "osmu.billing.payment-provider.native-api.allow-private-network" "Security design"
+Assert-Contains $securityDesign "payment native-bridge-or-webhook" "Security design"
 Assert-Contains $securityDesign "osmu.billing.notification-delivery.signature-secret" "Security design"
 Assert-Contains $securityDesign "osmu.billing.payment-provider.signature-secret" "Security design"
+Assert-Contains $securityDesign "osmu.billing.payment-provider.native-api.signature-secret" "Security design"
+Assert-Contains $securityDesign "configurable native payment-provider bridge adapters can sign" "Security design"
 Assert-Contains $securityDesign "timestamped HMAC-SHA256 headers" "Security design"
 Assert-Contains $securityDesign "osmu.billing.payment-provider.card.webhook-url" "Security design"
 Assert-Contains $securityDesign "CARD/BANK/TAX/ERP endpoint profiles" "Security design"
 
 $apiSpec = Read-RequiredFile $ApiSpecPath "API spec"
-Assert-Contains $apiSpec '관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.' "API spec"
-Assert-Contains $apiSpec '`AUDITOR`는 read-only 감사/상태 조회 role이다.' "API spec"
+Assert-Contains $apiSpec (Decode-Utf8Base64 "6rSA66as7J6QIEFQSeyduCBgL2FwaS9hZG1pbi8qKmDripQg6riw67O47KCB7Jy866GcIGBBRE1JTmAgcm9sZeydtCDtlYTsmpTtlZjri6Qu") "API spec"
+Assert-Contains $apiSpec (Decode-Utf8Base64 "YEFVRElUT1Jg64qUIHJlYWQtb25seSDqsJDsgqwv7IOB7YOcIOyhsO2ajCByb2xl7J2064ukLg==") "API spec"
 Assert-Contains $apiSpec 'adminOnly=true' "API spec"
 Assert-Contains $apiSpec 'allowedRoles' "API spec"
 Assert-Contains $apiSpec 'accessMode' "API spec"
@@ -200,6 +214,7 @@ Assert-Contains $apiSpec 'osmu.billing.notification-delivery.signature-timestamp
 Assert-Contains $apiSpec 'osmu.billing.notification-delivery.email.smtp-host' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.notification-delivery.email.allow-private-network' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.payment-provider.allow-private-network' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.payment-provider.native-api.allow-private-network' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.payment-provider.max-payload-bytes' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.payment-provider.card.webhook-url' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.payment-provider.bank.webhook-url' "API spec"
@@ -211,6 +226,12 @@ Assert-Contains $apiSpec 'osmu.billing.payment-provider.signature-timestamp-head
 Assert-Contains $apiSpec (Decode-Utf8Base64 "dD08ZXBvY2hTZWNvbmRzPix2MT08aGV4LWhtYWMtc2hhMjU2KHRpbWVzdGFtcCArICIuIiArIHBheWxvYWQpPg==") "API spec"
 Assert-Contains $apiSpec 'payload.providerProfile' "API spec"
 Assert-Contains $apiSpec 'Codes beginning with `CARD`, `BANK`, `TAX`, or `ERP`' "API spec"
+Assert-Contains $apiSpec 'can route to a configured CARD/BANK/TAX/ERP native API bridge before matching provider-specific webhook profile fallback' "API spec"
+Assert-Contains $apiSpec '`externalPaymentEnabled`: true when the selected native API bridge or webhook adapter path is configured.' "API spec"
+Assert-Contains $apiSpec 'webhook/native endpoint URLs, secret/auth header values' "API spec"
+Assert-Contains $apiSpec 'payment-provider adapter handoff send result summary' "API spec"
+Assert-NotContains $apiSpec 'can route to matching provider-specific webhook profiles; other codes use the generic profile.' "API spec"
+Assert-NotContains $apiSpec '`externalPaymentEnabled`: true only when the webhook adapter is configured.' "API spec"
 Assert-Contains $apiSpec 'Slack-compatible `text` JSON payload' "API spec"
 Assert-Contains $apiSpec '`EMAIL` SMTP relay delivery' "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-adapter-retry-worker/status' "API spec"
@@ -235,7 +256,7 @@ Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_ENABLED' "API spec"
 Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_OIDC_JWKS_URI' "API spec"
 Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_JIT_PROVISIONING_ENABLED' "API spec"
 Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ENABLED' "API spec"
-Assert-Contains $apiSpec '`subjectType`은 `USER`, `ORGANIZATION`, `TEAM`을 지원한다.' "API spec"
+Assert-Contains $apiSpec (Decode-Utf8Base64 "YHN1YmplY3RUeXBlYOydgCBgVVNFUmAsIGBPUkdBTklaQVRJT05gLCBgVEVBTWDsnYQg7KeA7JuQ7ZWc64ukLg==") "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/monitoring/data-flow/retention/status' "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/monitoring/data-flow/storage-status' "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/storage/backend-status' "API spec"
@@ -292,11 +313,11 @@ Assert-Contains $frontendDesign 'runDataFlowRetention' "Frontend design"
 Assert-Contains $frontendDesign 'data-flow-retention-monthly-rollup-days' "Frontend design"
 Assert-Contains $frontendDesign 'BillingChargebackPanel' "Frontend design"
 Assert-Contains $frontendDesign 'optional HMAC signature headers on generic notification/payment webhooks' "Frontend design"
-Assert-Contains $frontendDesign 'provider-specific webhook profiles' "Frontend design"
+Assert-Contains $frontendDesign 'provider-specific native API bridge profiles before provider-specific webhook fallback' "Frontend design"
 Assert-Contains $frontendDesign 'previewEnterpriseAuthClaims' "Frontend design"
 Assert-Contains $frontendDesign 'provisionEnterpriseAuthUser' "Frontend design"
 Assert-Contains $frontendDesign 'adminOnly' "Frontend design"
-Assert-Contains $frontendDesign 'dashboard palette catalog와 저장 layout은 role 기준으로 필터링한다.' "Frontend design"
+Assert-Contains $frontendDesign (Decode-Utf8Base64 "ZGFzaGJvYXJkIHBhbGV0dGUgY2F0YWxvZ+yZgCDsoIDsnqUgbGF5b3V07J2AIHJvbGUg6riw7KSA7Jy866GcIO2VhO2EsOunge2VnOuLpC4=") "Frontend design"
 
 $adminRbacPolicy = Read-RequiredFile $AdminRbacPolicyPath "Admin RBAC policy"
 Assert-Contains $adminRbacPolicy 'RouteRule.exact("GET", "/api/admin/users")' "Admin RBAC policy"

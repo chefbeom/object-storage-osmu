@@ -1,6 +1,7 @@
 package com.example.osmu.admin;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.List;
 
 @JsonInclude(JsonInclude.Include.NON_EMPTY)
 public record DashboardOperationsEvidenceHandoffNextStepResponse(
@@ -8,9 +9,10 @@ public record DashboardOperationsEvidenceHandoffNextStepResponse(
         String title,
         String command,
         String reason,
-        String note
+        String note,
+        List<String> dispatchUrls
 ) {
     public static DashboardOperationsEvidenceHandoffNextStepResponse empty() {
-        return new DashboardOperationsEvidenceHandoffNextStepResponse("", "", "", "", "");
+        return new DashboardOperationsEvidenceHandoffNextStepResponse("", "", "", "", "", List.of());
     }
 }

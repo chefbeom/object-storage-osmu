@@ -60,6 +60,10 @@ function Resolve-ProjectPath([string] $path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-SafeText([string] $Value, [string] $Label) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -254,7 +258,7 @@ function Read-PaymentProviderAdapterReadinessSnapshot([string] $Path) {
         return $snapshot
     }
 
-    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    $raw = Read-Utf8Text $resolvedPath
     Assert-SafeText $raw "PaymentProviderAdapterReadinessJson"
     Assert-SanitizedPaymentProviderAdapterReadinessJson $raw
     try {
@@ -549,7 +553,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
 })
 [void] $report.Add("checks", [object] $checkArray)
 [void] $report.Add("decisionRule", "Production/B2B commercial integration readiness requires result=passed from the target environment for every required notification/payment handoff adapter profile, payment-provider adapter readiness review, adapter retry worker evidence, payload cap check, private/local endpoint blocking check, HMAC signature review, no-secret confirmation, and no-raw-provider-response confirmation.")
-[void] $report.Add("scopePolicy", "This evidence covers configured webhook/Slack/EMAIL SMTP relay, generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification, and the sanitized payment-provider adapter readiness snapshot. It does not claim or require native card, bank, tax invoice, or ERP processor API support.")
+[void] $report.Add("scopePolicy", "This evidence covers configured webhook/Slack/EMAIL SMTP relay, generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification, configurable native payment-provider bridge readiness, and the sanitized payment-provider adapter readiness snapshot. It does not claim vendor-specific fixed SDK/schema card, bank, tax invoice, ERP, or external payment processor implementation or raw provider response handling.")
 [void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain webhook URLs with credentials, SMTP passwords, payment provider credentials, signing secrets, bearer tokens, private keys, raw provider responses, or customer payment data.")
 
 $markdownLines = @(

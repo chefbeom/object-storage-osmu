@@ -3,22 +3,22 @@
     <div class="panel-head">
       <div>
         <p class="eyebrow">Dashboard Palettes</p>
-        <h3>대시보드 패널 구성</h3>
+        <h3>Dashboard Panel Layout</h3>
         <small data-testid="dashboard-layout-sync">{{ dashboardLayoutSyncLabel }}</small>
       </div>
       <span class="panel-head-actions">
         <button data-testid="dashboard-edit-mode-toggle" type="button" class="ghost" :disabled="dashboardLayoutPending" @click="$emit('toggle-dashboard-edit-mode')">
-          {{ dashboardEditMode ? '조회 mode' : '편집 mode' }}
+          {{ dashboardEditMode ? 'View mode' : 'Edit mode' }}
         </button>
-        <button v-if="dashboardEditMode" data-testid="dashboard-widget-reset-button" type="button" class="ghost" :disabled="dashboardLayoutPending" @click="$emit('reset-dashboard-widgets')">초기화</button>
+        <button v-if="dashboardEditMode" data-testid="dashboard-widget-reset-button" type="button" class="ghost" :disabled="dashboardLayoutPending" @click="$emit('reset-dashboard-widgets')">Reset</button>
       </span>
     </div>
     <p v-if="!dashboardEditMode" class="dashboard-view-mode-summary" data-testid="dashboard-view-mode-summary">
-      조회 mode / {{ visibleDashboardWidgets.length }} visible panels / {{ dashboardLayoutSyncLabel }}
+      View mode / {{ visibleDashboardWidgets.length }} visible panels / {{ dashboardLayoutSyncLabel }}
     </p>
     <div v-if="dashboardLoading" class="dashboard-state-panel dashboard-loading-state" data-testid="dashboard-loading-state" role="status" aria-live="polite">
       <strong>Dashboard loading</strong>
-      <small>최신 layout, bucket, access key, readiness 상태를 불러오는 중입니다.</small>
+      <small>Loading the latest layout, bucket, access key, and readiness state.</small>
     </div>
     <div v-if="dashboardLoadError" class="dashboard-state-panel dashboard-error-state" data-testid="dashboard-error-state" role="alert">
       <span>
@@ -30,14 +30,14 @@
     <template v-if="dashboardEditMode">
     <div class="inline-form dashboard-add-form">
       <select data-testid="dashboard-widget-select" :value="dashboardWidgetToAdd" @change="$emit('update-widget-to-add', $event.target.value)">
-        <option value="">추가할 패널 선택</option>
+        <option value="">Select panel to add</option>
         <optgroup v-for="group in availableDashboardWidgetGroups" :key="group.category" :label="dashboardWidgetCategoryLabel(group.category)">
           <option v-for="widget in group.widgets" :key="widget.id" :value="widget.id">
             {{ widget.title }}
           </option>
         </optgroup>
       </select>
-      <button data-testid="dashboard-widget-add-button" type="button" :disabled="dashboardLayoutPending || !dashboardWidgetToAdd" @click="$emit('add-dashboard-widget')">패널 추가</button>
+      <button data-testid="dashboard-widget-add-button" type="button" :disabled="dashboardLayoutPending || !dashboardWidgetToAdd" @click="$emit('add-dashboard-widget')">Add Panel</button>
     </div>
     <div class="dashboard-widget-catalog" data-testid="dashboard-widget-catalog">
       <section
@@ -62,7 +62,7 @@
           </button>
         </div>
       </section>
-      <p v-if="availableDashboardWidgetGroups.length === 0" class="empty">추가 가능한 패널 없음</p>
+      <p v-if="availableDashboardWidgetGroups.length === 0" class="empty">No panels available to add</p>
     </div>
     <div class="inline-form dashboard-preset-form">
       <select data-testid="dashboard-layout-preset-select" :value="dashboardLayoutPresetToApply" @change="$emit('update-dashboard-layout-preset', $event.target.value)">
@@ -78,7 +78,7 @@
         :disabled="dashboardLayoutPending || !dashboardLayoutPresetToApply"
         @click="$emit('apply-dashboard-layout-preset')"
       >
-        Preset 적용
+        Preset ?곸슜
       </button>
       <button
         v-if="canDeleteDashboardLayoutPreset"
@@ -88,7 +88,7 @@
         :disabled="dashboardLayoutPending"
         @click="$emit('delete-dashboard-layout-preset')"
       >
-        Preset 삭제
+        Preset ??젣
       </button>
       <button
         v-if="canExportDashboardLayoutPreset"
@@ -98,7 +98,7 @@
         :disabled="dashboardLayoutPending"
         @click="$emit('export-dashboard-layout-preset')"
       >
-        Preset 내보내기
+        Preset ?대낫?닿린
       </button>
       <button
         v-if="canExportDashboardLayoutPresetBundle"
@@ -130,7 +130,7 @@
         :disabled="dashboardLayoutPending || !dashboardLayoutPresetForm.name.trim()"
         @click="$emit('create-dashboard-layout-preset')"
       >
-        현재 구성 저장
+        Save Current Layout
       </button>
       <button
         v-if="canUpdateDashboardLayoutPreset"
@@ -140,14 +140,14 @@
         :disabled="dashboardLayoutPending"
         @click="$emit('update-custom-dashboard-layout-preset')"
       >
-        선택 preset 갱신
+        Update Selected Preset
       </button>
       <label
         v-if="canImportDashboardLayoutPreset"
         class="file-control ghost"
         data-testid="dashboard-layout-preset-import-label"
       >
-        Preset 가져오기
+        Import Preset
         <input
           data-testid="dashboard-layout-preset-import-input"
           type="file"
@@ -207,7 +207,7 @@
           :disabled="dashboardLayoutPending || !dashboardLayoutDefaultForm.targetId || !dashboardLayoutDefaultForm.presetId"
           @click="$emit('save-dashboard-layout-default')"
         >
-          기본 preset 저장
+          Save Default Preset
         </button>
       </div>
       <ul class="compact-list dashboard-default-list" data-testid="dashboard-layout-default-list">
@@ -223,10 +223,10 @@
             :disabled="dashboardLayoutPending"
             @click="$emit('delete-dashboard-layout-default', item)"
           >
-            해제
+            Delete
           </button>
         </li>
-        <li v-if="dashboardLayoutDefaults.length === 0" class="empty">기본 preset 없음</li>
+        <li v-if="dashboardLayoutDefaults.length === 0" class="empty">No default presets</li>
       </ul>
     </section>
     <ul class="widget-config-list" data-testid="dashboard-widget-list">
@@ -249,14 +249,14 @@
         <span>
           <span class="drag-grip" data-testid="dashboard-widget-drag-handle" aria-hidden="true">::</span>
           <strong>{{ dashboardWidgetTitle(widget.id) }}</strong>
-          <small>{{ widget.enabled ? '표시 중' : '숨김' }} · {{ dashboardWidgetSizeLabel(widget.size) }} · {{ dashboardWidgetToneLabel(widget) }} · {{ dashboardWidgetRefreshIntervalLabel(widget) }}</small>
+          <small>{{ widget.enabled ? 'Visible' : 'Hidden' }} / {{ dashboardWidgetSizeLabel(widget.size) }} / {{ dashboardWidgetToneLabel(widget) }} / {{ dashboardWidgetRefreshIntervalLabel(widget) }}</small>
           <small data-testid="dashboard-widget-access-mode">{{ dashboardWidgetAccessLabel(widget.id) }}</small>
         </span>
         <span class="widget-actions">
-          <button data-testid="dashboard-widget-move-up-button" type="button" class="ghost" :disabled="dashboardLayoutPending || index === 0" @click="$emit('move-dashboard-widget', index, -1)">위</button>
-          <button data-testid="dashboard-widget-move-down-button" type="button" class="ghost" :disabled="dashboardLayoutPending || index === dashboardWidgets.length - 1" @click="$emit('move-dashboard-widget', index, 1)">아래</button>
+          <button data-testid="dashboard-widget-move-down-button" type="button" class="ghost" :disabled="dashboardLayoutPending || index === dashboardWidgets.length - 1" @click="$emit('move-dashboard-widget', index, 1)">Down</button>
+          <button data-testid="dashboard-widget-move-up-button" type="button" class="ghost" :disabled="dashboardLayoutPending || index === 0" @click="$emit('move-dashboard-widget', index, -1)">Up</button>
           <button data-testid="dashboard-widget-size-button" type="button" class="ghost" :disabled="dashboardLayoutPending" @click="$emit('toggle-dashboard-widget-size', widget.id)">
-            크기
+            ?ш린
           </button>
           <label class="widget-option-control" data-testid="dashboard-widget-section-control">
             <span>Section</span>
@@ -290,9 +290,9 @@
             </select>
           </label>
           <button data-testid="dashboard-widget-toggle-button" type="button" class="ghost" :disabled="dashboardLayoutPending" @click="$emit('toggle-dashboard-widget', widget.id)">
-            {{ widget.enabled ? '숨김' : '표시' }}
+            {{ widget.enabled ? '?④?' : '?쒖떆' }}
           </button>
-          <button data-testid="dashboard-widget-remove-button" type="button" class="danger" :disabled="dashboardLayoutPending" @click="$emit('remove-dashboard-widget', widget.id)">제거</button>
+          <button data-testid="dashboard-widget-remove-button" type="button" class="danger" :disabled="dashboardLayoutPending" @click="$emit('remove-dashboard-widget', widget.id)">?쒓굅</button>
         </span>
       </li>
     </ul>
@@ -305,8 +305,8 @@
     data-testid="dashboard-empty-state"
   >
     <div class="empty-state-body">
-      <strong>표시할 dashboard panel이 없습니다</strong>
-      <small>편집 mode에서 panel을 다시 표시하거나 preset을 적용하세요.</small>
+      <strong>?쒖떆??dashboard panel???놁뒿?덈떎</strong>
+      <small>?몄쭛 mode?먯꽌 panel???ㅼ떆 ?쒖떆?섍굅??preset???곸슜?섏꽭??</small>
     </div>
   </section>
 
@@ -336,8 +336,7 @@
             :disabled="dashboardLayoutPending || section.index === 0"
             @click="$emit('move-dashboard-widget-section', section.id, -1)"
           >
-            위
-          </button>
+            ??          </button>
           <button
             data-testid="dashboard-widget-section-move-down-button"
             type="button"
@@ -345,7 +344,7 @@
             :disabled="dashboardLayoutPending || section.index === visibleDashboardWidgetSections.length - 1"
             @click="$emit('move-dashboard-widget-section', section.id, 1)"
           >
-            아래
+            ?꾨옒
           </button>
         </span>
       </div>
@@ -371,15 +370,15 @@
       </template>
       <template v-else-if="widget.id === 'remaining'">
         <strong>{{ formatBytes(usage.remainingBytes) }}</strong>
-        <small>할당 쿼터 기준</small>
+        <small>Based on assigned quota</small>
       </template>
       <template v-else-if="widget.id === 'buckets'">
         <strong>{{ usage.bucketCount }}</strong>
-        <small>{{ selectedBucket || '선택된 버킷 없음' }}</small>
+        <small>{{ selectedBucket || 'No bucket selected' }}</small>
       </template>
       <template v-else-if="widget.id === 'objects'">
         <strong>{{ usage.objectCount }}</strong>
-        <small>{{ objectViewMode === 'trash' ? '휴지통 보기' : '활성 파일 보기' }}</small>
+        <small>{{ objectViewMode === 'trash' ? 'Viewing trash' : 'Viewing active files' }}</small>
       </template>
       <template v-else-if="widget.id === 'health'">
         <strong>{{ health.backend }}</strong>
@@ -405,7 +404,7 @@
       </template>
       <template v-else-if="widget.id === 'requests'">
         <strong>{{ auditLogs.length }}</strong>
-        <small>{{ auditNextCursor ? '추가 로그 있음' : '최근 감사 로그' }}</small>
+        <small>{{ auditNextCursor ? 'More logs available' : 'Latest audit logs' }}</small>
       </template>
       <template v-else-if="widget.id === 'sharing'">
         <strong>{{ objectShareAnalytics.activeLinks }}</strong>
@@ -434,7 +433,7 @@
       </template>
       <template v-else-if="widget.id === 'retention'">
         <strong>{{ retentionPolicy.enabled ? 'ON' : 'OFF' }}</strong>
-        <small>{{ retentionPolicy.retentionDays || '-' }}일 보존</small>
+        <small>{{ retentionPolicy.retentionDays || '-' }} days retention</small>
       </template>
       <template v-else-if="widget.id === 'execution-retention'">
         <strong>{{ formatCount(executionLogRetention.pendingOutputCount) }}</strong>
@@ -454,7 +453,7 @@
       <div class="panel-head">
         <div>
           <p class="eyebrow">Demo Readiness</p>
-          <h3>데모/배포 준비도</h3>
+          <h3>Demo/Deployment Readiness</h3>
         </div>
         <div class="panel-head-actions">
           <button
@@ -464,7 +463,7 @@
             class="ghost"
             @click="$emit('refresh-dashboard-readiness')"
           >
-            재점검
+            Recheck
           </button>
           <span :class="['status-pill', statusClass(dashboardReadiness.status)]">{{ dashboardReadiness.status }}</span>
         </div>
@@ -488,10 +487,52 @@
           <strong>{{ operationsReadinessItems.length }} operations evidence gaps</strong>
           <small>{{ operationsReadinessPrimaryMessage }}</small>
           <small
+            v-if="operationsReadinessSourceSummaryText"
+            data-testid="readiness-source-summary"
+          >
+            Source readiness: {{ operationsReadinessSourceSummaryText }}
+          </small>
+          <small
+            v-if="operationsReadinessPendingCategorySummaryText"
+            data-testid="readiness-source-pending-categories"
+          >
+            Source pending categories: {{ operationsReadinessPendingCategorySummaryText }}
+          </small>
+          <small
+            v-if="operationsReadinessPendingRemediationSummaryText"
+            data-testid="readiness-source-pending-remediations"
+          >
+            Source remediation entries: {{ operationsReadinessPendingRemediationSummaryText }}
+          </small>
+          <small
             v-if="operationsEvidencePlanItem"
             data-testid="readiness-evidence-plan-summary"
           >
             Plan: {{ operationsEvidencePlanItem.message }}
+          </small>
+          <small
+            v-if="operationsEvidencePlanSourceSummaryText"
+            data-testid="readiness-evidence-plan-source-summary"
+          >
+            Source readiness: {{ operationsEvidencePlanSourceSummaryText }}
+          </small>
+          <small
+            v-if="operationsEvidencePlanRemediationCoverageText"
+            data-testid="readiness-evidence-plan-remediation-coverage"
+          >
+            Remediation coverage: {{ operationsEvidencePlanRemediationCoverageText }}
+          </small>
+          <small
+            v-if="operationsEvidencePlanSummaryText"
+            data-testid="readiness-evidence-plan-action-summary"
+          >
+            Action summary: {{ operationsEvidencePlanSummaryText }}
+          </small>
+          <small
+            v-if="operationsEvidencePlanPendingCategorySummaryText"
+            data-testid="readiness-evidence-plan-pending-categories"
+          >
+            Pending categories: {{ operationsEvidencePlanPendingCategorySummaryText }}
           </small>
           <small
             v-if="operationsEvidenceInvocationItem"
@@ -500,10 +541,22 @@
             Invocation: {{ operationsEvidenceInvocationItem.message }}
           </small>
           <small
+            v-if="operationsEvidenceInvocationSourceSummaryText"
+            data-testid="readiness-evidence-invocation-source-summary"
+          >
+            Invocation source: {{ operationsEvidenceInvocationSourceSummaryText }}
+          </small>
+          <small
             v-if="operationsInvocationUnblockPlanItem"
             data-testid="readiness-invocation-unblock-item-summary"
           >
             Unblock: {{ operationsInvocationUnblockPlanItem.message }}
+          </small>
+          <small
+            v-if="operationsInvocationUnblockSourceSummaryText"
+            data-testid="readiness-invocation-unblock-source-summary"
+          >
+            Unblock source: {{ operationsInvocationUnblockSourceSummaryText }}
           </small>
           <small
             v-if="operationsDispatchPreflightItem"
@@ -552,6 +605,14 @@
             data-testid="readiness-data-flow-storage-plan-item-summary"
           >
             Data-flow plan: {{ dataFlowStoragePlanItem.message }}
+          </small>
+          <small
+            v-if="dataFlowQueryRetentionBudgetItem || dataFlowQueryRetentionBudget.result"
+            data-testid="readiness-data-flow-query-retention-budget-item-summary"
+          >
+            Data-flow query budget: {{ dataFlowQueryRetentionBudgetItem?.message || dataFlowQueryRetentionBudget.result }} /
+            p95 {{ dataFlowQueryRetentionBudget.observedP95QueryLatencyMs || 0 }}/{{ dataFlowQueryRetentionBudget.targetP95QueryLatencyMs || 0 }}ms /
+            retention {{ dataFlowQueryRetentionBudgetObservedMaxSeconds }}/{{ dataFlowQueryRetentionBudget.retentionBudgetSeconds || 0 }}s
           </small>
           <small
             v-if="dataFlowStorageTransitionRunbook.result"
@@ -766,6 +827,183 @@
         </li>
       </ol>
       <div
+        v-if="clusterNetworkAccessReviewEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-cluster-network-access-review-summary"
+      >
+        <strong>Cluster network access review: {{ clusterNetworkAccessReviewEvidence.result }}</strong>
+        <small>
+          {{ clusterNetworkAccessReviewEvidence.environmentName || 'unknown env' }} /
+          {{ clusterNetworkAccessReviewEvidence.targetCluster || 'unknown cluster' }} /
+          {{ clusterNetworkAccessReviewEvidence.operatorName || 'unknown operator' }} /
+          pass {{ clusterNetworkAccessReviewEvidence.passCount || 0 }} /
+          failures {{ clusterNetworkAccessReviewEvidence.failureCount || 0 }} of {{ clusterNetworkAccessReviewEvidence.totalCount || 0 }}
+        </small>
+        <small
+          v-if="clusterNetworkAccessReviewWindowSummary"
+          data-testid="readiness-cluster-network-access-review-window"
+        >
+          Review window: {{ clusterNetworkAccessReviewWindowSummary }}
+        </small>
+        <small
+          v-if="clusterNetworkAccessReviewEvidenceRefSummary"
+          data-testid="readiness-cluster-network-access-review-evidence-refs"
+        >
+          Evidence refs: {{ clusterNetworkAccessReviewEvidenceRefSummary }}
+        </small>
+        <small
+          v-if="clusterNetworkAccessReviewStaticSummary"
+          data-testid="readiness-cluster-network-access-review-static-snapshot"
+        >
+          Static controls: {{ clusterNetworkAccessReviewStaticSummary }}
+        </small>
+        <small
+          v-if="clusterNetworkAccessReviewConfirmationSummary"
+          data-testid="readiness-cluster-network-access-review-confirmations"
+        >
+          Confirmations: {{ clusterNetworkAccessReviewConfirmationSummary }}
+        </small>
+        <small v-if="clusterNetworkAccessReviewEvidence.scopePolicy">
+          {{ clusterNetworkAccessReviewEvidence.scopePolicy }}
+        </small>
+        <small v-if="clusterNetworkAccessReviewEvidence.secretPolicy">
+          {{ clusterNetworkAccessReviewEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="clusterNetworkAccessReviewChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-cluster-network-access-review-checks"
+        data-testid="readiness-cluster-network-access-review-checks"
+      >
+        <li
+          v-for="check in clusterNetworkAccessReviewChecks"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
+        v-if="helmValuesHardeningEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-helm-values-hardening-summary"
+      >
+        <strong>Helm values hardening: {{ helmValuesHardeningEvidence.result }}</strong>
+        <small>
+          {{ helmValuesHardeningEvidence.environmentName || 'unknown env' }} /
+          {{ helmValuesHardeningEvidence.targetCluster || 'unknown cluster' }} /
+          {{ helmValuesHardeningEvidence.operatorName || 'unknown operator' }} /
+          pass {{ helmValuesHardeningEvidence.passCount || 0 }} /
+          failures {{ helmValuesHardeningEvidence.failureCount || 0 }} of {{ helmValuesHardeningEvidence.totalCount || 0 }}
+        </small>
+        <small
+          v-if="helmValuesHardeningWindowSummary"
+          data-testid="readiness-helm-values-hardening-window"
+        >
+          Review window: {{ helmValuesHardeningWindowSummary }}
+        </small>
+        <small
+          v-if="helmValuesHardeningEvidenceRefSummary"
+          data-testid="readiness-helm-values-hardening-evidence-refs"
+        >
+          Evidence refs: {{ helmValuesHardeningEvidenceRefSummary }}
+        </small>
+        <small
+          v-if="helmValuesHardeningStaticSummary"
+          data-testid="readiness-helm-values-hardening-static-snapshot"
+        >
+          Static hardening: {{ helmValuesHardeningStaticSummary }}
+        </small>
+        <small
+          v-if="helmValuesHardeningConfirmationSummary"
+          data-testid="readiness-helm-values-hardening-confirmations"
+        >
+          Confirmations: {{ helmValuesHardeningConfirmationSummary }}
+        </small>
+        <small v-if="helmValuesHardeningEvidence.scopePolicy">
+          {{ helmValuesHardeningEvidence.scopePolicy }}
+        </small>
+        <small v-if="helmValuesHardeningEvidence.secretPolicy">
+          {{ helmValuesHardeningEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="helmValuesHardeningChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-helm-values-hardening-checks"
+        data-testid="readiness-helm-values-hardening-checks"
+      >
+        <li
+          v-for="check in helmValuesHardeningChecks"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
+        v-if="supportEscalationHandoffEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-support-escalation-handoff-summary"
+      >
+        <strong>Support escalation handoff: {{ supportEscalationHandoffEvidence.result }}</strong>
+        <small>
+          {{ supportEscalationHandoffEvidence.environmentName || 'unknown env' }} /
+          {{ supportEscalationHandoffEvidence.targetCluster || 'unknown cluster' }} /
+          {{ supportEscalationHandoffEvidence.operatorName || 'unknown operator' }} /
+          pass {{ supportEscalationHandoffEvidence.passCount || 0 }} /
+          failures {{ supportEscalationHandoffEvidence.failureCount || 0 }} of {{ supportEscalationHandoffEvidence.totalCount || 0 }}
+        </small>
+        <small
+          v-if="supportEscalationHandoffReviewWindowSummary"
+          data-testid="readiness-support-escalation-handoff-review-window"
+        >
+          Review window: {{ supportEscalationHandoffReviewWindowSummary }}
+        </small>
+        <small
+          v-if="supportEscalationHandoffEvidenceRefSummary"
+          data-testid="readiness-support-escalation-handoff-evidence-refs"
+        >
+          Evidence refs: {{ supportEscalationHandoffEvidenceRefSummary }}
+        </small>
+        <small
+          v-if="supportEscalationHandoffDocumentSummary"
+          data-testid="readiness-support-escalation-handoff-documents"
+        >
+          Document coverage: {{ supportEscalationHandoffDocumentSummary }}
+        </small>
+        <small
+          v-if="supportEscalationHandoffConfirmationSummary"
+          data-testid="readiness-support-escalation-handoff-confirmations"
+        >
+          Confirmations: {{ supportEscalationHandoffConfirmationSummary }}
+        </small>
+        <small v-if="supportEscalationHandoffEvidence.scopePolicy">
+          {{ supportEscalationHandoffEvidence.scopePolicy }}
+        </small>
+        <small v-if="supportEscalationHandoffEvidence.secretPolicy">
+          {{ supportEscalationHandoffEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="supportEscalationHandoffChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-support-escalation-handoff-checks"
+        data-testid="readiness-support-escalation-handoff-checks"
+      >
+        <li
+          v-for="check in supportEscalationHandoffChecks"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
         v-if="minioBucketCorsVerification.result"
         class="readiness-invocation-summary"
         data-testid="readiness-minio-bucket-cors-summary"
@@ -869,7 +1107,7 @@
         data-testid="readiness-storage-expansion-finalize-steps"
       >
         <li
-          v-for="step in storageExpansionFinalizeSteps.slice(0, 4)"
+          v-for="step in storageExpansionFinalizeSteps"
           :key="step.name"
         >
           <span>
@@ -917,7 +1155,7 @@
         data-testid="readiness-kubernetes-ha-dr-checks"
       >
         <li
-          v-for="check in kubernetesHaDrChecks.slice(0, 5)"
+          v-for="check in kubernetesHaDrChecks"
           :key="check.name"
         >
           <span>
@@ -967,7 +1205,7 @@
         data-testid="readiness-kubernetes-dr-finalize-steps"
       >
         <li
-          v-for="step in kubernetesDrFinalizeSteps.slice(0, 4)"
+          v-for="step in kubernetesDrFinalizeSteps"
           :key="step.name"
         >
           <span>
@@ -1030,7 +1268,7 @@
         data-testid="readiness-iam-rbac-evidence-steps"
       >
         <li
-          v-for="step in iamRbacEvidenceSteps.slice(0, 4)"
+          v-for="step in iamRbacEvidenceSteps"
           :key="step.name"
         >
           <span>
@@ -1393,6 +1631,30 @@
           passed {{ dataFlowStoragePlan.passedCount || 0 }} of {{ dataFlowStoragePlan.checkCount || 0 }}
         </small>
         <small
+          v-if="dataFlowStoragePlanCandidateDecision.decision || dataFlowStoragePlanCandidateDecision.evidenceModel"
+          data-testid="readiness-data-flow-storage-plan-candidate-decision"
+        >
+          Candidate decision:
+          {{ dataFlowStoragePlanCandidateDecision.decision || dataFlowStoragePlan.candidateStore || 'not selected' }} /
+          model {{ dataFlowStoragePlanCandidateDecision.evidenceModel || '-' }} /
+          MariaDB evidence {{ dataFlowStoragePlanCandidateDecision.requiresMariaDbQueryEvidence ? 'required' : 'not required' }} /
+          target-store evidence {{ dataFlowStoragePlanCandidateDecision.requiresTargetStoreEvidence ? 'required' : 'not required' }} /
+          query plan {{ dataFlowStoragePlanCandidateDecision.queryPlanEvidencePassed ? 'passed' : 'not passed' }} /
+          target store {{ dataFlowStoragePlanCandidateDecision.targetStoreEvidenceConfirmed ? 'confirmed' : 'not confirmed' }}
+        </small>
+        <small
+          v-if="dataFlowStoragePlanCandidateDecision.nextAction"
+          data-testid="readiness-data-flow-storage-plan-candidate-next-action"
+        >
+          {{ dataFlowStoragePlanCandidateDecision.nextAction }}
+        </small>
+        <small
+          v-if="dataFlowStoragePlanCandidateDecision.safeDataPolicy"
+          data-testid="readiness-data-flow-storage-plan-candidate-safe-data-policy"
+        >
+          {{ dataFlowStoragePlanCandidateDecision.safeDataPolicy }}
+        </small>
+        <small
           v-if="dataFlowQueryPlanEvidence.provided || dataFlowQueryPlanEvidence.expectedFormatVersion"
           data-testid="readiness-data-flow-query-plan-evidence-summary"
         >
@@ -1443,6 +1705,57 @@
           <span>
             <strong>{{ check.status || 'UNKNOWN' }} / {{ check.title || check.id }}</strong>
             <small>{{ check.detail || check.nextAction || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
+        v-if="dataFlowQueryRetentionBudget.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-data-flow-query-retention-budget-summary"
+      >
+        <strong>Data-flow query/retention budget: {{ dataFlowQueryRetentionBudget.result }}</strong>
+        <small>
+          {{ dataFlowQueryRetentionBudget.environmentName || 'unknown env' }} /
+          {{ dataFlowQueryRetentionBudget.targetCluster || 'unknown cluster' }} /
+          plan {{ dataFlowQueryRetentionBudget.storagePlanResult || '-' }} /
+          store {{ dataFlowQueryRetentionBudget.candidateStore || '-' }} /
+          p95 {{ dataFlowQueryRetentionBudget.observedP95QueryLatencyMs || 0 }}/{{ dataFlowQueryRetentionBudget.targetP95QueryLatencyMs || 0 }}ms /
+          p99 {{ dataFlowQueryRetentionBudget.observedP99QueryLatencyMs || 0 }}ms /
+          samples {{ formatCount(dataFlowQueryRetentionBudget.querySampleCount || 0) }} /
+          window {{ dataFlowQueryRetentionBudget.observedQueryWindowDays || 0 }}d /
+          failures {{ dataFlowQueryRetentionBudget.failureCount || 0 }} of {{ dataFlowQueryRetentionBudget.checkCount || 0 }}
+        </small>
+        <small>
+          Retention max {{ dataFlowQueryRetentionBudgetObservedMaxSeconds }}s of {{ dataFlowQueryRetentionBudget.retentionBudgetSeconds || 0 }}s /
+          deleted rows {{ formatCount(dataFlowQueryRetentionBudget.detailedRetentionDeletedRows || 0) }}/{{ formatCount(dataFlowQueryRetentionBudget.dailyRollupRetentionDeletedRows || 0) }}/{{ formatCount(dataFlowQueryRetentionBudget.monthlyRollupRetentionDeletedRows || 0) }} /
+          latency {{ dataFlowQueryRetentionBudget.queryLatencyWithinBudget ? 'within budget' : 'over budget' }} /
+          retention {{ dataFlowQueryRetentionBudget.retentionJobsWithinBudget ? 'within budget' : 'over budget' }}
+        </small>
+        <small
+          v-if="dataFlowQueryRetentionBudgetConfirmationSummary"
+          data-testid="readiness-data-flow-query-retention-budget-confirmations"
+        >
+          Confirmations: {{ dataFlowQueryRetentionBudgetConfirmationSummary }}
+        </small>
+        <small v-if="dataFlowQueryRetentionBudget.evidenceRef">
+          evidence {{ dataFlowQueryRetentionBudget.evidenceRef }}
+        </small>
+        <small v-if="dataFlowQueryRetentionBudget.scopePolicy">
+          {{ dataFlowQueryRetentionBudget.scopePolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="dataFlowQueryRetentionBudgetChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-data-flow-query-retention-budget-checks"
+        data-testid="readiness-data-flow-query-retention-budget-checks"
+      >
+        <li
+          v-for="check in dataFlowQueryRetentionBudgetChecks"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || 'detail unavailable' }}</small>
           </span>
         </li>
       </ol>
@@ -1531,7 +1844,8 @@
           sync {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncReady ? 'ready' : 'not-ready' }} /
           source {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncSourceReportResult || 'unknown' }} /
           finalizer failed {{ operationsHandoffPackageConvergenceSnapshot.finalizerFailedCount || 0 }} /
-          finalizer gaps {{ operationsHandoffPackageConvergenceSnapshot.finalizerGapCount || 0 }}
+          finalizer gaps {{ operationsHandoffPackageConvergenceSnapshot.finalizerGapCount || 0 }} /
+          post-dispatch {{ operationsHandoffPackageConvergenceSnapshot.handoffPostDispatchCommandCount || 0 }}
           <template v-if="operationsHandoffPackageConvergenceSnapshot.finalizerFailedCountValid === false">
             / finalizer count invalid {{ operationsHandoffPackageConvergenceSnapshot.finalizerFailedCountRaw || 'missing' }}
           </template>
@@ -1555,6 +1869,34 @@
           passed {{ operationsHandoffPackageDataFlowStoragePlanSnapshot.passedCount || 0 }} /
           pending {{ operationsHandoffPackageDataFlowStoragePlanSnapshot.pendingCount || 0 }} /
           query-plan {{ operationsHandoffPackageDataFlowQueryPlanSnapshot.result || '-' }}
+        </small>
+        <small
+          v-if="operationsHandoffPackageDataFlowStoragePlanCandidateDecision.decision || operationsHandoffPackageDataFlowStoragePlanCandidateDecision.evidenceModel"
+          data-testid="readiness-handoff-package-data-flow-candidate-decision"
+        >
+          Data-flow candidate decision:
+          {{ operationsHandoffPackageDataFlowStoragePlanCandidateDecision.decision || operationsHandoffPackageDataFlowStoragePlanSnapshot.candidateStore || 'not selected' }} /
+          model {{ operationsHandoffPackageDataFlowStoragePlanCandidateDecision.evidenceModel || '-' }} /
+          MariaDB evidence {{ operationsHandoffPackageDataFlowStoragePlanCandidateDecision.requiresMariaDbQueryEvidence ? 'required' : 'not required' }} /
+          target-store evidence {{ operationsHandoffPackageDataFlowStoragePlanCandidateDecision.requiresTargetStoreEvidence ? 'required' : 'not required' }} /
+          query plan {{ operationsHandoffPackageDataFlowStoragePlanCandidateDecision.queryPlanEvidencePassed ? 'passed' : 'not passed' }} /
+          target store {{ operationsHandoffPackageDataFlowStoragePlanCandidateDecision.targetStoreEvidenceConfirmed ? 'confirmed' : 'not confirmed' }}
+        </small>
+        <small
+          v-if="operationsHandoffPackageDataFlowStoragePlanCandidateDecision.nextAction"
+          data-testid="readiness-handoff-package-data-flow-candidate-next-action"
+        >
+          {{ operationsHandoffPackageDataFlowStoragePlanCandidateDecision.nextAction }}
+        </small>
+        <small
+          v-if="operationsHandoffPackageDataFlowQueryRetentionBudgetSnapshot.result"
+          data-testid="readiness-handoff-package-data-flow-query-retention-budget-snapshot-summary"
+        >
+          Data-flow query budget snapshot:
+          {{ operationsHandoffPackageDataFlowQueryRetentionBudgetSnapshot.result }} /
+          p95 {{ operationsHandoffPackageDataFlowQueryRetentionBudgetSnapshot.observedP95QueryLatencyMs || 0 }}/{{ operationsHandoffPackageDataFlowQueryRetentionBudgetSnapshot.targetP95QueryLatencyMs || 0 }}ms /
+          retention {{ operationsHandoffPackageDataFlowQueryRetentionBudgetSnapshot.retentionBudgetSeconds || 0 }}s /
+          failures {{ operationsHandoffPackageDataFlowQueryRetentionBudgetSnapshot.failureCount || 0 }}
         </small>
         <small
           v-if="operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot.result"
@@ -1640,6 +1982,28 @@
           routes {{ operationsHandoffPackageMonitoringThresholdSnapshot.routeCount || 0 }} /
           failures {{ operationsHandoffPackageMonitoringThresholdSnapshot.failureCount || 0 }}
         </small>
+        <small
+          v-if="operationsHandoffPackageClusterNetworkAccessReviewSnapshot.result"
+          data-testid="readiness-handoff-package-cluster-network-snapshot-summary"
+        >
+          Cluster network snapshot:
+          {{ operationsHandoffPackageClusterNetworkAccessReviewSnapshot.result }} /
+          pass {{ operationsHandoffPackageClusterNetworkAccessReviewSnapshot.passCount || 0 }} /
+          failures {{ operationsHandoffPackageClusterNetworkAccessReviewSnapshot.failureCount || 0 }} of {{ operationsHandoffPackageClusterNetworkAccessReviewSnapshot.totalCount || 0 }} /
+          controls {{ operationsHandoffPackageClusterNetworkAccessReviewStaticSummary || '-' }} /
+          confirmations {{ operationsHandoffPackageClusterNetworkAccessReviewConfirmationSummary || '-' }}
+        </small>
+        <small
+          v-if="operationsHandoffPackageHelmValuesHardeningSnapshot.result"
+          data-testid="readiness-handoff-package-helm-values-snapshot-summary"
+        >
+          Helm hardening snapshot:
+          {{ operationsHandoffPackageHelmValuesHardeningSnapshot.result }} /
+          pass {{ operationsHandoffPackageHelmValuesHardeningSnapshot.passCount || 0 }} /
+          failures {{ operationsHandoffPackageHelmValuesHardeningSnapshot.failureCount || 0 }} of {{ operationsHandoffPackageHelmValuesHardeningSnapshot.totalCount || 0 }} /
+          static {{ operationsHandoffPackageHelmValuesHardeningStaticSummary || '-' }} /
+          confirmations {{ operationsHandoffPackageHelmValuesHardeningConfirmationSummary || '-' }}
+        </small>
       </div>
       <ol
         v-if="operationsHandoffPackageChecks.length > 0"
@@ -1674,8 +2038,44 @@
         <small v-if="operationsEvidenceHandoffNextStep.reason">
           {{ operationsEvidenceHandoffNextStep.reason }}
         </small>
+        <small
+          v-if="operationsEvidenceHandoffCurrentBottleneck.code"
+          data-testid="readiness-evidence-handoff-current-bottleneck"
+        >
+          Bottleneck {{ operationsEvidenceHandoffCurrentBottleneck.code }}<span v-if="operationsEvidenceHandoffCurrentBottleneck.title"> / {{ operationsEvidenceHandoffCurrentBottleneck.title }}</span>
+        </small>
+        <small
+          v-if="operationsEvidenceHandoffReadinessSummary"
+          data-testid="readiness-evidence-handoff-readiness-summary"
+        >
+          {{ operationsEvidenceHandoffReadinessSummary }}
+        </small>
+        <small
+          v-if="operationsEvidenceHandoff.staleReportCount > 0"
+          data-testid="readiness-evidence-handoff-stale"
+        >
+          Stale reports: {{ operationsEvidenceHandoff.staleReportCount }}
+        </small>
+        <small
+          v-if="operationsEvidenceHandoffScopeSummary"
+          data-testid="readiness-evidence-handoff-scope-summary"
+        >
+          {{ operationsEvidenceHandoffScopeSummary }}
+        </small>
+        <small
+          v-if="operationsEvidenceHandoffNextStep.note"
+          data-testid="readiness-evidence-handoff-next-note"
+        >
+          {{ operationsEvidenceHandoffNextStep.note }}
+        </small>
         <small v-if="operationsEvidenceHandoffDispatchSummary">
           {{ operationsEvidenceHandoffDispatchSummary }}
+        </small>
+        <small
+          v-if="operationsEvidenceHandoffSecurityFinalizerHintSummary"
+          data-testid="readiness-evidence-handoff-security-finalizer-hints"
+        >
+          Security finalizer run-id hints: {{ operationsEvidenceHandoffSecurityFinalizerHintSummary }}
         </small>
         <div class="readiness-artifact-command-row">
           <button
@@ -1688,21 +2088,114 @@
           >
             Next Command
           </button>
+          <a
+            v-for="url in operationsEvidenceHandoffNextStepDispatchUrls"
+            :key="`handoff-next-dispatch-${url}`"
+            data-testid="readiness-evidence-handoff-next-dispatch-link"
+            class="readiness-dispatch-link ghost"
+            :href="url"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Dispatch
+          </a>
         </div>
       </div>
+      <ol
+        v-if="operationsEvidenceHandoffBrowserDispatchChecklist.length > 0"
+        class="readiness-evidence-plan-actions readiness-evidence-handoff-browser-checklist"
+        data-testid="readiness-evidence-handoff-browser-checklist"
+      >
+        <li
+          v-for="item in operationsEvidenceHandoffBrowserDispatchChecklist"
+          :key="`handoff-browser-${item.actionOrder}-${item.workflow || item.runIdParameter}`"
+        >
+          <span>
+            <strong>Browser action {{ item.actionOrder || '?' }} - {{ item.workflow || item.name || 'workflow' }}</strong>
+            <small>{{ formatEvidenceHandoffBrowserChecklistMeta(item) }}</small>
+            <small v-if="item.securityFinalizerDependencyNote">{{ item.securityFinalizerDependencyNote }}</small>
+            <code v-if="item.manualArtifactCollectionCommand">{{ item.manualArtifactCollectionCommand }}</code>
+          </span>
+          <a
+            v-if="item.dispatchUrl"
+            data-testid="readiness-evidence-handoff-browser-dispatch-link"
+            class="readiness-dispatch-link ghost"
+            :href="item.dispatchUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Dispatch
+          </a>
+          <a
+            v-if="item.runsUrl"
+            data-testid="readiness-evidence-handoff-browser-runs-link"
+            class="readiness-dispatch-link ghost"
+            :href="item.runsUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Runs
+          </a>
+          <button
+            v-if="item.manualArtifactCollectionCommand"
+            data-testid="readiness-evidence-handoff-browser-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy browser run-id artifact command"
+            @click="copyReadinessRemediationCommand(item.manualArtifactCollectionCommand)"
+          >
+            Copy
+          </button>
+        </li>
+      </ol>      <ol
+        v-if="operationsEvidenceHandoffPostDispatchCommands.length > 0"
+        class="readiness-evidence-plan-actions readiness-evidence-handoff-post-dispatch-commands"
+        data-testid="readiness-evidence-handoff-post-dispatch-commands"
+      >
+        <li
+          v-for="command in operationsEvidenceHandoffPostDispatchCommands"
+          :key="`handoff-post-dispatch-${command.name || command.command}`"
+        >
+          <span>
+            <strong>{{ command.name || 'Post-dispatch command' }}</strong>
+            <small v-if="command.note">{{ command.note }}</small>
+            <code v-if="command.command">{{ command.command }}</code>
+          </span>
+          <button
+            v-if="command.command"
+            data-testid="readiness-evidence-handoff-post-dispatch-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy post-dispatch command"
+            @click="copyReadinessRemediationCommand(command.command)"
+          >
+            Copy
+          </button>
+        </li>
+      </ol>
       <ol
         v-if="operationsEvidenceHandoffDispatchWorkflows.length > 0"
         class="readiness-evidence-plan-actions readiness-evidence-handoff-workflows"
         data-testid="readiness-evidence-handoff-workflows"
       >
         <li
-          v-for="workflow in operationsEvidenceHandoffDispatchWorkflows.slice(0, 6)"
+          v-for="workflow in operationsEvidenceHandoffDispatchWorkflows"
           :key="`handoff-dispatch-${workflow.dispatchState}-${workflow.actionOrder}-${workflow.workflow || workflow.name}`"
         >
           <span>
             <strong>{{ workflow.dispatchState }} action {{ workflow.actionOrder || '?' }} - {{ workflow.workflow || workflow.name || 'workflow' }}</strong>
             <small>{{ formatEvidenceHandoffDispatchWorkflowMeta(workflow) }}</small>
           </span>
+          <a
+            v-if="workflow.dispatchUrl"
+            data-testid="readiness-evidence-handoff-dispatch-link"
+            class="readiness-dispatch-link ghost"
+            :href="workflow.dispatchUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Dispatch
+          </a>
         </li>
       </ol>
       <ol
@@ -1715,7 +2208,7 @@
           :key="stage.name"
         >
           <span>
-            <strong>{{ stage.name }} 쨌 {{ formatEvidenceHandoffStageState(stage) }}</strong>
+            <strong>{{ stage.name }} - {{ formatEvidenceHandoffStageState(stage) }}</strong>
             <small>{{ formatEvidenceHandoffStageMeta(stage) }}</small>
             <code v-if="stage.command">{{ stage.command }}</code>
           </span>
@@ -1749,16 +2242,53 @@
             / finalizer count invalid {{ operationsReadinessConvergence.finalizerFailedCountRaw || 'missing' }}
           </template>
         </small>
+        <small
+          v-if="operationsReadinessConvergenceReadinessSummary"
+          data-testid="readiness-convergence-readiness-summary"
+        >
+          {{ operationsReadinessConvergenceReadinessSummary }}
+        </small>
+        <small
+          v-if="operationsReadinessConvergenceHandoffFreshness"
+          data-testid="readiness-convergence-handoff-freshness"
+        >
+          {{ operationsReadinessConvergenceHandoffFreshness }}
+        </small>
         <small v-if="operationsReadinessConvergence.kubernetesReportSyncConfigMapName">
           report sync {{ operationsReadinessConvergence.kubernetesReportSyncConfigMapName }} /
           {{ operationsReadinessConvergence.kubernetesReportSyncReady ? 'sync ready' : 'sync not-ready' }} /
+          {{ operationsReadinessConvergence.kubernetesReportSyncStale ? 'sync stale' : 'sync fresh' }} /
           source {{ operationsReadinessConvergence.kubernetesReportSyncSourceReportResult || 'unknown' }}
+          <template v-if="operationsReadinessConvergence.kubernetesReportSyncTimestamp">
+            / sync timestamp {{ operationsReadinessConvergence.kubernetesReportSyncTimestamp }}
+          </template>
           <template v-if="operationsReadinessConvergence.kubernetesReportSyncFailedCountValid === false">
             / sync count invalid {{ operationsReadinessConvergence.kubernetesReportSyncFailedCountRaw || 'missing' }}
           </template>
         </small>
         <small v-if="operationsReadinessConvergenceBottleneck.reason">
           {{ operationsReadinessConvergenceBottleneck.reason }}
+        </small>
+        <small v-if="operationsReadinessConvergenceBottleneck.note">
+          {{ operationsReadinessConvergenceBottleneck.note }}
+        </small>
+        <small
+          v-for="dependencyNote in operationsReadinessConvergenceDependencyNotes"
+          :key="`convergence-dependency-${dependencyNote}`"
+        >
+          {{ dependencyNote }}
+        </small>
+        <small
+          v-if="operationsReadinessConvergenceSecurityFinalizerHintSummary"
+          data-testid="readiness-convergence-security-finalizer-hints"
+        >
+          Handoff security finalizer run-id hints: {{ operationsReadinessConvergenceSecurityFinalizerHintSummary }}
+        </small>
+        <small
+          v-if="operationsReadinessConvergence.kubernetesReportSyncFreshnessReason"
+          data-testid="readiness-convergence-sync-freshness"
+        >
+          {{ operationsReadinessConvergence.kubernetesReportSyncFreshnessReason }}
         </small>
         <small v-if="operationsReadinessConvergence.kubernetesReportSyncWorkflowNote">
           {{ operationsReadinessConvergence.kubernetesReportSyncWorkflowNote }}
@@ -1774,6 +2304,17 @@
           >
             Bottleneck Command
           </button>
+          <a
+            v-for="dispatchUrl in operationsReadinessConvergenceBottleneckDispatchUrls"
+            :key="`bottleneck-${dispatchUrl}`"
+            data-testid="readiness-convergence-bottleneck-dispatch-link"
+            class="readiness-dispatch-link ghost"
+            :href="dispatchUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Bottleneck Dispatch
+          </a>
           <button
             v-if="operationsReadinessConvergence.kubernetesReportSyncWorkflowCommand"
             data-testid="readiness-convergence-workflow-command-copy-button"
@@ -1798,18 +2339,35 @@
           <span>
             <strong>{{ command.order }}. {{ command.name || 'Convergence command' }}</strong>
             <small>{{ command.reason || 'reason unavailable' }}</small>
+            <small v-if="command.note">{{ command.note }}</small>
             <code v-if="command.command">{{ command.command }}</code>
           </span>
-          <button
-            v-if="command.command"
-            data-testid="readiness-convergence-command-list-copy-button"
-            type="button"
-            class="ghost"
-            title="Copy convergence recommended command"
-            @click="copyReadinessRemediationCommand(command.command)"
+          <div
+            v-if="command.command || convergenceCommandDispatchUrls(command).length > 0"
+            class="readiness-artifact-command-row"
           >
-            Copy
-          </button>
+            <button
+              v-if="command.command"
+              data-testid="readiness-convergence-command-list-copy-button"
+              type="button"
+              class="ghost"
+              title="Copy convergence recommended command"
+              @click="copyReadinessRemediationCommand(command.command)"
+            >
+              Copy
+            </button>
+            <a
+              v-for="dispatchUrl in convergenceCommandDispatchUrls(command)"
+              :key="dispatchUrl"
+              data-testid="readiness-convergence-dispatch-link"
+              class="readiness-dispatch-link ghost"
+              :href="dispatchUrl"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open Dispatch
+            </a>
+          </div>
         </li>
       </ol>
       <div
@@ -1825,6 +2383,7 @@
           source {{ kubernetesOperationsReportSync.sourceReportResult || 'unknown' }} /
           plan {{ kubernetesOperationsReportSync.publishDataFlowStoragePlanToConfigMap ? 'mounted' : 'optional' }} /
           runbook {{ kubernetesOperationsReportSync.publishDataFlowStorageTransitionRunbookToConfigMap ? (kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookResult || 'mounted') : 'optional' }} /
+          query budget {{ kubernetesOperationsReportSync.publishDataFlowQueryRetentionBudgetToConfigMap ? (kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetResult || 'mounted') : 'optional' }} /
           checks {{ kubernetesOperationsReportSync.checkCount || 0 }} /
           failed {{ kubernetesOperationsReportSync.failedCount || 0 }}
         </small>
@@ -1836,6 +2395,17 @@
           store {{ kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookCandidateStore || 'unknown' }} /
           plan {{ kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookStoragePlanResult || 'unknown' }} /
           failures {{ kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookFailureCount || 0 }}/{{ kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookCheckCount || 0 }}
+        </small>
+        <small
+          v-if="kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetConfigMapKey"
+          data-testid="readiness-kubernetes-report-sync-query-retention-budget-summary"
+        >
+          query budget key {{ kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetConfigMapKey }} /
+          store {{ kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetCandidateStore || 'unknown' }} /
+          plan {{ kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetStoragePlanResult || 'unknown' }} /
+          p95 {{ kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs || 0 }}/{{ kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs || 0 }}ms /
+          retention {{ kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetRetentionBudgetSeconds || 0 }}s /
+          failures {{ kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetFailureCount || 0 }}/{{ kubernetesOperationsReportSync.dataFlowQueryRetentionBudgetCheckCount || 0 }}
         </small>
         <small v-if="kubernetesOperationsReportSync.sourceReportSha256">
           sha256 {{ kubernetesOperationsReportSync.sourceReportSha256 }}
@@ -1898,7 +2468,7 @@
         data-testid="readiness-evidence-plan-actions"
       >
         <li
-          v-for="action in operationsEvidencePlanActions.slice(0, 3)"
+          v-for="action in operationsEvidencePlanActions"
           :key="`${action.order}-${action.name}`"
         >
           <span>
@@ -1906,16 +2476,31 @@
             <small>{{ formatEvidencePlanActionMeta(action) }}</small>
             <code v-if="evidencePlanActionCommand(action)">{{ evidencePlanActionCommand(action) }}</code>
           </span>
-          <button
-            v-if="evidencePlanActionCommand(action)"
-            data-testid="readiness-evidence-plan-command-copy-button"
-            type="button"
-            class="ghost"
-            title="Copy evidence plan command"
-            @click="copyReadinessRemediationCommand(evidencePlanActionCommand(action))"
+          <div
+            v-if="evidencePlanActionCommand(action) || action.dispatchUrl"
+            class="readiness-artifact-command-row"
           >
-            Copy
-          </button>
+            <button
+              v-if="evidencePlanActionCommand(action)"
+              data-testid="readiness-evidence-plan-command-copy-button"
+              type="button"
+              class="ghost"
+              title="Copy evidence plan command"
+              @click="copyReadinessRemediationCommand(evidencePlanActionCommand(action))"
+            >
+              Copy
+            </button>
+            <a
+              v-if="action.dispatchUrl"
+              data-testid="readiness-evidence-plan-dispatch-link"
+              class="readiness-dispatch-link ghost"
+              :href="action.dispatchUrl"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open Dispatch
+            </a>
+          </div>
         </li>
       </ol>
       <div
@@ -1930,6 +2515,12 @@
           {{ operationsEvidenceInvocation.blockedCount }} blocked /
           {{ operationsEvidenceInvocation.failedCount }} failed
         </small>
+        <small
+          v-if="operationsEvidenceInvocationActionOrderSummary"
+          data-testid="readiness-evidence-invocation-action-orders"
+        >
+          Actions {{ operationsEvidenceInvocationActionOrderSummary }}
+        </small>
       </div>
       <ol
         v-if="operationsEvidenceInvocationActions.length > 0"
@@ -1937,11 +2528,11 @@
         data-testid="readiness-evidence-invocation-actions"
       >
         <li
-          v-for="action in operationsEvidenceInvocationActions.slice(0, 3)"
+          v-for="action in operationsEvidenceInvocationActions"
           :key="`${action.order}-${action.status}-${action.name}`"
         >
           <span>
-            <strong>{{ action.order }}. {{ action.name }} · {{ action.status || 'planned' }}</strong>
+            <strong>{{ action.order }}. {{ action.name }} - {{ action.status || 'planned' }}</strong>
             <small>{{ formatEvidenceInvocationActionMeta(action) }}</small>
             <small v-if="formatInvocationBlockReasons(action)">{{ formatInvocationBlockReasons(action) }}</small>
             <code v-if="action.command">{{ action.command }}</code>
@@ -2020,11 +2611,11 @@
         data-testid="readiness-invocation-unblock-actions"
       >
         <li
-          v-for="action in operationsInvocationUnblockActions.slice(0, 3)"
+          v-for="action in operationsInvocationUnblockActions"
           :key="`${action.order}-${action.status}-${action.name}`"
         >
           <span>
-            <strong>{{ action.order }}. {{ action.name }} 쨌 {{ action.status || 'action required' }}</strong>
+            <strong>{{ action.order }}. {{ action.name }} - {{ action.status || 'action required' }}</strong>
             <small>{{ formatInvocationUnblockActionMeta(action) }}</small>
             <small v-if="formatInvocationUnblockInputs(action)">{{ formatInvocationUnblockInputs(action) }}</small>
             <code v-if="action.planCommand">{{ action.planCommand }}</code>
@@ -2095,6 +2686,18 @@
         >
           {{ operationsDispatchPreflightGitHubCliSummary }}
         </small>
+        <small
+          v-if="operationsDispatchPreflightGitRefSafetySummary"
+          data-testid="readiness-dispatch-preflight-git-ref-safety"
+        >
+          Git ref safety: {{ operationsDispatchPreflightGitRefSafetySummary }}
+        </small>
+        <small
+          v-if="operationsDispatchPreflightGitRefSafety.note"
+          data-testid="readiness-dispatch-preflight-git-ref-note"
+        >
+          {{ operationsDispatchPreflightGitRefSafety.note }}
+        </small>
         <div class="readiness-artifact-command-row">
           <button
             v-if="operationsDispatchPreflight.readyPlanCommand"
@@ -2117,6 +2720,26 @@
             Execute
           </button>
           <button
+            v-if="operationsDispatchPreflight.apiExecuteCommand"
+            data-testid="readiness-dispatch-preflight-api-execute-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy GitHub REST API dispatch command"
+            @click="copyReadinessRemediationCommand(operationsDispatchPreflight.apiExecuteCommand)"
+          >
+            API Execute
+          </button>
+          <button
+            v-if="operationsDispatchPreflightGitRefSafety.suggestedPushCommand"
+            data-testid="readiness-dispatch-preflight-git-ref-push-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy suggested Git ref push command"
+            @click="copyReadinessRemediationCommand(operationsDispatchPreflightGitRefSafety.suggestedPushCommand)"
+          >
+            Push Ref
+          </button>
+          <button
             v-if="operationsDispatchPreflight.readySubsetPlanCommand"
             data-testid="readiness-dispatch-preflight-ready-subset-plan-command-copy-button"
             type="button"
@@ -2136,6 +2759,16 @@
           >
             Ready Subset Execute
           </button>
+          <button
+            v-if="operationsDispatchPreflight.readySubsetApiExecuteCommand"
+            data-testid="readiness-dispatch-preflight-ready-subset-api-execute-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy ready subset GitHub REST API dispatch command"
+            @click="copyReadinessRemediationCommand(operationsDispatchPreflight.readySubsetApiExecuteCommand)"
+          >
+            Ready Subset API
+          </button>
         </div>
       </div>
       <ol
@@ -2144,11 +2777,11 @@
         data-testid="readiness-dispatch-preflight-checks"
       >
         <li
-          v-for="check in operationsDispatchPreflightChecks.slice(0, 4)"
+          v-for="check in operationsDispatchPreflightChecks"
           :key="check.code"
         >
           <span>
-            <strong>{{ check.code }} 夷?{{ check.status || 'unknown' }}</strong>
+            <strong>{{ check.code }} - {{ check.status || 'unknown' }}</strong>
             <small>{{ check.message || 'No detail' }}</small>
           </span>
         </li>
@@ -2159,11 +2792,11 @@
         data-testid="readiness-dispatch-preflight-inputs"
       >
         <li
-          v-for="input in operationsDispatchPreflightInputs.slice(0, 4)"
+          v-for="input in operationsDispatchPreflightInputs"
           :key="`${input.actionOrder}-${input.parameter}-${input.placeholder}`"
         >
           <span>
-            <strong>{{ input.parameter || input.placeholder }} 夷?{{ input.supplied ? 'supplied' : 'missing' }}</strong>
+            <strong>{{ input.parameter || input.placeholder }} - {{ input.supplied ? 'supplied' : 'missing' }}</strong>
             <small>{{ formatDispatchPreflightInputMeta(input) }}</small>
           </span>
         </li>
@@ -2181,6 +2814,16 @@
             <strong>action {{ template.actionOrder || '?' }} - {{ template.name || template.workflow || 'Input template' }}</strong>
             <small>{{ formatDispatchPreflightTemplateMeta(template) }}</small>
           </span>
+          <a
+            v-if="template.dispatchUrl"
+            data-testid="readiness-dispatch-preflight-template-dispatch-link"
+            class="readiness-dispatch-link ghost"
+            :href="template.dispatchUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Dispatch
+          </a>
         </li>
       </ol>
       <ol
@@ -2189,13 +2832,23 @@
         data-testid="readiness-dispatch-preflight-workflows"
       >
         <li
-          v-for="workflow in operationsDispatchPreflightWorkflowFiles.slice(0, 3)"
+          v-for="workflow in operationsDispatchPreflightWorkflowFiles"
           :key="`${workflow.actionOrder}-${workflow.workflow}`"
         >
           <span>
-            <strong>{{ workflow.workflow }} 夷?{{ workflow.exists ? 'present' : 'missing' }}</strong>
+            <strong>{{ workflow.workflow }} - {{ workflow.exists ? 'present' : 'missing' }}</strong>
             <small>{{ formatDispatchPreflightWorkflowMeta(workflow) }}</small>
           </span>
+          <a
+            v-if="workflow.dispatchUrl"
+            data-testid="readiness-dispatch-preflight-workflow-dispatch-link"
+            class="readiness-dispatch-link ghost"
+            :href="workflow.dispatchUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Dispatch
+          </a>
         </li>
       </ol>
       <div
@@ -2222,6 +2875,36 @@
         >
           Target: {{ operationsWorkflowRunIdPlanTargetSummary }}
         </small>
+        <small
+          v-if="operationsWorkflowRunIdPlanActionOrderSummary"
+          data-testid="readiness-workflow-run-id-action-orders"
+        >
+          Actions: {{ operationsWorkflowRunIdPlanActionOrderSummary }}
+        </small>
+        <small
+          v-if="operationsWorkflowRunIdPlanJsonDirectorySummary"
+          data-testid="readiness-workflow-run-id-json-directory"
+        >
+          Run-list JSON: {{ operationsWorkflowRunIdPlanJsonDirectorySummary }}
+        </small>
+        <small
+          v-if="operationsWorkflowRunIdPlanSecurityFinalizerSummary"
+          data-testid="readiness-workflow-run-id-security-finalizer"
+        >
+          {{ operationsWorkflowRunIdPlanSecurityFinalizerSummary }}
+        </small>
+        <small
+          v-if="operationsWorkflowRunIdPlanSecurityFinalizerNote"
+          data-testid="readiness-workflow-run-id-security-finalizer-note"
+        >
+          {{ operationsWorkflowRunIdPlanSecurityFinalizerNote }}
+        </small>
+        <small
+          v-if="operationsWorkflowRunIdPlanSecurityFinalizerHintSummary"
+          data-testid="readiness-workflow-run-id-security-finalizer-hints"
+        >
+          Run-id hints: {{ operationsWorkflowRunIdPlanSecurityFinalizerHintSummary }}
+        </small>
         <div class="readiness-artifact-command-row">
           <button
             v-if="operationsWorkflowRunIdPlan.artifactCollectionPlanCommand"
@@ -2243,6 +2926,26 @@
           >
             Security
           </button>
+          <button
+            v-if="operationsWorkflowRunIdPlan.runListJsonDirectoryCommand"
+            data-testid="readiness-workflow-run-id-json-directory-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy saved run-list JSON plan command"
+            @click="copyReadinessRemediationCommand(operationsWorkflowRunIdPlan.runListJsonDirectoryCommand)"
+          >
+            Run JSON
+          </button>
+          <button
+            v-if="operationsWorkflowRunIdPlan.githubApiRunListCommand"
+            data-testid="readiness-workflow-run-id-github-api-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy GitHub REST API run-id query command"
+            @click="copyReadinessRemediationCommand(operationsWorkflowRunIdPlan.githubApiRunListCommand)"
+          >
+            GitHub API
+          </button>
         </div>
       </div>
       <ol
@@ -2251,12 +2954,18 @@
         data-testid="readiness-workflow-run-id-actions"
       >
         <li
-          v-for="workflow in operationsWorkflowRunIdPlanWorkflows.slice(0, 3)"
+          v-for="workflow in operationsWorkflowRunIdPlanWorkflows"
           :key="workflow.workflow"
         >
           <span>
-            <strong>{{ workflow.workflow }} 쨌 {{ workflow.readyForArtifactDownload ? 'ready' : 'query required' }}</strong>
+            <strong>{{ workflow.workflow }} - {{ workflow.readyForArtifactDownload ? 'ready' : 'query required' }}</strong>
             <small>{{ formatWorkflowRunIdMeta(workflow) }}</small>
+            <small
+              v-if="workflow.runListJsonPath"
+              data-testid="readiness-workflow-run-id-json-path"
+            >
+              Run-list JSON: {{ workflow.runListJsonPath }}<span v-if="workflow.runListJsonExists"> / present</span>
+            </small>
             <code v-if="workflow.queryCommand">{{ workflow.queryCommand }}</code>
           </span>
           <button
@@ -2269,6 +2978,16 @@
           >
             Copy
           </button>
+          <a
+            v-if="workflow.runsUrl"
+            data-testid="readiness-workflow-run-id-runs-link"
+            class="readiness-dispatch-link ghost"
+            :href="workflow.runsUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open Runs
+          </a>
         </li>
       </ol>
       <div
@@ -2281,7 +3000,10 @@
           {{ operationsArtifactCollectionPlan.readyArtifactCount }} ready /
           {{ operationsArtifactCollectionPlan.artifactCount }} artifacts /
           {{ operationsArtifactCollectionPlan.requiredArtifactCount || 0 }} required /
-          {{ operationsArtifactCollectionPlan.missingRequiredArtifactCount }} missing required
+          {{ operationsArtifactCollectionPlan.missingRequiredArtifactCount }} missing required /
+          security sources {{ operationsArtifactCollectionPlan.readySecuritySourceArtifactCount || 0 }} ready
+          of {{ operationsArtifactCollectionPlan.securitySourceArtifactCount || 0 }} total
+          ({{ operationsArtifactCollectionPlan.missingSecuritySourceArtifactCount || 0 }} missing)
         </small>
         <small
           v-if="operationsArtifactCollectionPlanSourceSummary"
@@ -2290,11 +3012,43 @@
           Source: {{ operationsArtifactCollectionPlanSourceSummary }}
         </small>
         <small
+          v-if="operationsArtifactCollectionPlanActionOrderSummary"
+          data-testid="readiness-artifact-collection-action-orders"
+        >
+          Actions: {{ operationsArtifactCollectionPlanActionOrderSummary }}
+        </small>
+        <small
           v-if="operationsArtifactCollectionPlan.securityEvidenceFinalizerCommand"
           data-testid="readiness-artifact-collection-security-command"
         >
-          Security finalizer ready
+          Security finalizer {{ operationsArtifactCollectionPlan.securityEvidenceFinalizerReady ? 'ready' : 'waiting' }}:
+          {{ operationsArtifactCollectionPlan.readySecuritySourceArtifactCount || 0 }} ready /
+          {{ operationsArtifactCollectionPlan.securitySourceArtifactCount || 0 }} total /
+          {{ operationsArtifactCollectionPlan.missingSecuritySourceArtifactCount || 0 }} missing
         </small>
+        <small
+          v-if="operationsArtifactCollectionPlan.securityEvidenceFinalizerMissingRunIdInputs?.length"
+          data-testid="readiness-artifact-collection-security-missing-inputs"
+        >
+          Missing security finalizer inputs:
+          {{ operationsArtifactCollectionPlan.securityEvidenceFinalizerMissingRunIdInputs.join(', ') }}
+        </small>
+        <ol
+          v-if="operationsArtifactCollectionSecurityInputs.length > 0"
+          class="readiness-evidence-plan-actions readiness-artifact-collection-actions"
+          data-testid="readiness-artifact-collection-security-inputs"
+        >
+          <li
+            v-for="input in operationsArtifactCollectionSecurityInputs"
+            :key="input.name || input.runIdParameter"
+          >
+            <span>
+              <strong>{{ input.name || input.runIdParameter }} - {{ input.ready ? 'ready' : 'needs run id' }}</strong>
+              <small>{{ formatArtifactCollectionSecurityInputMeta(input) }}</small>
+              <code v-if="input.artifactName">{{ input.artifactName }}</code>
+            </span>
+          </li>
+        </ol>
         <div class="readiness-artifact-command-row">
           <button
             v-if="operationsArtifactCollectionPlan.securityEvidenceFinalizerCommand"
@@ -2344,6 +3098,22 @@
           Copy data-flow note
         </button>
         <small
+          v-if="operationsArtifactCollectionPlan.dataFlowQueryRetentionBudgetInputNote"
+          data-testid="readiness-artifact-data-flow-query-retention-budget-note"
+        >
+          {{ operationsArtifactCollectionPlan.dataFlowQueryRetentionBudgetInputNote }}
+        </small>
+        <button
+          v-if="operationsArtifactCollectionPlan.dataFlowQueryRetentionBudgetInputNote"
+          data-testid="readiness-artifact-data-flow-query-retention-budget-note-copy-button"
+          type="button"
+          class="ghost"
+          title="Copy direct data-flow query/retention budget input note"
+          @click="copyReadinessRemediationCommand(operationsArtifactCollectionPlan.dataFlowQueryRetentionBudgetInputNote)"
+        >
+          Copy query budget note
+        </button>
+        <small
           v-if="operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote"
           data-testid="readiness-artifact-data-flow-runbook-note"
         >
@@ -2386,7 +3156,7 @@
           :key="`${artifact.group}-${artifact.workflow}`"
         >
           <span>
-            <strong>{{ artifact.group }} 쨌 {{ artifact.ready ? 'ready' : 'needs run id' }}</strong>
+            <strong>{{ artifact.group }} - {{ artifact.ready ? 'ready' : 'needs run id' }}</strong>
             <small>{{ formatArtifactCollectionMeta(artifact) }}</small>
             <code v-if="artifact.downloadCommand">{{ artifact.downloadCommand }}</code>
           </span>
@@ -2434,7 +3204,7 @@
           :key="`${entry.group}-${entry.fileName}`"
         >
           <span>
-            <strong>{{ entry.group }} 夷?{{ entry.status || 'unknown' }}</strong>
+            <strong>{{ entry.group }} - {{ entry.status || 'unknown' }}</strong>
             <small>{{ formatArtifactImportEntryMeta(entry) }}</small>
           </span>
         </li>
@@ -2479,7 +3249,7 @@
         data-testid="readiness-finalizer-commands"
       >
         <li
-          v-for="command in operationsReadinessFinalizeCommands.slice(0, 3)"
+          v-for="command in operationsReadinessFinalizeCommands"
           :key="`${command.name}-${command.script}`"
         >
           <span>
@@ -2505,11 +3275,11 @@
         data-testid="readiness-finalizer-steps"
       >
         <li
-          v-for="step in operationsReadinessFinalizeSteps.slice(0, 3)"
+          v-for="step in operationsReadinessFinalizeSteps"
           :key="`${step.name}-${step.result}`"
         >
           <span>
-            <strong>{{ step.name || step.script }} 夷?{{ step.result || 'unknown' }}</strong>
+            <strong>{{ step.name || step.script }} - {{ step.result || 'unknown' }}</strong>
             <small>{{ formatReadinessFinalizeStepMeta(step) }}</small>
           </span>
         </li>
@@ -2549,9 +3319,9 @@
         </label>
       </div>
       <ul class="task-list readiness-task-list">
-        <li v-if="visibleReadinessItems.length === 0">필수 점검 통과</li>
+        <li v-if="visibleReadinessItems.length === 0">?꾩닔 ?먭? ?듦낵</li>
         <li
-          v-for="item in visibleReadinessItems.slice(0, 6)"
+          v-for="item in visibleReadinessItems"
           :key="`${item.severity}-${item.code}-${item.message}`"
           :data-testid="`readiness-item-${item.code}`"
         >
@@ -2596,7 +3366,7 @@
             </span>
           </span>
           <button type="button" class="ghost" @click="$emit('open-readiness-target', item.targetPage, item.targetPanel)">
-            {{ item.actionLabel || '보기' }}
+            {{ item.actionLabel || 'View' }}
           </button>
         </li>
       </ul>
@@ -2606,7 +3376,7 @@
       <div class="panel-head">
         <div>
           <p class="eyebrow">Backup Readiness</p>
-          <h3>백업/복구 준비도</h3>
+          <h3>Backup/Restore Readiness</h3>
         </div>
         <span :class="['status-pill', statusClass(backupStatus.status)]">{{ backupStatus.status }}</span>
       </div>
@@ -2636,7 +3406,7 @@
         <small v-else>No restore drill evidence recorded.</small>
       </div>
       <ul class="task-list">
-        <li v-if="backupStatus.pendingGates.length === 0">필수 게이트 통과</li>
+        <li v-if="backupStatus.pendingGates.length === 0">Required gates passed</li>
         <li v-for="gate in backupStatus.pendingGates" :key="gate">{{ gate }}</li>
       </ul>
     </article>
@@ -2645,7 +3415,7 @@
       <div class="panel-head">
         <div>
           <p class="eyebrow">Data Flow Monitoring</p>
-          <h3>데이터 흐름 감시</h3>
+          <h3>Data Flow Monitoring</h3>
         </div>
         <span :class="['status-pill', dataFlowStatusClass]">{{ dataFlowStatusLabel }}</span>
       </div>
@@ -2925,17 +3695,17 @@
       <div class="panel-head">
         <div>
           <p class="eyebrow">Selected Workspace</p>
-          <h3>{{ selectedBucket || '버킷을 선택하세요' }}</h3>
+          <h3>{{ selectedBucket || 'Select a bucket' }}</h3>
         </div>
         <span class="bucket-label">{{ bucketObjectsLabel }}</span>
       </div>
       <div class="focus-summary">
         <div>
-          <span>권장 다음 작업</span>
+          <span>Recommended next action</span>
           <strong>{{ nextActionLabel }}</strong>
         </div>
         <button type="button" class="ghost" :disabled="!selectedBucket" @click="$emit('load-selected-bucket-details')">
-          선택 버킷 다시 읽기
+          Reload Selected Bucket
         </button>
       </div>
     </article>
@@ -2944,7 +3714,7 @@
       <div class="panel-head">
         <div>
           <p class="eyebrow">Retention</p>
-          <h3>휴지통 보존 정책</h3>
+          <h3>Object Retention Policy</h3>
         </div>
         <span :class="['status-pill', retentionPolicy.enabled ? 'up' : 'mock']">
           {{ retentionPolicy.enabled ? 'ON' : 'OFF' }}
@@ -2952,11 +3722,11 @@
       </div>
       <dl class="status-dl compact">
         <div>
-          <dt>보존 기간</dt>
-          <dd>{{ retentionPolicy.retentionDays || '-' }}일</dd>
+          <dt>Retention Period</dt>
+          <dd>{{ retentionPolicy.retentionDays || '-' }} days</dd>
         </div>
         <div>
-          <dt>삭제/실패</dt>
+          <dt>Purged/Failed</dt>
           <dd>{{ formatCount(retentionPolicy.purgedObjectCount) }} / {{ formatCount(retentionPolicy.failedObjectCount) }}</dd>
         </div>
       </dl>
@@ -2966,7 +3736,7 @@
         :disabled="!retentionPolicy.enabled || retentionPolicy.pending"
         @click="$emit('run-object-retention-purge')"
       >
-        {{ retentionPolicy.pending ? '실행 중' : 'Purge 실행' }}
+        {{ retentionPolicy.pending ? 'Running' : 'Run Purge' }}
       </button>
     </article>
 
@@ -3458,6 +4228,10 @@ const dataFlowStoragePlanItem = computed(() => (
   operationsReadinessItems.value.find((item) => item.code === 'DATA_FLOW_STORAGE_PLAN') || null
 ))
 
+const dataFlowQueryRetentionBudgetItem = computed(() => (
+  operationsReadinessItems.value.find((item) => item.code === 'DATA_FLOW_QUERY_RETENTION_BUDGET') || null
+))
+
 const minioBucketCorsVerificationItem = computed(() => (
   operationsReadinessItems.value.find((item) => item.code === 'MINIO_BUCKET_CORS_VERIFICATION') || null
 ))
@@ -3475,9 +4249,113 @@ const operationsEvidencePlanActions = computed(() => {
   return Array.isArray(actions) ? actions : []
 })
 
+const operationsEvidencePlanSummary = computed(() => (
+  props.dashboardReadiness.operationsEvidencePlan?.actionSummary || {}
+))
+
+const operationsReadinessSummary = computed(() => (
+  props.dashboardReadiness.operationsReadinessSummary || {}
+))
+
+const operationsReadinessSourceSummaryText = computed(() => {
+  const summary = operationsReadinessSummary.value || {}
+  const passed = Number(summary.passedCount || 0)
+  const pending = Number(summary.pendingCount || 0)
+  const total = Number(summary.totalCount || 0)
+  const checks = Number(summary.checkCount || 0)
+  if (passed === 0 && pending === 0 && total === 0 && checks === 0) return ''
+  return `passed=${passed} / pending=${pending} / total=${total} / checks=${checks}`
+})
+
+const operationsReadinessPendingCategorySummaryText = computed(() => {
+  const summary = operationsReadinessSummary.value || {}
+  if (summary.pendingCategorySummary) return summary.pendingCategorySummary
+  const counts = Array.isArray(summary.pendingCategoryCounts) ? summary.pendingCategoryCounts : []
+  return counts
+    .map((item) => `${item.category || ''}=${Number(item.count || 0)}`)
+    .filter((item) => !item.startsWith('=') && !item.endsWith('=0'))
+    .join(', ')
+})
+
+const operationsReadinessPendingRemediationSummaryText = computed(() => {
+  const summary = operationsReadinessSummary.value || {}
+  const remediations = Array.isArray(summary.pendingRemediations) ? summary.pendingRemediations : []
+  const count = Number(summary.pendingRemediationCount || remediations.length || 0)
+  if (count === 0) return ''
+  const names = remediations
+    .slice(0, 3)
+    .map((item) => item.name || item.category || '')
+    .filter(Boolean)
+  const suffix = names.length > 0 ? `: ${names.join(', ')}${count > names.length ? ', ...' : ''}` : ''
+  return `${count}${suffix}`
+})
+
+const operationsEvidencePlanSourceSummaryText = computed(() => {
+  const plan = props.dashboardReadiness.operationsEvidencePlan || {}
+  const passed = Number(plan.sourcePassedCount || 0)
+  const pending = Number(plan.sourcePendingCount || 0)
+  const total = Number(plan.sourceTotalCount || 0)
+  const checks = Number(plan.sourceCheckCount || 0)
+  if (passed === 0 && pending === 0 && total === 0 && checks === 0) return ''
+  return `passed=${passed} / pending=${pending} / total=${total} / checks=${checks}`
+})
+
+const operationsEvidencePlanRemediationCoverageText = computed(() => {
+  const plan = props.dashboardReadiness.operationsEvidencePlan || {}
+  const entries = Number(plan.sourcePendingRemediationEntryCount || 0)
+  const actions = Number(plan.sourcePendingRemediationActionCount || 0)
+  const missing = Number(plan.sourcePendingRemediationMissingActionCount || 0)
+  const sourceCount = Number(plan.sourcePendingRemediationCount || 0)
+  const hasCoverage = entries > 0 || actions > 0 || sourceCount > 0
+  if (!hasCoverage) return ''
+  return `source=${sourceCount} / entries=${entries} / actions=${actions} / missing=${missing} / ready=${plan.sourcePendingRemediationCoverageReady ? 'true' : 'false'}`
+})
+
+const operationsEvidencePlanSummaryText = computed(() => {
+  const summary = operationsEvidencePlanSummary.value
+  const total = Number(summary.totalActions || 0)
+  const hasSummary = total > 0 || Number(summary.unplannedCheckCount || 0) > 0
+  if (!hasSummary) return ''
+  return `${total} actions / ${Number(summary.kubernetesLiveActions || 0)} Kubernetes live / ${Number(summary.securityCiActions || 0)} security CI / ${Number(summary.operatorRemediationActions || 0)} operator / ${Number(summary.requiresOperatorApprovalCount || 0)} approvals / ${Number(summary.requiresKubeconfigSecretCount || 0)} kubeconfig / ${Number(summary.actionsWithPlaceholdersCount || 0)} placeholders / ${Number(summary.unplannedCheckCount || 0)} unplanned`
+})
+const operationsEvidencePlanPendingCategorySummaryText = computed(() => {
+  const plan = props.dashboardReadiness.operationsEvidencePlan || {}
+  if (plan.pendingCategorySummary) return plan.pendingCategorySummary
+  const counts = Array.isArray(plan.pendingCategoryCounts) ? plan.pendingCategoryCounts : []
+  return counts
+    .map((item) => `${item.category || ''}=${Number(item.count || 0)}`)
+    .filter((item) => !item.startsWith('=') && !item.endsWith('=0'))
+    .join(', ')
+})
+
+function formatOperationsSourceCounts(source) {
+  const passed = Number(source?.sourcePassedCount || 0)
+  const pending = Number(source?.sourcePendingCount || 0)
+  const total = Number(source?.sourceTotalCount || 0)
+  const checks = Number(source?.sourceCheckCount || 0)
+  if (passed === 0 && pending === 0 && total === 0 && checks === 0) return ''
+  return `passed=${passed} / pending=${pending} / total=${total} / checks=${checks}`
+}
+
+function formatOperationsReadinessCounts(source) {
+  const passed = Number(source?.readinessPassedCount || 0)
+  const pending = Number(source?.readinessPendingCount || 0)
+  const total = Number(source?.readinessTotalCount || 0)
+  const checks = Number(source?.readinessCheckCount || 0)
+  if (passed === 0 && pending === 0 && total === 0 && checks === 0) return ''
+  return `passed=${passed} / pending=${pending} / total=${total} / checks=${checks}`
+}
+
 const operationsEvidenceInvocation = computed(() => (
   props.dashboardReadiness.operationsEvidenceInvocation || {}
 ))
+
+const operationsEvidenceInvocationSourceSummaryText = computed(() => formatOperationsSourceCounts(operationsEvidenceInvocation.value))
+
+const operationsEvidenceInvocationActionOrderSummary = computed(() => {
+  const orders = operationsEvidenceInvocation.value?.selectedActionOrders
+  return Array.isArray(orders) && orders.length > 0 ? formatEvidenceHandoffActionOrders(orders) : ''
+})
 
 const operationsEvidenceInvocationActions = computed(() => {
   const actions = operationsEvidenceInvocation.value?.actions
@@ -3487,6 +4365,8 @@ const operationsEvidenceInvocationActions = computed(() => {
 const operationsInvocationUnblockPlan = computed(() => (
   props.dashboardReadiness.operationsInvocationUnblockPlan || {}
 ))
+
+const operationsInvocationUnblockSourceSummaryText = computed(() => formatOperationsSourceCounts(operationsInvocationUnblockPlan.value))
 
 const operationsInvocationUnblockActions = computed(() => {
   const actions = operationsInvocationUnblockPlan.value?.actions
@@ -3564,6 +4444,7 @@ const operationsDispatchPreflightSourceSummary = computed(() => {
   const preflight = operationsDispatchPreflight.value || {}
   return [
     preflight.sourceResult && `result=${preflight.sourceResult}`,
+    formatOperationsSourceCounts(preflight),
     preflight.sourceUnblockPlan && `plan=${preflight.sourceUnblockPlan}`,
     preflight.requiredInputCount && `inputs=${preflight.requiredInputCount}`,
   ].filter(Boolean).join(' / ')
@@ -3574,8 +4455,33 @@ const operationsDispatchPreflightGitHubCliSummary = computed(() => {
   if (!preflight.result) {
     return ''
   }
-  return preflight.githubCliPath ? `GitHub CLI: ${preflight.githubCliPath}` : 'GitHub CLI: PATH lookup'
+  const cli = preflight.githubCliPath ? `GitHub CLI: ${preflight.githubCliPath}` : 'GitHub CLI: PATH lookup'
+  const repo = preflight.githubRepository ? `repo ${preflight.githubRepository}` : ''
+  const ref = preflight.githubRef ? `ref ${preflight.githubRef}` : ''
+  return [cli, repo, ref].filter(Boolean).join(' / ')
 })
+
+const operationsDispatchPreflightGitRefSafety = computed(() => (
+  operationsDispatchPreflight.value?.gitRefSafety || {}
+))
+
+const operationsDispatchPreflightGitRefSafetySummary = computed(() => {
+  const safety = operationsDispatchPreflightGitRefSafety.value || {}
+  if (!safety.checked && !safety.status) {
+    return ''
+  }
+  return [
+    safety.status && `ref=${safety.status}`,
+    safety.currentBranch && `branch=${safety.currentBranch}`,
+    safety.upstreamRef && `upstream=${safety.upstreamRef}`,
+    safety.shortCommitSha && `commit=${safety.shortCommitSha}`,
+    `ahead=${Number(safety.aheadCount || 0)}`,
+    `behind=${Number(safety.behindCount || 0)}`,
+    safety.workingTreeDirty ? 'dirty=true' : '',
+    safety.suggestedGitHubRef && `suggested=${safety.suggestedGitHubRef}`,
+  ].filter(Boolean).join(' / ')
+})
+
 
 const operationsWorkflowRunIdPlan = computed(() => (
   props.dashboardReadiness.operationsWorkflowRunIdPlan || {}
@@ -3590,6 +4496,8 @@ const operationsWorkflowRunIdPlanSourceSummary = computed(() => {
   const plan = operationsWorkflowRunIdPlan.value || {}
   return [
     plan.invocationResult && `invocation=${plan.invocationResult}`,
+    plan.sourceSummary && `summary=${plan.sourceSummary}`,
+    formatOperationsSourceCounts(plan),
     plan.sourceInvocationReport && `source=${plan.sourceInvocationReport}`,
     plan.queryMode && `query=${plan.queryMode}`,
     plan.limit && `limit=${plan.limit}`,
@@ -3600,11 +4508,70 @@ const operationsWorkflowRunIdPlanTargetSummary = computed(() => {
   const plan = operationsWorkflowRunIdPlan.value || {}
   return [
     plan.branch && `branch=${plan.branch}`,
+    plan.githubRepository && `repo=${plan.githubRepository}`,
     plan.imageSigningVersion && `image=${plan.imageSigningVersion}`,
     plan.commitSha && `commit=${plan.commitSha}`,
   ].filter(Boolean).join(' / ')
 })
 
+
+const operationsWorkflowRunIdPlanActionOrderSummary = computed(() => {
+  const orders = operationsWorkflowRunIdPlan.value?.selectedActionOrders
+  return Array.isArray(orders) && orders.length > 0 ? formatEvidenceHandoffActionOrders(orders) : ''
+})
+
+const operationsWorkflowRunIdPlanJsonDirectorySummary = computed(() => {
+  const plan = operationsWorkflowRunIdPlan.value || {}
+  return [
+    plan.runListJsonDirectory && `directory=${plan.runListJsonDirectory}`,
+    plan.runListJsonFilePattern && `files=${plan.runListJsonFilePattern}`,
+    plan.runListJsonHandoffNote,
+  ].filter(Boolean).join(' / ')
+})
+
+const operationsWorkflowRunIdPlanSecurityFinalizerSummary = computed(() => {
+  const plan = operationsWorkflowRunIdPlan.value || {}
+  const inputs = Array.isArray(plan.securityEvidenceFinalizerRunIdInputs)
+    ? plan.securityEvidenceFinalizerRunIdInputs
+    : []
+  const missing = Array.isArray(plan.securityEvidenceFinalizerMissingRunIdInputs)
+    ? plan.securityEvidenceFinalizerMissingRunIdInputs
+    : []
+  if (inputs.length === 0 && !plan.securityEvidenceFinalizerCommand && !plan.securityEvidenceFinalizerDependencyNote) {
+    return ''
+  }
+  return [
+    `Security finalizer ${plan.securityEvidenceFinalizerReady ? 'ready' : 'waiting'}`,
+    `inputs=${inputs.length > 0 ? inputs.join(', ') : 'none'}`,
+    `missing=${missing.length > 0 ? missing.join(', ') : 'none'}`,
+  ].join(' / ')
+})
+
+const operationsWorkflowRunIdPlanSecurityFinalizerNote = computed(() => (
+  operationsWorkflowRunIdPlan.value?.securityEvidenceFinalizerDependencyNote || ''
+))
+
+const operationsWorkflowRunIdPlanSecurityFinalizerHints = computed(() => {
+  const hints = operationsWorkflowRunIdPlan.value?.securityEvidenceFinalizerRunIdInputHints
+  return Array.isArray(hints) ? hints : []
+})
+
+function formatSecurityFinalizerRunIdHintSummary(hints) {
+  return (Array.isArray(hints) ? hints : [])
+    .map((hint) => {
+      const name = hint.runIdParameter || hint.workflow || 'RunId'
+      const workflow = hint.workflow || 'workflow unknown'
+      const source = hint.sourceSelected
+        ? 'selected'
+        : (hint.supplementalForSecurityFinalizer ? 'supplemental' : 'hint')
+      return `${name}=${workflow} (${source})`
+    })
+    .join(' / ')
+}
+
+const operationsWorkflowRunIdPlanSecurityFinalizerHintSummary = computed(() => (
+  formatSecurityFinalizerRunIdHintSummary(operationsWorkflowRunIdPlanSecurityFinalizerHints.value)
+))
 const operationsArtifactCollectionPlan = computed(() => (
   props.dashboardReadiness.operationsArtifactCollectionPlan || {}
 ))
@@ -3614,15 +4581,27 @@ const operationsArtifactCollectionArtifacts = computed(() => {
   return Array.isArray(artifacts) ? artifacts : []
 })
 
+const operationsArtifactCollectionSecurityInputs = computed(() => {
+  const inputs = operationsArtifactCollectionPlan.value?.securityEvidenceFinalizerInputs
+  return Array.isArray(inputs) ? inputs : []
+})
+
 const operationsArtifactCollectionPlanSourceSummary = computed(() => {
   const plan = operationsArtifactCollectionPlan.value || {}
   return [
     plan.invocationResult && `invocation=${plan.invocationResult}`,
+    plan.sourceSummary && `summary=${plan.sourceSummary}`,
+    formatOperationsSourceCounts(plan),
     plan.invocationSummary && `summary=${plan.invocationSummary}`,
     plan.sourceInvocationReport && `source=${plan.sourceInvocationReport}`,
   ].filter(Boolean).join(' / ')
 })
 
+
+const operationsArtifactCollectionPlanActionOrderSummary = computed(() => {
+  const orders = operationsArtifactCollectionPlan.value?.selectedActionOrders
+  return Array.isArray(orders) && orders.length > 0 ? formatEvidenceHandoffActionOrders(orders) : ''
+})
 const operationsReadinessArtifactImport = computed(() => (
   props.dashboardReadiness.operationsReadinessArtifactImport || {}
 ))
@@ -3694,9 +4673,25 @@ const operationsEvidenceHandoffNextStep = computed(() => (
   operationsEvidenceHandoff.value?.nextStep || {}
 ))
 
+const operationsEvidenceHandoffCurrentBottleneck = computed(() => (
+  operationsEvidenceHandoff.value?.currentBottleneck || operationsEvidenceHandoffNextStep.value || {}
+))
+
+const operationsEvidenceHandoffNextStepDispatchUrls = computed(() => {
+  const urls = operationsEvidenceHandoffNextStep.value?.dispatchUrls
+  return Array.isArray(urls) ? urls.filter(Boolean) : []
+})
+
 const operationsEvidenceHandoffStages = computed(() => {
   const stages = operationsEvidenceHandoff.value?.stages
   return Array.isArray(stages) ? stages : []
+})
+
+const operationsEvidenceHandoffPostDispatchCommands = computed(() => {
+  const commands = operationsEvidenceHandoff.value?.postDispatchCommands
+  return Array.isArray(commands)
+    ? commands.filter((command) => command && (command.name || command.command || command.note))
+    : []
 })
 
 const operationsEvidenceHandoffDispatchWorkflows = computed(() => {
@@ -3708,22 +4703,67 @@ const operationsEvidenceHandoffDispatchWorkflows = computed(() => {
     ...blocked.map((workflow) => ({ ...workflow, dispatchState: 'blocked' })),
   ]
 })
+const operationsEvidenceHandoffBrowserDispatchChecklist = computed(() => {
+  const checklist = operationsEvidenceHandoff.value?.browserDispatchChecklist
+  return Array.isArray(checklist)
+    ? checklist.filter((item) => item && (item.dispatchUrl || item.runsUrl || item.runIdParameter || item.manualArtifactCollectionCommand))
+    : []
+})
+
+const operationsEvidenceHandoffSecurityFinalizerHints = computed(() => {
+  const hints = operationsEvidenceHandoff.value?.securityEvidenceFinalizerRunIdInputHints
+  return Array.isArray(hints) ? hints : []
+})
+
+const operationsEvidenceHandoffSecurityFinalizerHintSummary = computed(() => (
+  formatSecurityFinalizerRunIdHintSummary(operationsEvidenceHandoffSecurityFinalizerHints.value)
+))
+
+const operationsEvidenceHandoffReadinessSummary = computed(() => {
+  const handoff = operationsEvidenceHandoff.value || {}
+  const summary = handoff.readinessSummary || ''
+  const counts = formatOperationsReadinessCounts(handoff)
+  if (!summary && !counts) return ''
+  return `Readiness ${summary || 'summary unavailable'}${counts ? ` / ${counts}` : ''}`
+})
+
+const operationsEvidenceHandoffScopeSummary = computed(() => {
+  const handoff = operationsEvidenceHandoff.value || {}
+  const invocationOrders = Array.isArray(handoff.invocationSelectedActionOrders) ? handoff.invocationSelectedActionOrders : []
+  const dispatchOrders = Array.isArray(handoff.dispatchPreflightSelectedActionOrders) ? handoff.dispatchPreflightSelectedActionOrders : []
+  const runIdOrders = Array.isArray(handoff.workflowRunIdPlanActionOrders) ? handoff.workflowRunIdPlanActionOrders : []
+  const artifactOrders = Array.isArray(handoff.artifactCollectionActionOrders) ? handoff.artifactCollectionActionOrders : []
+  const hasDownstreamFreshness = handoff.workflowRunIdPlanStale || handoff.workflowRunIdPlanScopeMismatch || handoff.artifactCollectionStale || handoff.artifactCollectionScopeMismatch
+  if (!handoff.dispatchPreflightScopeMismatch && !hasDownstreamFreshness && invocationOrders.length === 0 && dispatchOrders.length === 0 && runIdOrders.length === 0 && artifactOrders.length === 0) {
+    return ''
+  }
+  const invocation = formatEvidenceHandoffActionOrders(invocationOrders)
+  const dispatch = formatEvidenceHandoffActionOrders(dispatchOrders)
+  const runIds = formatEvidenceHandoffActionOrders(runIdOrders)
+  const artifacts = formatEvidenceHandoffActionOrders(artifactOrders)
+  const mismatch = handoff.dispatchPreflightScopeMismatch ? 'yes' : 'no'
+  const runIdFreshness = `${handoff.workflowRunIdPlanStale ? 'stale' : 'fresh'}, mismatch ${handoff.workflowRunIdPlanScopeMismatch ? 'yes' : 'no'}`
+  const artifactFreshness = `${handoff.artifactCollectionStale ? 'stale' : 'fresh'}, mismatch ${handoff.artifactCollectionScopeMismatch ? 'yes' : 'no'}`
+  return `Selected actions invocation ${invocation} / dispatch preflight ${dispatch} / scope mismatch ${mismatch} / run ids ${runIds} (${runIdFreshness}) / artifacts ${artifacts} (${artifactFreshness})`
+})
 
 const operationsEvidenceHandoffDispatchSummary = computed(() => {
   const handoff = operationsEvidenceHandoff.value || {}
   const readyOrders = Array.isArray(handoff.readyDispatchActionOrders) ? handoff.readyDispatchActionOrders : []
   const blockedOrders = Array.isArray(handoff.blockedDispatchActionOrders) ? handoff.blockedDispatchActionOrders : []
   const readyWorkflows = Array.isArray(handoff.readyDispatchWorkflows) ? handoff.readyDispatchWorkflows : []
+  const repository = handoff.dispatchGithubRepository || ''
   if (!handoff.dispatchPreflightResult && readyOrders.length === 0 && blockedOrders.length === 0 && readyWorkflows.length === 0) {
     return ''
   }
   const ready = readyOrders.length > 0 ? readyOrders.join(', ') : 'none'
   const blocked = blockedOrders.length > 0 ? blockedOrders.slice(0, 8).join(', ') : 'none'
   const blockedSuffix = blockedOrders.length > 8 ? ', ...' : ''
+  const repositorySummary = repository ? ` / repo ${repository}` : ''
   const workflowSummary = readyWorkflows.length > 0
     ? ` / ready workflows ${readyWorkflows.slice(0, 3).map((workflow) => workflow.workflow || workflow.name).filter(Boolean).join(', ')}`
     : ''
-  return `Dispatch preflight ${handoff.dispatchPreflightResult || 'unknown'} / ready actions ${ready} / blocked actions ${blocked}${blockedSuffix}${workflowSummary}`
+  return `Dispatch preflight ${handoff.dispatchPreflightResult || 'unknown'} / ready actions ${ready} / blocked actions ${blocked}${blockedSuffix}${repositorySummary}${workflowSummary}`
 })
 
 const operationsHandoffPackage = computed(() => (
@@ -3754,8 +4794,16 @@ const operationsHandoffPackageDataFlowStoragePlanSnapshot = computed(() => (
   operationsHandoffPackage.value?.dataFlowStoragePlanSnapshot || {}
 ))
 
+const operationsHandoffPackageDataFlowStoragePlanCandidateDecision = computed(() => (
+  operationsHandoffPackageDataFlowStoragePlanSnapshot.value?.candidateDecision || {}
+))
+
 const operationsHandoffPackageDataFlowQueryPlanSnapshot = computed(() => (
   operationsHandoffPackageDataFlowStoragePlanSnapshot.value?.queryPlanEvidence || {}
+))
+
+const operationsHandoffPackageDataFlowQueryRetentionBudgetSnapshot = computed(() => (
+  operationsHandoffPackage.value?.dataFlowQueryRetentionBudgetSnapshot || {}
 ))
 
 const operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot = computed(() => (
@@ -3796,6 +4844,30 @@ const operationsHandoffPackageEnterpriseAuthJitRollbackConfirmations = computed(
 
 const operationsHandoffPackageMonitoringThresholdSnapshot = computed(() => (
   operationsHandoffPackage.value?.monitoringThresholdSnapshot || {}
+))
+
+const operationsHandoffPackageClusterNetworkAccessReviewSnapshot = computed(() => (
+  operationsHandoffPackage.value?.clusterNetworkAccessReviewSnapshot || {}
+))
+
+const operationsHandoffPackageClusterNetworkAccessReviewStaticSummary = computed(() => (
+  summarizeReadinessObject(operationsHandoffPackageClusterNetworkAccessReviewSnapshot.value?.staticSnapshot, 8)
+))
+
+const operationsHandoffPackageClusterNetworkAccessReviewConfirmationSummary = computed(() => (
+  summarizeReadinessObject(operationsHandoffPackageClusterNetworkAccessReviewSnapshot.value?.confirmations, 8, true)
+))
+
+const operationsHandoffPackageHelmValuesHardeningSnapshot = computed(() => (
+  operationsHandoffPackage.value?.helmValuesHardeningSnapshot || {}
+))
+
+const operationsHandoffPackageHelmValuesHardeningStaticSummary = computed(() => (
+  summarizeReadinessObject(operationsHandoffPackageHelmValuesHardeningSnapshot.value?.staticSnapshot, 8)
+))
+
+const operationsHandoffPackageHelmValuesHardeningConfirmationSummary = computed(() => (
+  summarizeReadinessObject(operationsHandoffPackageHelmValuesHardeningSnapshot.value?.confirmations, 8, true)
 ))
 
 const operationsHandoffPackageEnterpriseAuthSmokeScopeOutSummary = computed(() => {
@@ -4217,6 +5289,10 @@ const dataFlowStoragePlan = computed(() => (
   props.dashboardReadiness.dataFlowStoragePlan || {}
 ))
 
+const dataFlowStoragePlanCandidateDecision = computed(() => (
+  dataFlowStoragePlan.value?.candidateDecision || {}
+))
+
 const dataFlowQueryPlanEvidence = computed(() => (
   dataFlowStoragePlan.value?.queryPlanEvidence || {}
 ))
@@ -4228,6 +5304,33 @@ const dataFlowQueryPlanFailedChecks = computed(() => {
 
 const dataFlowStoragePlanChecks = computed(() => {
   const checks = dataFlowStoragePlan.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const dataFlowQueryRetentionBudget = computed(() => (
+  props.dashboardReadiness.dataFlowQueryRetentionBudget || {}
+))
+
+const dataFlowQueryRetentionBudgetObservedMaxSeconds = computed(() => Math.max(
+  dataFlowQueryRetentionBudget.value?.detailedRetentionObservedSeconds || 0,
+  dataFlowQueryRetentionBudget.value?.dailyRollupRetentionObservedSeconds || 0,
+  dataFlowQueryRetentionBudget.value?.monthlyRollupRetentionObservedSeconds || 0,
+))
+
+const dataFlowQueryRetentionBudgetConfirmationSummary = computed(() => {
+  const confirmations = dataFlowQueryRetentionBudget.value?.confirmations
+  if (!confirmations || typeof confirmations !== 'object') {
+    return ''
+  }
+  return Object.entries(confirmations)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 8)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
+    .join(' / ')
+})
+
+const dataFlowQueryRetentionBudgetChecks = computed(() => {
+  const checks = dataFlowQueryRetentionBudget.value?.topFailedChecks
   return Array.isArray(checks) ? checks : []
 })
 
@@ -4311,6 +5414,128 @@ const monitoringThresholdEvidenceChecks = computed(() => {
   return Array.isArray(checks) ? checks : []
 })
 
+function summarizeReadinessObject(values, limit = 6, booleanLabels = false) {
+  if (!values || typeof values !== 'object') {
+    return ''
+  }
+  return Object.entries(values)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .slice(0, limit)
+    .map(([key, value]) => {
+      if (booleanLabels && typeof value === 'boolean') {
+        return `${key}=${value ? 'yes' : 'no'}`
+      }
+      return `${key}=${value}`
+    })
+    .join(' / ')
+}
+
+const clusterNetworkAccessReviewEvidence = computed(() => (
+  props.dashboardReadiness.clusterNetworkAccessReviewEvidence || {}
+))
+
+const clusterNetworkAccessReviewWindowSummary = computed(() => (
+  summarizeReadinessObject(clusterNetworkAccessReviewEvidence.value?.reviewWindow, 5)
+))
+
+const clusterNetworkAccessReviewEvidenceRefSummary = computed(() => (
+  summarizeReadinessObject(clusterNetworkAccessReviewEvidence.value?.evidence, 7)
+))
+
+const clusterNetworkAccessReviewStaticSummary = computed(() => (
+  summarizeReadinessObject(clusterNetworkAccessReviewEvidence.value?.staticSnapshot, 8)
+))
+
+const clusterNetworkAccessReviewConfirmationSummary = computed(() => (
+  summarizeReadinessObject(clusterNetworkAccessReviewEvidence.value?.confirmations, 8, true)
+))
+
+const clusterNetworkAccessReviewChecks = computed(() => {
+  const checks = clusterNetworkAccessReviewEvidence.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const helmValuesHardeningEvidence = computed(() => (
+  props.dashboardReadiness.helmValuesHardeningEvidence || {}
+))
+
+const helmValuesHardeningWindowSummary = computed(() => (
+  summarizeReadinessObject(helmValuesHardeningEvidence.value?.reviewWindow, 5)
+))
+
+const helmValuesHardeningEvidenceRefSummary = computed(() => (
+  summarizeReadinessObject(helmValuesHardeningEvidence.value?.evidence, 6)
+))
+
+const helmValuesHardeningStaticSummary = computed(() => (
+  summarizeReadinessObject(helmValuesHardeningEvidence.value?.staticSnapshot, 8)
+))
+
+const helmValuesHardeningConfirmationSummary = computed(() => (
+  summarizeReadinessObject(helmValuesHardeningEvidence.value?.confirmations, 8, true)
+))
+
+const helmValuesHardeningChecks = computed(() => {
+  const checks = helmValuesHardeningEvidence.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+const supportEscalationHandoffEvidence = computed(() => (
+  props.dashboardReadiness.supportEscalationHandoffEvidence || {}
+))
+
+const supportEscalationHandoffReviewWindowSummary = computed(() => {
+  const reviewWindow = supportEscalationHandoffEvidence.value?.reviewWindow
+  if (!reviewWindow || typeof reviewWindow !== 'object') {
+    return ''
+  }
+  return Object.entries(reviewWindow)
+    .filter(([, value]) => value)
+    .slice(0, 5)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const supportEscalationHandoffEvidenceRefSummary = computed(() => {
+  const refs = supportEscalationHandoffEvidence.value?.evidence
+  if (!refs || typeof refs !== 'object') {
+    return ''
+  }
+  return Object.entries(refs)
+    .filter(([, value]) => value)
+    .slice(0, 6)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const supportEscalationHandoffDocumentSummary = computed(() => {
+  const docs = supportEscalationHandoffEvidence.value?.documentSnapshot
+  if (!docs || typeof docs !== 'object') {
+    return ''
+  }
+  return Object.entries(docs)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 7)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
+    .join(' / ')
+})
+
+const supportEscalationHandoffConfirmationSummary = computed(() => {
+  const confirmations = supportEscalationHandoffEvidence.value?.confirmations
+  if (!confirmations || typeof confirmations !== 'object') {
+    return ''
+  }
+  return Object.entries(confirmations)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 8)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
+    .join(' / ')
+})
+
+const supportEscalationHandoffChecks = computed(() => {
+  const checks = supportEscalationHandoffEvidence.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
 const minioBucketCorsVerification = computed(() => (
   props.dashboardReadiness.minioBucketCorsVerification || {}
 ))
@@ -4352,10 +5577,70 @@ const operationsReadinessConvergenceBottleneck = computed(() => (
   operationsReadinessConvergence.value?.currentBottleneck || {}
 ))
 
-const operationsReadinessConvergenceCommands = computed(() => {
-  const commands = operationsReadinessConvergence.value?.recommendedCommands
-  return Array.isArray(commands) ? commands : []
+const operationsReadinessConvergenceBottleneckDispatchUrls = computed(() => (
+  convergenceCommandDispatchUrls(operationsReadinessConvergenceBottleneck.value)
+))
+
+const operationsReadinessConvergenceDependencyNotes = computed(() => {
+  const notes = Array.isArray(operationsReadinessConvergence.value?.handoffBrowserDispatchDependencyNotes)
+    ? operationsReadinessConvergence.value.handoffBrowserDispatchDependencyNotes
+    : []
+  const bottleneckNote = operationsReadinessConvergenceBottleneck.value?.note || ''
+  return notes
+    .filter((note) => typeof note === 'string' && note.trim())
+    .filter((note) => !bottleneckNote.includes(note))
 })
+
+const operationsReadinessConvergenceSecurityFinalizerHintSummary = computed(() => (
+  formatSecurityFinalizerRunIdHintSummary(operationsReadinessConvergence.value?.handoffSecurityEvidenceFinalizerRunIdInputHints)
+))
+
+const operationsReadinessConvergenceReadinessSummary = computed(() => {
+  const convergence = operationsReadinessConvergence.value || {}
+  const summary = convergence.readinessSummary || ''
+  const counts = formatOperationsReadinessCounts(convergence)
+  if (!summary && !counts) return ''
+  return `Readiness ${summary || 'summary unavailable'}${counts ? ` / ${counts}` : ''}`
+})
+
+const operationsReadinessConvergenceHandoffFreshness = computed(() => {
+  const convergence = operationsReadinessConvergence.value || {}
+  if (!convergence.handoffStale && !convergence.handoffTimestamp && !convergence.readinessTimestamp) {
+    return ''
+  }
+  const status = convergence.handoffStale ? 'stale' : 'current'
+  const handoff = convergence.handoffTimestamp || 'unknown'
+  const readiness = convergence.readinessTimestamp || 'unknown'
+  return `Handoff freshness ${status} / handoff ${handoff} / readiness ${readiness}`
+})
+
+const operationsReadinessConvergenceCommands = computed(() => {
+  const commands = Array.isArray(operationsReadinessConvergence.value?.recommendedCommands)
+    ? operationsReadinessConvergence.value.recommendedCommands
+    : []
+  const postDispatchCommands = Array.isArray(operationsReadinessConvergence.value?.handoffPostDispatchCommands)
+    ? operationsReadinessConvergence.value.handoffPostDispatchCommands
+    : []
+  const baseCount = commands.length
+  const normalizedPostDispatchCommands = postDispatchCommands
+    .filter((command) => command && (command.name || command.command || command.note))
+    .map((command, index) => ({
+      order: baseCount + index + 1,
+      name: `Post-dispatch: ${command.name || 'Handoff command'}`,
+      command: command.command || '',
+      reason: 'Continue after browser dispatch and workflow run id collection.',
+      note: command.note || '',
+      dispatchUrls: [],
+    }))
+  return [...commands, ...normalizedPostDispatchCommands]
+})
+
+function convergenceCommandDispatchUrls(command) {
+  const urls = command?.dispatchUrls
+  return Array.isArray(urls)
+    ? urls.filter((url) => typeof url === 'string' && url.trim().length > 0)
+    : []
+}
 
 const kubernetesOperationsReportSync = computed(() => (
   props.dashboardReadiness.kubernetesOperationsReportSync || {}
@@ -4377,7 +5662,7 @@ function hasReadinessRemediation(item) {
 }
 
 function evidencePlanActionCommand(action) {
-  return action?.recommendedCommand || action?.workflowCommand || action?.localCommand || ''
+  return action?.recommendedCommand || action?.workflowCommand || action?.localCommand || action?.command || ''
 }
 
 function formatEvidencePlanActionMeta(action) {
@@ -4386,7 +5671,8 @@ function formatEvidencePlanActionMeta(action) {
     : 'inputs none'
   const approval = action?.requiresOperatorApproval ? 'approval required' : 'approval not flagged'
   const kubeconfig = action?.requiresKubeconfigSecret ? 'kubeconfig required' : 'kubeconfig not detected'
-  return `${action?.category || 'operations'} / ${inputs} / ${approval} / ${kubeconfig}`
+  const detail = action?.currentDetail ? ' / ' + action.currentDetail : ''
+  return [action?.category || 'operations', inputs, approval, kubeconfig].join(' / ') + detail
 }
 
 function formatEvidenceInvocationActionMeta(action) {
@@ -4508,7 +5794,8 @@ function formatDispatchPreflightTemplateMeta(template) {
   const missingParameters = Array.isArray(template?.missingInputParameters) && template.missingInputParameters.length > 0
     ? `missing ${template.missingInputParameters.join(', ')}`
     : 'missing none'
-  return `${workflow} / ${ready} / ${missing} missing inputs / ${unsafe} unsafe / ${invalid} invalid / ${ambiguous} ambiguous / ${missingParameters} / ${workflowInputSummary} / ${secrets} / ${checklist}`
+  const dispatch = template?.dispatchUrl ? `dispatch ${template.dispatchUrl}` : 'dispatch URL none'
+  return `${workflow} / ${ready} / ${missing} missing inputs / ${unsafe} unsafe / ${invalid} invalid / ${ambiguous} ambiguous / ${missingParameters} / ${workflowInputSummary} / ${secrets} / ${checklist} / ${dispatch}`
 }
 
 function formatDispatchPreflightWorkflowMeta(workflow) {
@@ -4516,7 +5803,8 @@ function formatDispatchPreflightWorkflowMeta(workflow) {
     ? `secrets ${workflow.requiredSecrets.join(', ')}`
     : 'secrets none'
   const action = workflow?.actionOrder ? `action ${workflow.actionOrder}` : 'action unknown'
-  return `${action} / ${secrets}`
+  const dispatch = workflow?.dispatchUrl ? `dispatch ${workflow.dispatchUrl}` : 'dispatch URL none'
+  return `${action} / ${secrets} / ${dispatch}`
 }
 
 function formatWorkflowRunIdMeta(workflow) {
@@ -4538,6 +5826,14 @@ function formatArtifactCollectionMeta(artifact) {
   const runId = artifact?.runId ? `run ${artifact.runId}` : 'run id missing'
   const workflow = artifact?.workflow || 'workflow unknown'
   return `${workflow} / ${required} / ${runId}`
+}
+
+function formatArtifactCollectionSecurityInputMeta(input) {
+  const workflow = input?.workflow || 'workflow unknown'
+  const parameter = input?.runIdParameter ? `input ${input.runIdParameter}` : 'input unknown'
+  const runId = input?.runId ? `run ${input.runId}` : 'run id missing'
+  const source = input?.sourceArtifactSelected ? 'source selected' : 'source not selected'
+  return `${workflow} / ${parameter} / ${runId} / ${source}`
 }
 
 function formatArtifactImportEntryMeta(entry) {
@@ -4576,7 +5872,16 @@ function formatEvidenceHandoffStageState(stage) {
 function formatEvidenceHandoffStageMeta(stage) {
   const summary = stage?.summary || 'summary unavailable'
   const result = stage?.result || 'unknown'
-  return `${result} / ${summary}`
+  const note = stage?.note ? ` / ${stage.note}` : ''
+  return `${result} / ${summary}${note}`
+}
+
+function formatEvidenceHandoffActionOrders(orders) {
+  if (!Array.isArray(orders) || orders.length === 0) {
+    return 'none'
+  }
+  const suffix = orders.length > 8 ? ', ...' : ''
+  return `${orders.slice(0, 8).join(', ')}${suffix}`
 }
 
 function formatEvidenceHandoffDispatchWorkflowMeta(workflow) {
@@ -4587,10 +5892,24 @@ function formatEvidenceHandoffDispatchWorkflowMeta(workflow) {
   const workflowInputs = Array.isArray(workflow?.workflowInputNames) && workflow.workflowInputNames.length > 0
     ? workflow.workflowInputNames.slice(0, 4).join(', ')
     : 'none'
+  const dispatchUrl = workflow?.dispatchUrl || 'none'
   const secrets = Array.isArray(workflow?.requiredSecrets) && workflow.requiredSecrets.length > 0
     ? workflow.requiredSecrets.slice(0, 3).join(', ')
     : 'none'
-  return `${name} / missing ${inputs} / unsafe ${unsafe} / invalid ${invalid} / inputs ${workflowInputs} / secrets ${secrets}`
+  return `${name} / missing ${inputs} / unsafe ${unsafe} / invalid ${invalid} / inputs ${workflowInputs} / secrets ${secrets} / dispatchUrl ${dispatchUrl}`
+}
+function formatEvidenceHandoffBrowserChecklistMeta(item) {
+  const runId = item?.runIdParameter || 'run id parameter unknown'
+  const artifact = item?.artifactName || 'artifact name pending'
+  const runList = item?.runListJsonPath || 'run-list JSON path pending'
+  const steps = Array.isArray(item?.steps) ? item.steps.length : 0
+  const inputs = Array.isArray(item?.workflowInputNames) && item.workflowInputNames.length > 0
+    ? item.workflowInputNames.slice(0, 4).join(', ')
+    : 'none'
+  const finalizerMissing = Array.isArray(item?.securityFinalizerMissingRunIdInputs) && item.securityFinalizerMissingRunIdInputs.length > 0
+    ? ` / security finalizer missing ${item.securityFinalizerMissingRunIdInputs.slice(0, 4).join(', ')}`
+    : ''
+  return `${runId} / ${artifact} / ${runList} / inputs ${inputs} / ${steps} steps${finalizerMissing}`
 }
 
 function formatKubernetesReportSyncCheckMeta(check) {

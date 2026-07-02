@@ -46,7 +46,7 @@ jobs:
 
       - name: Finalize durable MVP demo
         shell: pwsh
-        run: ./scripts/finalize-durable-mvp-demo.ps1 -EnvFile ./infra/local/.env -EnvExample ./infra/local/.env.example -ComposeFile ./infra/local/docker-compose.yml -S3Client docker-mc
+        run: ./scripts/finalize-durable-mvp-demo.ps1 -EnvFile ./infra/local/.env -EnvExample ./infra/local/.env.example -ComposeFile ./infra/local/docker-compose.yml -S3Client docker-mc -EnableRealMultipartEvidence
 
       - name: Docker Compose logs
         if: failure()
@@ -70,6 +70,8 @@ jobs:
             .osmu-run/latest-durable-demo-preflight.md
             .osmu-run/latest-durable-mvp-finalize.json
             .osmu-run/latest-durable-mvp-finalize.md
+            .osmu-run/latest-browser-multipart-resume-evidence.json
+            .osmu-run/latest-browser-multipart-resume-evidence.md
             .osmu-run/latest-demo-readiness.json
             .osmu-run/latest-release.json
             .osmu-run/latest-mvp-audit.md

@@ -10,6 +10,11 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Assert-True([bool] $Condition, [string] $Message) { if (-not $Condition) { throw $Message } }
 function Assert-Contains([string] $Text, [string] $Expected, [string] $Label) { if (-not $Text.Contains($Expected)) { throw "$Label does not contain expected text: $Expected" } }
 function Assert-NotContains([string] $Text, [string] $Unexpected, [string] $Label) { if ($Text.Contains($Unexpected)) { throw "$Label contains unexpected secret/raw text: $Unexpected" } }
@@ -27,14 +32,18 @@ $plannedJsonPath = Join-Path $resolvedOutputDirectory "planned.json"
 $plannedMarkdownPath = Join-Path $resolvedOutputDirectory "planned.md"
 $passedJsonPath = Join-Path $resolvedOutputDirectory "passed.json"
 $passedMarkdownPath = Join-Path $resolvedOutputDirectory "passed.md"
+$missingConfirmationJsonPath = Join-Path $resolvedOutputDirectory "missing-confirmation.json"
+$missingConfirmationMarkdownPath = Join-Path $resolvedOutputDirectory "missing-confirmation.md"
+$invalidWindowJsonPath = Join-Path $resolvedOutputDirectory "invalid-window.json"
+$invalidWindowMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-window.md"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -JsonOutputPath $plannedJsonPath `
     -MarkdownOutputPath $plannedMarkdownPath | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "planned write-cluster-network-access-review-evidence.ps1 failed with exit code $LASTEXITCODE." }
 
-$plannedReport = Get-Content -Raw -LiteralPath $plannedJsonPath | ConvertFrom-Json
-$plannedMarkdown = Get-Content -Raw -LiteralPath $plannedMarkdownPath
+$plannedReport = Read-Utf8Text $plannedJsonPath | ConvertFrom-Json
+$plannedMarkdown = Read-Utf8Text $plannedMarkdownPath
 Assert-True ($plannedReport.formatVersion -eq "osmu.cluster-network-access-review-evidence.v1") "Unexpected cluster network evidence formatVersion."
 Assert-True ($plannedReport.result -eq "planned") "Default cluster network evidence should be planned."
 Assert-True ($plannedReport.summary.failureCount -gt 0) "Planned cluster network evidence should include missing checks."
@@ -75,8 +84,8 @@ Assert-Contains $plannedMarkdown "Cluster Network Access Review Evidence" "plann
     -FailIfNotPassed | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "passed write-cluster-network-access-review-evidence.ps1 failed with exit code $LASTEXITCODE." }
 
-$reportText = Get-Content -Raw -LiteralPath $passedJsonPath
-$markdown = Get-Content -Raw -LiteralPath $passedMarkdownPath
+$reportText = Read-Utf8Text $passedJsonPath
+$markdown = Read-Utf8Text $passedMarkdownPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 Assert-True ($report.result -eq "passed") "Expected result=passed."
@@ -124,12 +133,15 @@ try {
         -ConfirmNamespaceDefaultDenyReviewed `
         -ConfirmObservabilityScrapeReviewed `
         -ConfirmHelmNetworkPolicyEnabled `
+        -JsonOutputPath $missingConfirmationJsonPath `
+        -MarkdownOutputPath $missingConfirmationMarkdownPath `
         -FailIfNotPassed 2>&1
     $missingConfirmationExitCode = $LASTEXITCODE
 }
 finally { $ErrorActionPreference = $previousErrorActionPreference }
 Assert-True ($missingConfirmationExitCode -ne 0) "Missing no-credential confirmation should fail."
 Assert-Contains ($missingConfirmationOutput | Out-String) "Cluster network access review evidence did not pass" "missing confirmation output"
+Assert-True (Test-Path -LiteralPath $missingConfirmationJsonPath) "Missing-confirmation JSON should stay isolated under the self-test output directory."
 
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
@@ -170,11 +182,15 @@ try {
         -ConfirmObservabilityScrapeReviewed `
         -ConfirmHelmNetworkPolicyEnabled `
         -ConfirmNoCredentialValues `
+        -JsonOutputPath $invalidWindowJsonPath `
+        -MarkdownOutputPath $invalidWindowMarkdownPath `
         -FailIfNotPassed 2>&1
     $invalidWindowExitCode = $LASTEXITCODE
 }
 finally { $ErrorActionPreference = $previousErrorActionPreference }
 Assert-True ($invalidWindowExitCode -ne 0) "Invalid review window should be rejected."
 Assert-Contains ($invalidWindowOutput | Out-String) "review-window-order" "invalid window output"
+Assert-True (Test-Path -LiteralPath $invalidWindowJsonPath) "Invalid-window JSON should stay isolated under the self-test output directory."
 
 Write-Host "Cluster network access review evidence verification passed: $passedJsonPath"
+exit 0

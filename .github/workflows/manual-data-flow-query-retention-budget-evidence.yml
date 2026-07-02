@@ -1,0 +1,211 @@
+name: Manual Data-flow Query Retention Budget Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      review_started_at:
+        description: Query and retention budget review start timestamp
+        required: true
+        default: ""
+      review_completed_at:
+        description: Query and retention budget review completion timestamp
+        required: true
+        default: ""
+      data_flow_storage_plan_json_base64:
+        description: Base64 latest-data-flow-storage-plan.json snapshot. Must be sanitized and result=passed.
+        required: true
+        default: ""
+      query_latency_evidence_ref:
+        description: External target query latency benchmark evidence reference
+        required: true
+        default: ""
+      retention_budget_evidence_ref:
+        description: External detailed/daily/monthly retention dry-run evidence reference
+        required: true
+        default: ""
+      evidence_ref:
+        description: External query/retention budget evidence reference
+        required: true
+        default: ""
+      observed_p95_query_latency_ms:
+        description: Observed target p95 query latency in milliseconds
+        required: true
+        default: "0"
+      observed_p99_query_latency_ms:
+        description: Observed target p99 query latency in milliseconds
+        required: true
+        default: "0"
+      query_sample_count:
+        description: Query benchmark sample count
+        required: true
+        default: "0"
+      observed_query_window_days:
+        description: Query benchmark observed window in days
+        required: true
+        default: "0"
+      retention_job_budget_seconds:
+        description: Shared retention job duration budget in seconds
+        required: true
+        default: "0"
+      detailed_retention_observed_seconds:
+        description: Detailed event retention job observed duration in seconds
+        required: true
+        default: "0"
+      daily_rollup_retention_observed_seconds:
+        description: Daily rollup retention job observed duration in seconds
+        required: true
+        default: "0"
+      monthly_rollup_retention_observed_seconds:
+        description: Monthly rollup retention job observed duration in seconds
+        required: true
+        default: "0"
+      detailed_retention_deleted_rows:
+        description: Detailed event retention deleted row count
+        required: true
+        default: "0"
+      daily_rollup_retention_deleted_rows:
+        description: Daily rollup retention deleted row count
+        required: true
+        default: "0"
+      monthly_rollup_retention_deleted_rows:
+        description: Monthly rollup retention deleted row count
+        required: true
+        default: "0"
+      confirm_query_latency_reviewed:
+        description: Confirm query latency benchmark reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_retention_jobs_within_budget:
+        description: Confirm retention jobs completed within budget
+        required: true
+        type: boolean
+        default: false
+      confirm_no_object_keys_in_evidence:
+        description: Confirm evidence excludes object keys and raw event messages
+        required: true
+        type: boolean
+        default: false
+      confirm_no_raw_sql_or_explain:
+        description: Confirm evidence excludes raw SQL and raw EXPLAIN
+        required: true
+        type: boolean
+        default: false
+      confirm_no_secret_values:
+        description: Confirm no secret values are stored
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-data-flow-query-retention-budget-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  data-flow-query-retention-budget-evidence:
+    name: Manual data-flow query retention budget evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Record data-flow query retention budget evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_REVIEW_STARTED_AT: ${{ inputs.review_started_at }}
+          OSMU_REVIEW_COMPLETED_AT: ${{ inputs.review_completed_at }}
+          OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64: ${{ inputs.data_flow_storage_plan_json_base64 }}
+          OSMU_QUERY_LATENCY_EVIDENCE_REF: ${{ inputs.query_latency_evidence_ref }}
+          OSMU_RETENTION_BUDGET_EVIDENCE_REF: ${{ inputs.retention_budget_evidence_ref }}
+          OSMU_EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          OSMU_OBSERVED_P95_QUERY_LATENCY_MS: ${{ inputs.observed_p95_query_latency_ms }}
+          OSMU_OBSERVED_P99_QUERY_LATENCY_MS: ${{ inputs.observed_p99_query_latency_ms }}
+          OSMU_QUERY_SAMPLE_COUNT: ${{ inputs.query_sample_count }}
+          OSMU_OBSERVED_QUERY_WINDOW_DAYS: ${{ inputs.observed_query_window_days }}
+          OSMU_RETENTION_JOB_BUDGET_SECONDS: ${{ inputs.retention_job_budget_seconds }}
+          OSMU_DETAILED_RETENTION_OBSERVED_SECONDS: ${{ inputs.detailed_retention_observed_seconds }}
+          OSMU_DAILY_ROLLUP_RETENTION_OBSERVED_SECONDS: ${{ inputs.daily_rollup_retention_observed_seconds }}
+          OSMU_MONTHLY_ROLLUP_RETENTION_OBSERVED_SECONDS: ${{ inputs.monthly_rollup_retention_observed_seconds }}
+          OSMU_DETAILED_RETENTION_DELETED_ROWS: ${{ inputs.detailed_retention_deleted_rows }}
+          OSMU_DAILY_ROLLUP_RETENTION_DELETED_ROWS: ${{ inputs.daily_rollup_retention_deleted_rows }}
+          OSMU_MONTHLY_ROLLUP_RETENTION_DELETED_ROWS: ${{ inputs.monthly_rollup_retention_deleted_rows }}
+          OSMU_CONFIRM_QUERY_LATENCY_REVIEWED: ${{ inputs.confirm_query_latency_reviewed }}
+          OSMU_CONFIRM_RETENTION_JOBS_WITHIN_BUDGET: ${{ inputs.confirm_retention_jobs_within_budget }}
+          OSMU_CONFIRM_NO_OBJECT_KEYS_IN_EVIDENCE: ${{ inputs.confirm_no_object_keys_in_evidence }}
+          OSMU_CONFIRM_NO_RAW_SQL_OR_EXPLAIN: ${{ inputs.confirm_no_raw_sql_or_explain }}
+          OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
+        run: |
+          $planPath = ".osmu-run/latest-data-flow-storage-plan.json"
+          try {
+            New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+            [System.IO.File]::WriteAllBytes(
+              (Join-Path (Resolve-Path ".").Path $planPath),
+              [Convert]::FromBase64String($env:OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64)
+            )
+
+            $evidenceArgs = @(
+              "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+              "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+              "-Operator", $env:OSMU_OPERATOR,
+              "-ReviewStartedAt", $env:OSMU_REVIEW_STARTED_AT,
+              "-ReviewCompletedAt", $env:OSMU_REVIEW_COMPLETED_AT,
+              "-DataFlowStoragePlanJsonPath", $planPath,
+              "-QueryLatencyEvidenceRef", $env:OSMU_QUERY_LATENCY_EVIDENCE_REF,
+              "-RetentionBudgetEvidenceRef", $env:OSMU_RETENTION_BUDGET_EVIDENCE_REF,
+              "-EvidenceRef", $env:OSMU_EVIDENCE_REF,
+              "-ObservedP95QueryLatencyMs", $env:OSMU_OBSERVED_P95_QUERY_LATENCY_MS,
+              "-ObservedP99QueryLatencyMs", $env:OSMU_OBSERVED_P99_QUERY_LATENCY_MS,
+              "-QuerySampleCount", $env:OSMU_QUERY_SAMPLE_COUNT,
+              "-ObservedQueryWindowDays", $env:OSMU_OBSERVED_QUERY_WINDOW_DAYS,
+              "-RetentionJobBudgetSeconds", $env:OSMU_RETENTION_JOB_BUDGET_SECONDS,
+              "-DetailedRetentionObservedSeconds", $env:OSMU_DETAILED_RETENTION_OBSERVED_SECONDS,
+              "-DailyRollupRetentionObservedSeconds", $env:OSMU_DAILY_ROLLUP_RETENTION_OBSERVED_SECONDS,
+              "-MonthlyRollupRetentionObservedSeconds", $env:OSMU_MONTHLY_ROLLUP_RETENTION_OBSERVED_SECONDS,
+              "-DetailedRetentionDeletedRows", $env:OSMU_DETAILED_RETENTION_DELETED_ROWS,
+              "-DailyRollupRetentionDeletedRows", $env:OSMU_DAILY_ROLLUP_RETENTION_DELETED_ROWS,
+              "-MonthlyRollupRetentionDeletedRows", $env:OSMU_MONTHLY_ROLLUP_RETENTION_DELETED_ROWS,
+              "-JsonOutputPath", ".osmu-run/latest-data-flow-query-retention-budget-evidence.json",
+              "-MarkdownOutputPath", ".osmu-run/latest-data-flow-query-retention-budget-evidence.md"
+            )
+            if ($env:OSMU_CONFIRM_QUERY_LATENCY_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmQueryLatencyReviewed" }
+            if ($env:OSMU_CONFIRM_RETENTION_JOBS_WITHIN_BUDGET -eq "true") { $evidenceArgs += "-ConfirmRetentionJobsWithinBudget" }
+            if ($env:OSMU_CONFIRM_NO_OBJECT_KEYS_IN_EVIDENCE -eq "true") { $evidenceArgs += "-ConfirmNoObjectKeysInEvidence" }
+            if ($env:OSMU_CONFIRM_NO_RAW_SQL_OR_EXPLAIN -eq "true") { $evidenceArgs += "-ConfirmNoRawSqlOrExplain" }
+            if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
+            $evidenceArgs += "-FailIfNotPassed"
+
+            ./scripts/write-data-flow-query-retention-budget-evidence.ps1 @evidenceArgs
+          }
+          finally {
+            Remove-Item -LiteralPath $planPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload data-flow query retention budget evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-flow-query-retention-budget-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-data-flow-query-retention-budget-evidence.json
+            .osmu-run/latest-data-flow-query-retention-budget-evidence.md
+          if-no-files-found: error
+          retention-days: 14

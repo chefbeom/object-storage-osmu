@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -46,6 +50,7 @@ $scriptPath = Resolve-ProjectPath ".\scripts\write-operations-handoff-package.ps
 $readinessSnapshotPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness.json"
 $convergenceSnapshotPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-convergence.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
+$dataFlowQueryRetentionBudgetPath = Join-Path $resolvedOutputDirectory "latest-data-flow-query-retention-budget-evidence.json"
 $dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-transition-runbook-evidence.json"
 $secretRotationPath = Join-Path $resolvedOutputDirectory "latest-secret-rotation-evidence.json"
 $commercialIntegrationPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.json"
@@ -54,6 +59,8 @@ $chargebackCloseoutPath = Join-Path $resolvedOutputDirectory "latest-chargeback-
 $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke.json"
 $enterpriseAuthJitRollbackPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-jit-rollback-evidence.json"
 $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring-threshold-evidence.json"
+$clusterNetworkAccessReviewPath = Join-Path $resolvedOutputDirectory "latest-cluster-network-access-review-evidence.json"
+$helmValuesHardeningPath = Join-Path $resolvedOutputDirectory "latest-helm-values-hardening-evidence.json"
 
 [ordered]@{
     formatVersion = "osmu.operations-readiness.v1"
@@ -96,6 +103,18 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
         reason = "All target operations evidence is converged."
     }
     recommendedCommands = @()
+    handoffPostDispatchCommands = @(
+        [ordered]@{
+            name = "Collect workflow run ids from saved run-list JSON"
+            command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory <run-list-json-dir>"
+            note = "Use after browser dispatch when GitHub CLI is unavailable locally."
+        },
+        [ordered]@{
+            name = "Regenerate artifact collection plan after run id collection"
+            command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1 -ImageSigningVersion v0.1.0-rc.1 -CommitSha abc123"
+            note = "Use after run-id collection so artifact commands stay in scope."
+        }
+    )
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $convergenceSnapshotPath -Encoding UTF8
 
 [ordered]@{
@@ -106,6 +125,18 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     operator = "ops-self-test"
     evidenceRef = "latest-data-flow-storage-plan-passed-20260620"
     candidateStore = "MARIADB_PARTITION"
+    candidateDecision = [ordered]@{
+        candidateStore = "MARIADB_PARTITION"
+        decision = "Use MariaDB partitioned tables for long-window data-flow analytics."
+        evidenceModel = "passed-mariadb-query-plan-evidence"
+        requiresMariaDbQueryEvidence = $true
+        requiresTargetStoreEvidence = $false
+        queryPlanEvidenceRequired = $true
+        queryPlanEvidencePassed = $true
+        targetStoreEvidenceConfirmed = $true
+        safeDataPolicy = "Candidate decisions must use sanitized evidence summaries only; do not store raw SQL, raw EXPLAIN JSON, object keys, raw event messages, or secrets."
+        nextAction = "Candidate evidence is ready for transition runbook rehearsal."
+    }
     expectedPeakEventsPerDay = 100000
     expectedQueryWindowDays = 180
     targetP95QueryLatencyMs = 500
@@ -139,6 +170,71 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
         }
     )
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $dataFlowStoragePlanPath -Encoding UTF8
+
+[ordered]@{
+    formatVersion = "osmu.data-flow-query-retention-budget-evidence.v1"
+    generatedAt = "2026-06-20T02:03:00Z"
+    result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
+    evidenceRef = "latest-data-flow-query-retention-budget-passed-20260620"
+    reviewWindow = [ordered]@{
+        startedAt = "2026-06-20T01:30:00Z"
+        completedAt = "2026-06-20T02:00:00Z"
+    }
+    dataFlowStoragePlanSnapshot = [ordered]@{
+        formatVersion = "osmu.data-flow-storage-plan.v1"
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+        targetP95QueryLatencyMs = 500
+        pendingCount = 0
+        checkCount = 10
+    }
+    queryLatencyBudget = [ordered]@{
+        evidenceRef = "query-latency-benchmark-20260620"
+        targetP95QueryLatencyMs = 500
+        observedP95QueryLatencyMs = 420
+        observedP99QueryLatencyMs = 470
+        querySampleCount = 120
+        observedQueryWindowDays = 180
+        withinBudget = $true
+    }
+    retentionBudget = [ordered]@{
+        evidenceRef = "retention-dry-run-20260620"
+        budgetSeconds = 30
+        detailedRetentionObservedSeconds = 20
+        dailyRollupRetentionObservedSeconds = 18
+        monthlyRollupRetentionObservedSeconds = 12
+        detailedRetentionDeletedRows = 1000
+        dailyRollupRetentionDeletedRows = 300
+        monthlyRollupRetentionDeletedRows = 20
+        withinBudget = $true
+    }
+    confirmations = [ordered]@{
+        queryLatencyReviewed = $true
+        retentionJobsWithinBudget = $true
+        noObjectKeysInEvidence = $true
+        noRawSqlOrExplain = $true
+        noSecretValues = $true
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 8
+    }
+    checks = @(
+        [ordered]@{
+            id = "query-latency-within-budget"
+            name = "Observed p95 query latency within budget"
+            status = "PASS"
+            passed = $true
+            detail = "observedP95QueryLatencyMs=420 targetP95QueryLatencyMs=500"
+        }
+    )
+    decisionRule = "Production/B2B data-flow evidence requires p95 query latency and retention jobs within budget."
+    scopePolicy = "OSMU operations analytics aggregate evidence only."
+    secretPolicy = "Evidence stores only aggregate metrics and external references."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $dataFlowQueryRetentionBudgetPath -Encoding UTF8
 
 [ordered]@{
     formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
@@ -309,7 +405,7 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
         }
     )
     decisionRule = "Production/B2B commercial integration readiness requires result=passed."
-    scopePolicy = "This evidence covers configured webhook/Slack/EMAIL SMTP relay and payment webhook profile handoff verification without claiming native processor API support."
+    scopePolicy = "This evidence covers configured webhook/Slack/EMAIL SMTP relay and payment webhook profile handoff verification with sanitized native bridge readiness while excluding vendor-specific fixed SDK/schema processor claims."
     secretPolicy = "Evidence stores references only and does not contain webhook URLs with credentials, SMTP passwords, payment provider credentials, signing secrets, bearer tokens, private keys, raw provider responses, or customer payment data."
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $commercialIntegrationPath -Encoding UTF8
 
@@ -317,6 +413,9 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     formatVersion = "osmu.commercial-approval-evidence.v1"
     generatedAt = "2026-06-20T02:20:00Z"
     result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
     productVersion = "osmu-mvp-0.1"
     approvedBy = "commercial-board"
     approvedAt = "2026-06-20T02:15:00Z"
@@ -476,7 +575,7 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
         }
     )
     decisionRule = "Production/B2B chargeback closeout readiness requires result=passed."
-    scopePolicy = "OSMU tenant billing/chargeback closeout evidence only; it does not claim native card, bank, tax, ERP, or external payment processor implementation."
+    scopePolicy = "OSMU tenant billing/chargeback closeout evidence only; it does not claim vendor-specific fixed SDK/schema card, bank, tax, ERP, or external payment processor implementation."
     secretPolicy = "Evidence stores target labels, timestamps, references, booleans, typed counts, and reduced readiness metadata only."
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $chargebackCloseoutPath -Encoding UTF8
 
@@ -484,6 +583,9 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     formatVersion = "osmu.enterprise-auth-smoke.v1"
     generatedAt = "2026-06-20T02:25:00Z"
     result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
     executionMode = "target-smoke"
     apiBase = "http://localhost:8080/api"
     requireOidc = $true
@@ -639,6 +741,129 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     secretPolicy = "Evidence stores only references and booleans."
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $monitoringThresholdPath -Encoding UTF8
 
+[ordered]@{
+    formatVersion = "osmu.cluster-network-access-review-evidence.v1"
+    generatedAt = "2026-06-20T02:29:00Z"
+    result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operator = "ops-self-test"
+    evidence = [ordered]@{
+        changeApprovalRef = "CHG-2026-NETWORK-ACCESS-REVIEW"
+        dnsEgressReviewRef = "dns-egress-review-20260620"
+        mariaDbAccessReviewRef = "mariadb-access-review-20260620"
+        minioAccessReviewRef = "minio-access-review-20260620"
+        backupAccessReviewRef = "backup-access-review-20260620"
+        publicIngressReviewRef = "public-ingress-review-20260620"
+        defaultDenyReviewRef = "default-deny-review-20260620"
+        observabilityScrapeReviewRef = "observability-scrape-review-20260620"
+        k8sVerifierEvidenceRef = "k8s-networkpolicy-verifier-20260620"
+        helmVerifierEvidenceRef = "helm-networkpolicy-verifier-20260620"
+        evidenceRef = "cluster-network-access-review-passed-20260620"
+    }
+    staticControlSnapshot = [ordered]@{
+        requiredPolicyNamesPresent = $true
+        backendEgressScoped = $true
+        backupEgressScoped = $true
+        dnsEgressScoped = $true
+        mariaDbIngressScoped = $true
+        minioIngressScoped = $true
+        noBroadCidr = $true
+        helmNetworkPolicyEnabled = $true
+    }
+    confirmations = [ordered]@{
+        backendOnlyMariaDb = $true
+        backendOnlyMinio = $true
+        backupOnlyMariaDbMinio = $true
+        dnsEgressScoped = $true
+        mariaDbIngressBackendBackupOnly = $true
+        minioIngressBackendBackupOnly = $true
+        publicIngressLimited = $true
+        namespaceDefaultDenyReviewed = $true
+        observabilityScrapeReviewed = $true
+        helmNetworkPolicyEnabled = $true
+        noCredentialValues = $true
+    }
+    summary = [ordered]@{
+        passCount = 32
+        failureCount = 0
+        totalCount = 32
+    }
+    checks = @(
+        [ordered]@{
+            id = "networkpolicy-names-present"
+            name = "Required NetworkPolicy names are present"
+            status = "PASS"
+            passed = $true
+            detail = "Expected backend/backup egress and MariaDB/MinIO ingress policies."
+        }
+    )
+    decisionRule = "Production/B2B cluster network access review requires result=passed."
+    secretPolicy = "Evidence stores references and hashes only."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $clusterNetworkAccessReviewPath -Encoding UTF8
+
+[ordered]@{
+    formatVersion = "osmu.helm-values-hardening-evidence.v1"
+    generatedAt = "2026-06-20T02:29:30Z"
+    result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operator = "ops-self-test"
+    evidence = [ordered]@{
+        changeApprovalRef = "CHG-2026-HELM-HARDENING"
+        helmVerifierEvidenceRef = "helm-verifier-20260620"
+        kubernetesVerifierEvidenceRef = "kubernetes-verifier-20260620"
+        containerHardeningEvidenceRef = "container-hardening-review-20260620"
+        clusterNetworkAccessReviewEvidenceRef = "cluster-network-access-review-passed-20260620"
+        evidenceRef = "helm-values-hardening-passed-20260620"
+    }
+    chartSnapshot = [ordered]@{
+        chartDirectory = "infra/helm/osmu"
+        files = @(
+            [ordered]@{ relativePath = "values.yaml"; exists = $true; byteCount = 1024; sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+        )
+    }
+    staticHardeningSnapshot = [ordered]@{
+        secretsExternalized = $true
+        defaultSecretPlaceholdersPresent = $true
+        haReplicas = $true
+        resourceBounds = $true
+        securityContexts = $true
+        serviceAccountTokensDisabled = $true
+        networkPolicyEnabled = $true
+        tlsIngress = $true
+        operationsReportsReadOnly = $true
+        storageExpansionRbacDisabled = $true
+    }
+    confirmations = [ordered]@{
+        secretsExternalized = $true
+        defaultSecretPlaceholdersNotUsed = $true
+        haReplicasReviewed = $true
+        resourcesBounded = $true
+        securityContextsReviewed = $true
+        networkPolicyEnabled = $true
+        tlsIngressReviewed = $true
+        operationsReportsReadOnly = $true
+        storageExpansionRbacDisabledByDefault = $true
+        noCredentialValues = $true
+    }
+    summary = [ordered]@{
+        passCount = 31
+        failureCount = 0
+        totalCount = 31
+    }
+    checks = @(
+        [ordered]@{
+            id = "secrets-externalized"
+            name = "Secrets are externalized by default"
+            status = "PASS"
+            passed = $true
+            detail = "secrets.create remains false."
+        }
+    )
+    decisionRule = "Production/B2B Helm values hardening requires result=passed."
+    secretPolicy = "Evidence stores references and chart hashes only."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $helmValuesHardeningPath -Encoding UTF8
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -EnvironmentName "pilot-prod-self-test" `
     -TargetCluster "customer-cluster-a" `
@@ -650,10 +875,12 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -OperationsReadinessRef "latest-operations-readiness-ready-20260620" `
     -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
     -DataFlowStoragePlanEvidenceRef "latest-data-flow-storage-plan-passed-20260620" `
+    -DataFlowQueryRetentionBudgetEvidenceRef "latest-data-flow-query-retention-budget-passed-20260620" `
     -DataFlowStorageTransitionRunbookEvidenceRef "latest-data-flow-storage-transition-runbook-passed-20260620" `
     -OperationsReadinessJsonPath $readinessSnapshotPath `
     -OperationsConvergenceJsonPath $convergenceSnapshotPath `
     -DataFlowStoragePlanJsonPath $dataFlowStoragePlanPath `
+    -DataFlowQueryRetentionBudgetJsonPath $dataFlowQueryRetentionBudgetPath `
     -DataFlowStorageTransitionRunbookJsonPath $dataFlowStorageTransitionRunbookPath `
     -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
     -SecretRotationJsonPath $secretRotationPath `
@@ -671,6 +898,10 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
     -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
     -MonitoringThresholdJsonPath $monitoringThresholdPath `
+    -ClusterNetworkAccessReviewEvidenceRef "cluster-network-access-review-passed-20260620" `
+    -ClusterNetworkAccessReviewJsonPath $clusterNetworkAccessReviewPath `
+    -HelmValuesHardeningEvidenceRef "helm-values-hardening-passed-20260620" `
+    -HelmValuesHardeningJsonPath $helmValuesHardeningPath `
     -SecurityEvidenceRef "latest-security-evidence-finalize-passed-20260620" `
     -IamRbacEvidenceRef "latest-iam-rbac-finalize-passed-20260620" `
     -RunbookReviewRef "operator-runbook-review-20260620" `
@@ -688,6 +919,7 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -ConfirmOperationsReadinessSnapshotReviewed `
     -ConfirmOperationsConvergenceSnapshotReviewed `
     -ConfirmDataFlowStoragePlanReviewed `
+    -ConfirmDataFlowQueryRetentionBudgetReviewed `
     -ConfirmDataFlowStorageTransitionRunbookReviewed `
     -ConfirmSecretRotationSnapshotReviewed `
     -ConfirmCommercialIntegrationSnapshotReviewed `
@@ -696,6 +928,8 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
     -ConfirmEnterpriseAuthJitRollbackSnapshotReviewed `
     -ConfirmMonitoringThresholdReviewed `
+    -ConfirmClusterNetworkAccessReviewReviewed `
+    -ConfirmHelmValuesHardeningReviewed `
     -ConfirmNoSecretValues `
     -RequireProductionEvidence `
     -RequireOperationsSnapshotEvidence `
@@ -707,8 +941,8 @@ if ($LASTEXITCODE -ne 0) {
 Assert-True (Test-Path -LiteralPath $jsonOutputPath) "Operations handoff package JSON missing."
 Assert-True (Test-Path -LiteralPath $markdownOutputPath) "Operations handoff package markdown missing."
 
-$reportText = Get-Content -Raw -LiteralPath $jsonOutputPath
-$markdown = Get-Content -Raw -LiteralPath $markdownOutputPath
+$reportText = Read-Utf8Text $jsonOutputPath
+$markdown = Read-Utf8Text $markdownOutputPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 
@@ -716,8 +950,9 @@ Assert-True ($report.formatVersion -eq "osmu.operations-handoff-package.v1") "Un
 Assert-True ($report.result -eq "passed") "Expected result=passed."
 Assert-True ($report.summary.failureCount -eq 0) "Expected zero failed checks."
 Assert-True ($report.summary.plannedCount -eq 0) "Expected zero planned checks when production evidence is required."
-Assert-True ($checks.Count -ge 35) "Expected operations handoff package checks."
+Assert-True ($checks.Count -ge 43) "Expected operations handoff package checks."
 Assert-True (@($checks | Where-Object { $_.id -eq "handoff-window-order" -and $_.passed }).Count -eq 1) "Expected handoff window order check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "target-evidence-identity-consistent" -and $_.passed }).Count -eq 1) "Expected target evidence identity consistency check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-evidence" -and $_.passed }).Count -eq 1) "Expected commercial approval evidence check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "operations-readiness-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected operations readiness snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "operations-readiness-snapshot-ready" -and $_.passed }).Count -eq 1) "Expected operations readiness snapshot ready check to pass."
@@ -726,6 +961,10 @@ Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-eviden
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected data-flow storage plan snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected data-flow storage plan snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-reviewed" -and $_.passed }).Count -eq 1) "Expected data-flow storage plan reviewed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-query-retention-budget-evidence" -and $_.passed }).Count -eq 1) "Expected data-flow query/retention budget evidence check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-query-retention-budget-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected data-flow query/retention budget snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-query-retention-budget-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected data-flow query/retention budget snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-query-retention-budget-reviewed" -and $_.passed }).Count -eq 1) "Expected data-flow query/retention budget reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-evidence" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook evidence check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook snapshot passed check to pass."
@@ -753,6 +992,14 @@ Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-jit-rollback-
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-reviewed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold reviewed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "cluster-network-access-review-evidence" -and $_.passed }).Count -eq 1) "Expected cluster network access review evidence check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "cluster-network-access-review-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected cluster network access review snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "cluster-network-access-review-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected cluster network access review snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "cluster-network-access-review-reviewed" -and $_.passed }).Count -eq 1) "Expected cluster network access review reviewed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "helm-values-hardening-evidence" -and $_.passed }).Count -eq 1) "Expected Helm values hardening evidence check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "helm-values-hardening-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected Helm values hardening snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "helm-values-hardening-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected Helm values hardening snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "helm-values-hardening-reviewed" -and $_.passed }).Count -eq 1) "Expected Helm values hardening reviewed check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.runbookReviewed) "Expected runbook reviewed confirmation."
 Assert-True ($report.confirmations.troubleshootingReviewed) "Expected troubleshooting reviewed confirmation."
@@ -762,6 +1009,7 @@ Assert-True ($report.confirmations.knownGapsAccepted) "Expected known gaps accep
 Assert-True ($report.confirmations.operationsReadinessSnapshotReviewed) "Expected operations readiness snapshot reviewed confirmation."
 Assert-True ($report.confirmations.operationsConvergenceSnapshotReviewed) "Expected operations convergence snapshot reviewed confirmation."
 Assert-True ($report.confirmations.dataFlowStoragePlanReviewed) "Expected data-flow storage plan reviewed confirmation."
+Assert-True ($report.confirmations.dataFlowQueryRetentionBudgetReviewed) "Expected data-flow query/retention budget reviewed confirmation."
 Assert-True ($report.confirmations.dataFlowStorageTransitionRunbookReviewed) "Expected data-flow storage transition runbook reviewed confirmation."
 Assert-True ($report.confirmations.secretRotationSnapshotReviewed) "Expected secret rotation snapshot reviewed confirmation."
 Assert-True ($report.confirmations.commercialIntegrationSnapshotReviewed) "Expected commercial integration snapshot reviewed confirmation."
@@ -770,6 +1018,8 @@ Assert-True ($report.confirmations.chargebackCloseoutSnapshotReviewed) "Expected
 Assert-True ($report.confirmations.enterpriseAuthSmokeSnapshotReviewed) "Expected enterprise auth smoke snapshot reviewed confirmation."
 Assert-True ($report.confirmations.enterpriseAuthJitRollbackSnapshotReviewed) "Expected enterprise auth JIT rollback snapshot reviewed confirmation."
 Assert-True ($report.confirmations.monitoringThresholdReviewed) "Expected monitoring threshold reviewed confirmation."
+Assert-True ($report.confirmations.clusterNetworkAccessReviewReviewed) "Expected cluster network access review confirmation."
+Assert-True ($report.confirmations.helmValuesHardeningReviewed) "Expected Helm values hardening confirmation."
 Assert-True ($report.confirmations.requireProductionEvidence) "Expected production evidence requirement."
 Assert-True ($report.confirmations.requireOperationsSnapshotEvidence) "Expected operations snapshot evidence requirement."
 Assert-True ($report.operationsSnapshots.readiness.result -eq "ready") "Expected operations readiness snapshot result=ready."
@@ -778,12 +1028,24 @@ Assert-True ($report.operationsSnapshots.convergence.finalizerFailedCount -eq 0)
 Assert-True ($report.operationsSnapshots.convergence.finalizerGapCount -eq 0) "Expected convergence snapshot finalizerGapCount=0."
 Assert-True ($report.operationsSnapshots.convergence.kubernetesReportSyncReady) "Expected convergence snapshot Kubernetes report sync ready."
 Assert-True ($report.operationsSnapshots.convergence.kubernetesReportSyncSourceReportResult -eq "ready") "Expected convergence snapshot Kubernetes report sync source result=ready."
+Assert-True ($report.operationsSnapshots.convergence.handoffPostDispatchCommandCount -eq 2) "Expected convergence snapshot handoff post-dispatch command count."
+Assert-Contains $report.operationsSnapshots.convergence.handoffPostDispatchCommands[0].command "-RunListJsonDirectory <run-list-json-dir>" "operations handoff package convergence post-dispatch command"
+Assert-True ($report.summary.operationsConvergenceHandoffPostDispatchCommandCount -eq 2) "Expected summary convergence handoff post-dispatch command count."
 Assert-True ($report.summary.operationsConvergenceFinalizerFailedCount -eq 0) "Expected summary convergence finalizer failed count."
 Assert-True ($report.summary.operationsConvergenceFinalizerGapCount -eq 0) "Expected summary convergence finalizer gap count."
 Assert-True ($report.summary.operationsConvergenceKubernetesReportSyncSourceReportResult -eq "ready") "Expected summary convergence sync source report result."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.result -eq "passed") "Expected data-flow storage plan snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.targetP95QueryLatencyMs -eq 500) "Expected data-flow storage plan snapshot target p95 query latency budget."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.candidateDecision.candidateStore -eq "MARIADB_PARTITION") "Expected data-flow storage plan candidate decision store."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.candidateDecision.requiresMariaDbQueryEvidence) "Expected data-flow storage plan candidate decision to require MariaDB query evidence."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.candidateDecision.queryPlanEvidencePassed) "Expected data-flow storage plan candidate decision query-plan evidence to pass."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.queryPlanEvidence.result -eq "passed") "Expected data-flow query-plan snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowQueryRetentionBudget.result -eq "passed") "Expected data-flow query/retention budget snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowQueryRetentionBudget.observedP95QueryLatencyMs -eq 420) "Expected observed p95 query latency."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowQueryRetentionBudget.targetP95QueryLatencyMs -eq 500) "Expected target p95 query latency."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowQueryRetentionBudget.retentionBudgetSeconds -eq 30) "Expected retention budget seconds."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowQueryRetentionBudget.confirmationsValid) "Expected query/retention budget confirmations to be valid."
+Assert-True ($report.summary.dataFlowQueryRetentionBudgetSnapshotResult -eq "passed") "Expected query/retention budget summary result=passed."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.result -eq "passed") "Expected data-flow storage transition runbook snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.storagePlanResult -eq "passed") "Expected data-flow storage transition runbook storage plan result=passed."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.confirmations.backfillRehearsed) "Expected data-flow storage transition runbook backfill confirmation."
@@ -817,10 +1079,21 @@ Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.grafanaPanelCov
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.tuningEvidenceCoverageComplete) "Expected monitoring threshold tuning coverage complete."
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.thresholdMappingComplete) "Expected monitoring threshold mapping complete."
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.complete) "Expected monitoring threshold complete snapshot."
+Assert-True ($report.targetEvidenceSnapshots.clusterNetworkAccessReview.result -eq "passed") "Expected cluster network access review snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.clusterNetworkAccessReview.staticControlsValid) "Expected cluster network access review static controls valid."
+Assert-True ($report.targetEvidenceSnapshots.clusterNetworkAccessReview.confirmationsValid) "Expected cluster network access review confirmations valid."
+Assert-True ($report.targetEvidenceSnapshots.helmValuesHardening.result -eq "passed") "Expected Helm values hardening snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.helmValuesHardening.staticHardeningValid) "Expected Helm values hardening static checks valid."
+Assert-True ($report.targetEvidenceSnapshots.helmValuesHardening.confirmationsValid) "Expected Helm values hardening confirmations valid."
+Assert-True ($report.summary.clusterNetworkAccessReviewSnapshotResult -eq "passed") "Expected cluster network access review summary result=passed."
+Assert-True ($report.summary.helmValuesHardeningSnapshotResult -eq "passed") "Expected Helm values hardening summary result=passed."
 Assert-True ($report.evidenceRefs.dataFlowStoragePlan -eq "latest-data-flow-storage-plan-passed-20260620") "Expected data-flow storage plan evidence reference."
+Assert-True ($report.evidenceRefs.dataFlowQueryRetentionBudget -eq "latest-data-flow-query-retention-budget-passed-20260620") "Expected data-flow query/retention budget evidence reference."
 Assert-True ($report.evidenceRefs.dataFlowStorageTransitionRunbook -eq "latest-data-flow-storage-transition-runbook-passed-20260620") "Expected data-flow storage transition runbook evidence reference."
 Assert-True ($report.evidenceRefs.chargebackCloseout -eq "latest-chargeback-closeout-evidence-passed-20260620") "Expected chargeback closeout evidence reference."
 Assert-True ($report.evidenceRefs.enterpriseAuthJitRollback -eq "latest-enterprise-auth-jit-rollback-passed-20260620") "Expected enterprise auth JIT rollback evidence reference."
+Assert-True ($report.evidenceRefs.clusterNetworkAccessReview -eq "cluster-network-access-review-passed-20260620") "Expected cluster network access review evidence reference."
+Assert-True ($report.evidenceRefs.helmValuesHardening -eq "helm-values-hardening-passed-20260620") "Expected Helm values hardening evidence reference."
 
 Assert-Contains $markdown "# OSMU Operations Handoff Package" "operations handoff package markdown"
 Assert-Contains $markdown "Record passed target package" "operations handoff package markdown"
@@ -828,20 +1101,29 @@ Assert-Contains $markdown "Operations Snapshots" "operations handoff package mar
 Assert-Contains $markdown "Target Evidence Snapshots" "operations handoff package markdown"
 Assert-Contains $markdown "finalizerFailed=0" "operations handoff package markdown"
 Assert-Contains $markdown "sourceReportResult=ready" "operations handoff package markdown"
+Assert-Contains $markdown "handoffPostDispatchCommands=2" "operations handoff package markdown"
 Assert-Contains $markdown "targetP95QueryLatencyMs=500" "operations handoff package markdown"
+Assert-Contains $markdown "Data-flow candidate decision" "operations handoff package markdown"
+Assert-Contains $markdown "evidenceModel=passed-mariadb-query-plan-evidence" "operations handoff package markdown"
+Assert-Contains $markdown "Data-flow query/retention budget" "operations handoff package markdown"
 Assert-Contains $markdown "Data-flow storage transition runbook" "operations handoff package markdown"
 Assert-Contains $markdown "Chargeback closeout" "operations handoff package markdown"
 Assert-Contains $markdown "Enterprise auth JIT rollback" "operations handoff package markdown"
 Assert-Contains $markdown "Monitoring threshold" "operations handoff package markdown"
+Assert-Contains $markdown "Cluster network access review" "operations handoff package markdown"
+Assert-Contains $markdown "Helm values hardening" "operations handoff package markdown"
 Assert-Contains $report.decisionRule "Production/B2B operations handoff package readiness requires result=passed" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "data-flow storage transition" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "data-flow storage transition runbook" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "query/retention budget" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial approval" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial integration" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "chargeback closeout" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "enterprise auth smoke snapshot" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "enterprise auth JIT rollback snapshot" "operations handoff package JSON"
-Assert-Contains $report.decisionRule "monitoring threshold snapshots" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "monitoring threshold" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "cluster network access review" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "Helm values hardening" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "typed boolean Kubernetes report sync ready=true" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "typed integer finalizer failed/gap counts at zero" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "sourceReportResult=ready" "operations handoff package JSON"
@@ -858,8 +1140,93 @@ foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-
     Assert-NotContains $markdown $unexpected "operations handoff package markdown"
 }
 
+$mismatchedIdentityDataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "mismatched-identity-data-flow-storage-plan.json"
+$mismatchedIdentityDataFlowStoragePlan = Read-Utf8Text $dataFlowStoragePlanPath | ConvertFrom-Json
+$mismatchedIdentityDataFlowStoragePlan.targetCluster = "customer-cluster-b"
+$mismatchedIdentityDataFlowStoragePlan | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $mismatchedIdentityDataFlowStoragePlanPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $mismatchedIdentityOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -HandoffStartedAt "2026-06-20T02:00:00Z" `
+        -HandoffCompletedAt "2026-06-20T02:30:00Z" `
+        -ChangeApprovalRef "CHG-2026-OPERATIONS-HANDOFF-SELF-TEST" `
+        -DeploymentEvidenceRef "deployment-release-run-20260620" `
+        -OperationsReadinessRef "latest-operations-readiness-ready-20260620" `
+        -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
+        -DataFlowStoragePlanEvidenceRef "latest-data-flow-storage-plan-passed-20260620" `
+        -DataFlowQueryRetentionBudgetEvidenceRef "latest-data-flow-query-retention-budget-passed-20260620" `
+        -DataFlowStorageTransitionRunbookEvidenceRef "latest-data-flow-storage-transition-runbook-passed-20260620" `
+        -OperationsReadinessJsonPath $readinessSnapshotPath `
+        -OperationsConvergenceJsonPath $convergenceSnapshotPath `
+        -DataFlowStoragePlanJsonPath $mismatchedIdentityDataFlowStoragePlanPath `
+        -DataFlowQueryRetentionBudgetJsonPath $dataFlowQueryRetentionBudgetPath `
+        -DataFlowStorageTransitionRunbookJsonPath $dataFlowStorageTransitionRunbookPath `
+        -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
+        -SecretRotationJsonPath $secretRotationPath `
+        -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
+        -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
+        -ChargebackCloseoutEvidenceRef "latest-chargeback-closeout-evidence-passed-20260620" `
+        -CommercialIntegrationJsonPath $commercialIntegrationPath `
+        -CommercialApprovalJsonPath $commercialApprovalPath `
+        -ChargebackCloseoutJsonPath $chargebackCloseoutPath `
+        -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
+        -EnterpriseAuthJsonPath $enterpriseAuthPath `
+        -EnterpriseAuthJitRollbackEvidenceRef "latest-enterprise-auth-jit-rollback-passed-20260620" `
+        -EnterpriseAuthJitRollbackJsonPath $enterpriseAuthJitRollbackPath `
+        -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
+        -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
+        -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
+        -MonitoringThresholdJsonPath $monitoringThresholdPath `
+    -ClusterNetworkAccessReviewEvidenceRef "cluster-network-access-review-passed-20260620" `
+    -ClusterNetworkAccessReviewJsonPath $clusterNetworkAccessReviewPath `
+    -HelmValuesHardeningEvidenceRef "helm-values-hardening-passed-20260620" `
+    -HelmValuesHardeningJsonPath $helmValuesHardeningPath `
+        -SecurityEvidenceRef "latest-security-evidence-finalize-passed-20260620" `
+        -IamRbacEvidenceRef "latest-iam-rbac-finalize-passed-20260620" `
+        -RunbookReviewRef "operator-runbook-review-20260620" `
+        -TroubleshootingReviewRef "troubleshooting-review-20260620" `
+        -SupportEscalationRef "support-escalation-ticket-20260620" `
+        -SupportSlaRef "support-sla-contract-20260620" `
+        -KnownGapsRef "known-gaps-acceptance-20260620" `
+        -ConfirmRunbookReviewed `
+        -ConfirmTroubleshootingReviewed `
+        -ConfirmRollbackReviewed `
+        -ConfirmSupportEscalationReviewed `
+        -ConfirmKnownGapsAccepted `
+        -ConfirmOperationsReadinessSnapshotReviewed `
+        -ConfirmOperationsConvergenceSnapshotReviewed `
+        -ConfirmDataFlowStoragePlanReviewed `
+        -ConfirmDataFlowQueryRetentionBudgetReviewed `
+        -ConfirmDataFlowStorageTransitionRunbookReviewed `
+        -ConfirmSecretRotationSnapshotReviewed `
+        -ConfirmCommercialIntegrationSnapshotReviewed `
+        -ConfirmCommercialApprovalSnapshotReviewed `
+        -ConfirmChargebackCloseoutSnapshotReviewed `
+        -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
+        -ConfirmEnterpriseAuthJitRollbackSnapshotReviewed `
+        -ConfirmMonitoringThresholdReviewed `
+    -ConfirmClusterNetworkAccessReviewReviewed `
+        -ConfirmHelmValuesHardeningReviewed `
+        -ConfirmNoSecretValues `
+        -RequireProductionEvidence `
+        -RequireOperationsSnapshotEvidence `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $mismatchedIdentityExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($mismatchedIdentityExitCode -ne 0) "Mismatched target identity should be rejected."
+Assert-Contains ($mismatchedIdentityOutput | Out-String) "targetEvidenceSnapshots.dataFlowStoragePlan.targetCluster=customer-cluster-b expected=customer-cluster-a" "mismatched target identity output"
+
 $missingQueryPlanDataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "missing-query-plan-data-flow-storage-plan.json"
-$missingQueryPlanDataFlowStoragePlan = Get-Content -Raw -LiteralPath $dataFlowStoragePlanPath | ConvertFrom-Json
+$missingQueryPlanDataFlowStoragePlan = Read-Utf8Text $dataFlowStoragePlanPath | ConvertFrom-Json
 $missingQueryPlanDataFlowStoragePlan.PSObject.Properties.Remove("queryPlanEvidence")
 $missingQueryPlanDataFlowStoragePlan | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $missingQueryPlanDataFlowStoragePlanPath -Encoding UTF8
 
@@ -881,7 +1248,7 @@ Assert-True ($missingQueryPlanExitCode -ne 0) "MariaDB data-flow storage plan wi
 Assert-Contains ($missingQueryPlanOutput | Out-String) "queryPlanEvidenceRequired=True; queryPlanEvidencePassed=False" "missing query-plan data-flow storage plan output"
 
 $stringCountQueryPlanDataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "string-count-query-plan-data-flow-storage-plan.json"
-$stringCountQueryPlanDataFlowStoragePlan = Get-Content -Raw -LiteralPath $dataFlowStoragePlanPath | ConvertFrom-Json
+$stringCountQueryPlanDataFlowStoragePlan = Read-Utf8Text $dataFlowStoragePlanPath | ConvertFrom-Json
 $stringCountQueryPlanDataFlowStoragePlan.queryPlanEvidence.checkCount = "3"
 $stringCountQueryPlanDataFlowStoragePlan | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringCountQueryPlanDataFlowStoragePlanPath -Encoding UTF8
 
@@ -903,7 +1270,7 @@ Assert-True ($stringCountQueryPlanExitCode -ne 0) "Data-flow query-plan evidence
 Assert-Contains ($stringCountQueryPlanOutput | Out-String) "queryPlanEvidenceRequired=True; queryPlanEvidencePassed=False" "string query-plan count output"
 
 $stringBoolDataFlowRunbookPath = Join-Path $resolvedOutputDirectory "string-bool-data-flow-storage-transition-runbook.json"
-$stringBoolDataFlowRunbook = Get-Content -Raw -LiteralPath $dataFlowStorageTransitionRunbookPath | ConvertFrom-Json
+$stringBoolDataFlowRunbook = Read-Utf8Text $dataFlowStorageTransitionRunbookPath | ConvertFrom-Json
 $stringBoolDataFlowRunbook.confirmations.backfillRehearsed = "true"
 $stringBoolDataFlowRunbook | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolDataFlowRunbookPath -Encoding UTF8
 
@@ -925,7 +1292,7 @@ Assert-True ($stringBoolDataFlowRunbookExitCode -ne 0) "Data-flow storage transi
 Assert-Contains ($stringBoolDataFlowRunbookOutput | Out-String) "confirmationsValid=False" "string data-flow runbook confirmation output"
 
 $stringBoolSecretRotationPath = Join-Path $resolvedOutputDirectory "string-bool-secret-rotation.json"
-$stringBoolSecretRotation = Get-Content -Raw -LiteralPath $secretRotationPath | ConvertFrom-Json
+$stringBoolSecretRotation = Read-Utf8Text $secretRotationPath | ConvertFrom-Json
 $stringBoolSecretRotation.confirmations.smokePassed = "true"
 $stringBoolSecretRotation | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolSecretRotationPath -Encoding UTF8
 
@@ -947,7 +1314,7 @@ Assert-True ($stringBoolSecretRotationExitCode -ne 0) "Secret rotation string co
 Assert-Contains ($stringBoolSecretRotationOutput | Out-String) "confirmationsValid=False" "string secret rotation confirmation output"
 
 $stringBoolEnterpriseAuthPath = Join-Path $resolvedOutputDirectory "string-bool-enterprise-auth-scope-out.json"
-$stringBoolEnterpriseAuth = Get-Content -Raw -LiteralPath $enterpriseAuthPath | ConvertFrom-Json
+$stringBoolEnterpriseAuth = Read-Utf8Text $enterpriseAuthPath | ConvertFrom-Json
 $stringBoolEnterpriseAuth.scopeOut.accepted = "true"
 $stringBoolEnterpriseAuth | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolEnterpriseAuthPath -Encoding UTF8
 
@@ -973,6 +1340,9 @@ $stringCountPassedEnterpriseAuthPath = Join-Path $resolvedOutputDirectory "strin
     formatVersion = "osmu.enterprise-auth-smoke.v1"
     generatedAt = "2026-06-20T02:25:00Z"
     result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
     executionMode = "execute"
     apiBase = "https://pilot.example.invalid/api"
     requireOidc = $true
@@ -1035,7 +1405,7 @@ Assert-True ($stringCountPassedEnterpriseAuthExitCode -ne 0) "Enterprise auth pa
 Assert-Contains ($stringCountPassedEnterpriseAuthOutput | Out-String) "countsValid=False" "string enterprise auth passed count output"
 
 $stringBoolMonitoringThresholdPath = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold.json"
-$stringBoolMonitoringThreshold = Get-Content -Raw -LiteralPath $monitoringThresholdPath | ConvertFrom-Json
+$stringBoolMonitoringThreshold = Read-Utf8Text $monitoringThresholdPath | ConvertFrom-Json
 $stringBoolMonitoringThreshold.confirmations.prometheusRulesLoaded = "true"
 $stringBoolMonitoringThreshold | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolMonitoringThresholdPath -Encoding UTF8
 
@@ -1057,7 +1427,7 @@ Assert-True ($stringBoolMonitoringThresholdExitCode -ne 0) "Monitoring threshold
 Assert-Contains ($stringBoolMonitoringThresholdOutput | Out-String) "confirmationsValid=False" "string monitoring threshold confirmation output"
 
 $stringCountCommercialIntegrationPath = Join-Path $resolvedOutputDirectory "string-count-commercial-integration.json"
-$stringCountCommercialIntegration = Get-Content -Raw -LiteralPath $commercialIntegrationPath | ConvertFrom-Json
+$stringCountCommercialIntegration = Read-Utf8Text $commercialIntegrationPath | ConvertFrom-Json
 $stringCountCommercialIntegration.summary.requiredCount = "8"
 $stringCountCommercialIntegration | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringCountCommercialIntegrationPath -Encoding UTF8
 
@@ -1079,7 +1449,7 @@ Assert-True ($stringCountCommercialIntegrationExitCode -ne 0) "Commercial integr
 Assert-Contains ($stringCountCommercialIntegrationOutput | Out-String) "countsValid=False" "string commercial integration count output"
 
 $stringBoolCommercialIntegrationPath = Join-Path $resolvedOutputDirectory "string-bool-commercial-integration.json"
-$stringBoolCommercialIntegration = Get-Content -Raw -LiteralPath $commercialIntegrationPath | ConvertFrom-Json
+$stringBoolCommercialIntegration = Read-Utf8Text $commercialIntegrationPath | ConvertFrom-Json
 $stringBoolCommercialIntegration.summary.paymentProviderAdapterReadinessReviewed = "true"
 $stringBoolCommercialIntegration | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolCommercialIntegrationPath -Encoding UTF8
 
@@ -1101,7 +1471,7 @@ Assert-True ($stringBoolCommercialIntegrationExitCode -ne 0) "Commercial integra
 Assert-Contains ($stringBoolCommercialIntegrationOutput | Out-String) "paymentProviderAdapterReadinessReviewed=true(valid=False)" "string commercial integration boolean output"
 
 $stringBoolCommercialApprovalPath = Join-Path $resolvedOutputDirectory "string-bool-commercial-approval.json"
-$stringBoolCommercialApproval = Get-Content -Raw -LiteralPath $commercialApprovalPath | ConvertFrom-Json
+$stringBoolCommercialApproval = Read-Utf8Text $commercialApprovalPath | ConvertFrom-Json
 $stringBoolCommercialApproval.summary.pricingPolicyProposalCommercialApproved = "true"
 $stringBoolCommercialApproval | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolCommercialApprovalPath -Encoding UTF8
 
@@ -1123,7 +1493,7 @@ Assert-True ($stringBoolCommercialApprovalExitCode -ne 0) "Commercial approval s
 Assert-Contains ($stringBoolCommercialApprovalOutput | Out-String) "pricingPolicyProposalCommercialApproved=true(valid=False)" "string commercial approval boolean output"
 
 $missingCountCommercialApprovalPath = Join-Path $resolvedOutputDirectory "missing-count-commercial-approval.json"
-$missingCountCommercialApproval = Get-Content -Raw -LiteralPath $commercialApprovalPath | ConvertFrom-Json
+$missingCountCommercialApproval = Read-Utf8Text $commercialApprovalPath | ConvertFrom-Json
 $missingCountCommercialApproval.summary.PSObject.Properties.Remove("pricingPolicyProposalApprovedPriceListCount")
 $missingCountCommercialApproval | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $missingCountCommercialApprovalPath -Encoding UTF8
 
@@ -1634,6 +2004,10 @@ try {
         -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
         -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
         -MonitoringThresholdJsonPath $monitoringThresholdPath `
+    -ClusterNetworkAccessReviewEvidenceRef "cluster-network-access-review-passed-20260620" `
+    -ClusterNetworkAccessReviewJsonPath $clusterNetworkAccessReviewPath `
+    -HelmValuesHardeningEvidenceRef "helm-values-hardening-passed-20260620" `
+    -HelmValuesHardeningJsonPath $helmValuesHardeningPath `
         -SecurityEvidenceRef "latest-security-evidence-finalize-passed-20260620" `
         -IamRbacEvidenceRef "latest-iam-rbac-finalize-passed-20260620" `
         -RunbookReviewRef "operator-runbook-review-20260620" `
@@ -1654,6 +2028,8 @@ try {
         -ConfirmChargebackCloseoutSnapshotReviewed `
         -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
         -ConfirmMonitoringThresholdReviewed `
+    -ConfirmClusterNetworkAccessReviewReviewed `
+        -ConfirmHelmValuesHardeningReviewed `
         -ConfirmNoSecretValues `
         -RequireProductionEvidence `
         -FailIfNotPassed `
@@ -1669,3 +2045,4 @@ Assert-Contains ($invalidWindowOutput | Out-String) "Handoff window order valid"
 Write-Host "Operations handoff package writer verified."
 Write-Host "JSON: $jsonOutputPath"
 Write-Host "Markdown: $markdownOutputPath"
+exit 0

@@ -34,6 +34,10 @@ function Resolve-ProjectPath([string] $path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-SafeText([string] $Value, [string] $Label) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -111,7 +115,7 @@ $resolvedThresholdTargetsPath = Resolve-ProjectPath $ThresholdTargetsPath
 $thresholdTargetsExists = Test-Path -LiteralPath $resolvedThresholdTargetsPath
 $thresholdTargetsContent = ""
 if ($thresholdTargetsExists) {
-    $thresholdTargetsContent = Get-Content -Raw -LiteralPath $resolvedThresholdTargetsPath
+    $thresholdTargetsContent = Read-Utf8Text $resolvedThresholdTargetsPath
     Assert-SafeText $thresholdTargetsContent "ThresholdTargetsPath"
 }
 

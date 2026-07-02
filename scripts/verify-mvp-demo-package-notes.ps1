@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Write-JsonFixture([string] $Path, [object] $Value) {
     $Value | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Path -Encoding UTF8
@@ -88,7 +92,7 @@ if (-not (Test-Path -LiteralPath $resolvedOutputPath)) {
     throw "Demo package notes were not written: $resolvedOutputPath"
 }
 
-$notes = Get-Content -Raw -LiteralPath $resolvedOutputPath
+$notes = Read-Utf8Text $resolvedOutputPath
 Assert-Contains $notes "# OSMU MVP v0.1 Demo Package Notes" "demo package notes"
 Assert-Contains $notes "Package status:" "demo package notes"
 Assert-Contains $notes "It is not AWS S3 full behavioral parity" "demo package notes"
@@ -98,10 +102,38 @@ Assert-Contains $notes "finalize-durable-mvp-demo.ps1 -S3Client docker-mc" "demo
 Assert-Contains $notes ".osmu-run/latest-demo-package-notes.md" "demo package notes"
 Assert-Contains $notes "dev-docs/s3-compatibility.md" "demo package notes"
 
+if ($notes.Contains("MVP completion: result=pending") -or $notes.Contains("classification=local-durable-mvp-pending")) {
+    Assert-Contains $notes "Package status: local-durable-mvp-pending" "demo package notes"
+}
+if ($notes.Contains("MVP completion: result=ready") -and $notes.Contains("classification=local-durable-mvp-ready")) {
+    Assert-Contains $notes "Package status: local-durable-mvp-ready" "demo package notes"
+}
+
 if ($SelfTest) {
     Assert-Contains $notes "Package status: local-durable-mvp-ready" "demo package notes"
     Assert-Contains $notes "Durable gate: present; result=ready" "demo package notes"
     Assert-Contains $notes "Operations readiness: result=pending, summary=passed=36 pending=6" "demo package notes"
+
+    $pendingCompletionPath = Join-Path $selfTestDir "completion-pending.json"
+    $pendingOutputPath = Join-Path $selfTestDir "latest-demo-package-notes-pending.md"
+    Write-JsonFixture $pendingCompletionPath ([ordered]@{
+        result = "pending"
+        classification = "local-durable-mvp-pending"
+    })
+    & (Join-Path $PSScriptRoot "write-mvp-demo-package-notes.ps1") `
+        -DemoReadinessPath $demoPath `
+        -DurableGateReportPath $durableGatePath `
+        -DurableFinalizeReportPath $durableFinalizePath `
+        -ReleaseReportPath $releasePath `
+        -AuditPath $auditPath `
+        -DecisionPath $decisionPath `
+        -ReleaseNotesPath $releaseNotesPath `
+        -OperationsReadinessPath $operationsPath `
+        -CompletionReportPath $pendingCompletionPath `
+        -OutputPath $pendingOutputPath | Out-Host
+    $pendingNotes = Read-Utf8Text $pendingOutputPath
+    Assert-Contains $pendingNotes "Package status: local-durable-mvp-pending" "pending demo package notes"
+    Assert-Contains $pendingNotes "MVP completion: result=pending, classification=local-durable-mvp-pending" "pending demo package notes"
     Write-Host "MVP demo package notes self-test passed."
 } else {
     Write-Host "MVP demo package notes verified: $resolvedOutputPath"

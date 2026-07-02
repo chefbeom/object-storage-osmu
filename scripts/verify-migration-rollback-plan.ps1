@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $condition, [string] $message) {
     if (-not $condition) {
         throw $message
@@ -38,8 +42,8 @@ $withBackupMarkdownPath = Join-Path $resolvedOutputDir "migration-rollback-plan-
     -JsonOutputPath $jsonPath `
     -MarkdownOutputPath $markdownPath
 
-$report = Get-Content -Raw -LiteralPath $jsonPath | ConvertFrom-Json
-$markdown = Get-Content -Raw -LiteralPath $markdownPath
+$report = Read-Utf8Text $jsonPath | ConvertFrom-Json
+$markdown = Read-Utf8Text $markdownPath
 
 Assert-True ($report.formatVersion -eq "osmu.migration-rollback-plan.v1") "Unexpected migration rollback plan formatVersion."
 Assert-True ($report.result -eq "plan-ready-backup-required") "Default plan result should require a backup reference."
@@ -76,7 +80,7 @@ Assert-Contains $markdown "Rollback after new writes" "markdown"
     -MarkdownOutputPath $withBackupMarkdownPath `
     -FailIfBackupMissing
 
-$withBackupReport = Get-Content -Raw -LiteralPath $withBackupJsonPath | ConvertFrom-Json
+$withBackupReport = Read-Utf8Text $withBackupJsonPath | ConvertFrom-Json
 Assert-True ($withBackupReport.result -eq "ready-with-backup-reference") "Plan with BackupArtifactRef should be ready."
 Assert-True ($withBackupReport.backupArtifactRef -eq "artifact://metadata-backup-self-test") "Plan with BackupArtifactRef should preserve reference."
 

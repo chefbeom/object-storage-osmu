@@ -11,6 +11,7 @@ public record DashboardOperationsDispatchPreflightInputTemplateResponse(
         String actionType,
         String commandMode,
         String workflow,
+        String dispatchUrl,
         boolean needsOperatorApprovalConfirmation,
         boolean needsKubeconfigSecretConfirmation,
         List<String> requiredSecrets,

@@ -14,7 +14,8 @@ param(
     [string] $FrontendDesignPath = ".\dev-docs\frontend-design.md",
     [string] $LoginViewPath = ".\osmu-frontend\src\views\LoginView.vue",
     [string] $DemoPackageNotesWriterPath = ".\scripts\write-mvp-demo-package-notes.ps1",
-    [string] $MvpCompletionVerifierPath = ".\scripts\verify-mvp-completion.ps1"
+    [string] $MvpCompletionVerifierPath = ".\scripts\verify-mvp-completion.ps1",
+    [string] $S3ClientSmokePath = ".\scripts\verify-s3-client-smoke.ps1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +28,11 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
+
 function Read-RequiredText([string] $PathValue, [string] $Label) {
     $resolved = Resolve-ProjectPath $PathValue
     if (-not (Test-Path -LiteralPath $resolved)) {
@@ -35,7 +41,7 @@ function Read-RequiredText([string] $PathValue, [string] $Label) {
     return [pscustomobject]@{
         label = $Label
         path = $resolved
-        text = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolved
+        text = Read-Utf8Text $resolved
     }
 }
 
@@ -71,6 +77,7 @@ $frontendDesign = Read-RequiredText $FrontendDesignPath "Frontend design"
 $loginView = Read-RequiredText $LoginViewPath "Login view"
 $demoPackageNotesWriter = Read-RequiredText $DemoPackageNotesWriterPath "MVP demo package notes writer"
 $mvpCompletionVerifier = Read-RequiredText $MvpCompletionVerifierPath "MVP completion verifier"
+$s3ClientSmoke = Read-RequiredText $S3ClientSmokePath "S3 client smoke verifier"
 
 Assert-Contains $matrix "## Product Boundary"
 Assert-Contains $matrix "## Client Matrix"
@@ -142,6 +149,16 @@ Assert-Contains $demoPackageNotesWriter "dev-docs/s3-compatibility.md"
 Assert-Contains $mvpCompletionVerifier "S3 replacement boundary verifier available"
 Assert-Contains $mvpCompletionVerifier "S3 compatibility matrix preserves replacement boundary"
 Assert-Contains $mvpCompletionVerifier "verify-s3-compatibility-boundary.ps1"
+Assert-Contains $s3ClientSmoke 'Step "Manual SigV4 compatibility smoke"'
+Assert-Contains $s3ClientSmoke "function Invoke-S3BucketTaggingSmoke"
+Assert-Contains $s3ClientSmoke "function Invoke-S3ObjectCompatibilitySmoke"
+Assert-Contains $s3ClientSmoke "S3 Range GET failed"
+Assert-Contains $s3ClientSmoke "S3 CopyObject failed"
+Assert-Contains $s3ClientSmoke "function Invoke-S3MultiDeleteMd5Smoke"
+Assert-Contains $s3ClientSmoke "SigV4 mismatched payload hash did not return BadDigest."
+Assert-Contains $s3ClientSmoke "SigV4 mismatched checksum did not return BadDigest."
+Assert-Contains $s3ClientSmoke 'Invoke-ExternalText $mc.Source @("ls", $alias)'
+Assert-Contains $s3ClientSmoke 'Invoke-DockerMc $tempDir @("ls", $alias) -ReturnText'
 
 $filesToScan = @(
     $matrix,

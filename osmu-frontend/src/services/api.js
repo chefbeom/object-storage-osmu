@@ -301,6 +301,7 @@ export function getStorageBackendStatus() {
   return request('/admin/storage/backend-status')
 }
 
+
 export function getDatabaseHealth() {
   return request('/database/health')
 }

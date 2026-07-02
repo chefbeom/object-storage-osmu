@@ -557,12 +557,19 @@ public class ChargebackPreviewService {
                 .map(ChargebackFinalInvoiceRecord::id)
                 .filter(id -> id != null && id > 0)
                 .toList();
+        List<Long> finalInvoiceOrganizationIds = finalInvoices.stream()
+                .map(ChargebackFinalInvoiceRecord::organizationId)
+                .distinct()
+                .toList();
         List<ChargebackPaymentProviderHandoffRecord> handoffs = paymentHandoffRepository.findAll(safeLimit).stream()
-                .filter(record -> finalInvoiceIds.contains(record.finalInvoiceId())
-                        || timestampWithinWindow(record.createdAt(), window))
+                .filter(record -> finalInvoiceIds.isEmpty()
+                        ? timestampWithinWindow(record.createdAt(), window)
+                        : finalInvoiceIds.contains(record.finalInvoiceId()))
                 .toList();
         List<ChargebackAlertNotificationDeliveryRecord> notifications = notificationDeliveryRepository.findAll(safeLimit).stream()
                 .filter(record -> timestampWithinWindow(record.createdAt(), window))
+                .filter(record -> finalInvoiceOrganizationIds.isEmpty()
+                        || finalInvoiceOrganizationIds.contains(record.organizationId()))
                 .toList();
 
         int paymentRequestedCount = (int) finalInvoices.stream()
@@ -592,12 +599,32 @@ public class ChargebackPreviewService {
                 .mapToLong(record -> minorUnits(record.estimatedTotalCost()))
                 .sum();
         long reconciliationDifferenceMinorUnits = finalInvoiceTotalMinorUnits - paidInvoiceTotalMinorUnits;
-        int failureCount = unpaidInvoiceCount;
-        String closeoutStatus = finalInvoices.isEmpty()
-                ? "PENDING"
-                : failureCount == 0 && reconciliationDifferenceMinorUnits == 0
-                ? "RECONCILED"
-                : "PENDING";
+        int missingFinalInvoiceBlockerCount = finalInvoices.isEmpty() ? 1 : 0;
+        int missingPaymentRequestBlockerCount = Math.max(0, finalInvoices.size() - paymentRequestedCount);
+        int unpaidInvoiceBlockerCount = unpaidInvoiceCount;
+        int openHandoffBlockerCount = openHandoffCount;
+        int openNotificationBlockerCount = openNotificationCount;
+        int reconciliationBlockerCount = reconciliationDifferenceMinorUnits == 0 ? 0 : 1;
+        boolean invoiceFinalizationComplete = missingFinalInvoiceBlockerCount == 0;
+        boolean paymentRequestsComplete = invoiceFinalizationComplete && missingPaymentRequestBlockerCount == 0;
+        boolean paymentsSettled = invoiceFinalizationComplete && unpaidInvoiceBlockerCount == 0;
+        boolean paymentHandoffsClosed = openHandoffBlockerCount == 0;
+        boolean notificationDeliveriesClosed = openNotificationBlockerCount == 0;
+        boolean reconciliationBalanced = reconciliationBlockerCount == 0;
+        int blockerCount = missingFinalInvoiceBlockerCount
+                + missingPaymentRequestBlockerCount
+                + unpaidInvoiceBlockerCount
+                + openHandoffBlockerCount
+                + openNotificationBlockerCount
+                + reconciliationBlockerCount;
+        int failureCount = blockerCount;
+        boolean closeoutReady = invoiceFinalizationComplete
+                && paymentRequestsComplete
+                && paymentsSettled
+                && paymentHandoffsClosed
+                && notificationDeliveriesClosed
+                && reconciliationBalanced;
+        String closeoutStatus = closeoutReady ? "RECONCILED" : "PENDING";
         OffsetDateTime generatedAt = OffsetDateTime.now();
         return new ChargebackCloseoutSummaryResponse(
                 "CHARGEBACK_CLOSEOUT_SUMMARY",
@@ -622,6 +649,20 @@ public class ChargebackPreviewService {
                 paymentRequestedTotalMinorUnits,
                 reconciliationDifferenceMinorUnits,
                 failureCount,
+                closeoutReady,
+                invoiceFinalizationComplete,
+                paymentRequestsComplete,
+                paymentsSettled,
+                paymentHandoffsClosed,
+                notificationDeliveriesClosed,
+                reconciliationBalanced,
+                blockerCount,
+                missingFinalInvoiceBlockerCount,
+                missingPaymentRequestBlockerCount,
+                unpaidInvoiceBlockerCount,
+                openHandoffBlockerCount,
+                openNotificationBlockerCount,
+                reconciliationBlockerCount,
                 false,
                 false,
                 false,
@@ -817,12 +858,12 @@ public class ChargebackPreviewService {
                 profiles,
                 OffsetDateTime.now(),
                 "This readiness view checks OSMU payment-provider handoff adapter configuration only; it does not call card, bank, tax, ERP, webhook, or payment-provider APIs.",
-                "Only configuration presence and sanitized profile metadata are exposed. Webhook URLs, secret header values, HMAC secrets, certificates, provider credentials, raw provider responses, and customer payment data are never returned.",
+                "Only configuration presence and sanitized profile metadata are exposed. Webhook/native endpoint URLs, secret/auth header values, HMAC/signing secrets, certificates, provider credentials, raw provider responses, and customer payment data are never returned.",
                 nativeApiReady
                         ? "At least one native payment provider API adapter is configured; webhook profiles remain available as fallback where configured."
                         : (webhookReadyProfileCount == 0
-                        ? "Configure the generic payment-provider webhook or provider-specific CARD/BANK/TAX/ERP webhook profiles before sending handoff rows. Native provider API adapters remain a follow-up implementation."
-                        : "At least one webhook handoff profile is configured. Native card/bank/tax/ERP API adapters remain a follow-up implementation.")
+                        ? "Configure the generic payment-provider webhook, provider-specific CARD/BANK/TAX/ERP webhook profiles, or CARD/BANK/TAX/ERP native API URL plus auth-header value before sending handoff rows."
+                        : "At least one webhook handoff profile is configured. CARD/BANK/TAX/ERP native API bridge profiles remain available when endpoint URL plus auth-header value are configured.")
         );
     }
 
@@ -884,7 +925,7 @@ public class ChargebackPreviewService {
         boolean externalPaymentEnabled = paymentProviderAdapter.isConfigured(record.provider());
         ChargebackPaymentProviderAdapterResult adapterResult = externalPaymentEnabled
                 ? paymentProviderAdapter.deliver(record)
-                : ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook adapter is not configured.");
+                : ChargebackPaymentProviderAdapterResult.blocked("Payment provider adapter is not configured.");
         String normalizedResult = normalizeAdapterResult(adapterResult.result());
         return updatePaymentProviderHandoffAttempt(
                 record,
@@ -1724,10 +1765,10 @@ public class ChargebackPreviewService {
 
     private static String paymentProviderAdapterRequirement(String providerProfile) {
         return switch (providerProfile) {
-            case "CARD" -> "Set osmu.billing.payment-provider.card.webhook-url or the generic payment-provider webhook; native card processor API support is not implemented yet.";
-            case "BANK" -> "Set osmu.billing.payment-provider.bank.webhook-url or the generic payment-provider webhook; native bank-transfer API support is not implemented yet.";
-            case "TAX" -> "Set osmu.billing.payment-provider.tax.webhook-url or the generic payment-provider webhook; native tax invoice API support is not implemented yet.";
-            case "ERP" -> "Set osmu.billing.payment-provider.erp.webhook-url or the generic payment-provider webhook; native ERP API support is not implemented yet.";
+            case "CARD" -> "Set osmu.billing.payment-provider.card.webhook-url, the generic payment-provider webhook, or osmu.billing.payment-provider.card.native-api-url plus osmu.billing.payment-provider.card.native-api-auth-header-value.";
+            case "BANK" -> "Set osmu.billing.payment-provider.bank.webhook-url, the generic payment-provider webhook, or osmu.billing.payment-provider.bank.native-api-url plus osmu.billing.payment-provider.bank.native-api-auth-header-value.";
+            case "TAX" -> "Set osmu.billing.payment-provider.tax.webhook-url, the generic payment-provider webhook, or osmu.billing.payment-provider.tax.native-api-url plus osmu.billing.payment-provider.tax.native-api-auth-header-value.";
+            case "ERP" -> "Set osmu.billing.payment-provider.erp.webhook-url, the generic payment-provider webhook, or osmu.billing.payment-provider.erp.native-api-url plus osmu.billing.payment-provider.erp.native-api-auth-header-value.";
             default -> "Set osmu.billing.payment-provider.webhook-url for generic/manual payment-provider handoff delivery.";
         };
     }

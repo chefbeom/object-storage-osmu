@@ -41,6 +41,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-SafeText([string] $Value, [string] $Label) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -175,7 +179,7 @@ function Read-DataFlowStoragePlan([string] $Path) {
         $summary["detail"] = "Data-flow storage plan JSON not found."
         return $summary
     }
-    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    $raw = Read-Utf8Text $resolvedPath
     Assert-SanitizedPlanJson $raw
     try {
         $payload = $raw | ConvertFrom-Json

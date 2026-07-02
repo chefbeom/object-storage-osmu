@@ -1,0 +1,184 @@
+name: Manual Helm Values Hardening Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      review_started_at:
+        description: Helm hardening review start timestamp
+        required: true
+        default: ""
+      review_completed_at:
+        description: Helm hardening review completion timestamp
+        required: true
+        default: ""
+      change_approval_ref:
+        description: External change approval reference
+        required: true
+        default: ""
+      evidence_ref:
+        description: External Helm values hardening evidence reference
+        required: true
+        default: ""
+      hardening_refs_json_base64:
+        description: Base64 JSON containing non-secret verifier and review references
+        required: true
+        default: ""
+      confirm_secrets_externalized:
+        description: Confirm production secrets are externalized
+        required: true
+        type: boolean
+        default: false
+      confirm_default_secret_placeholders_not_used:
+        description: Confirm default secret placeholders are not used in production
+        required: true
+        type: boolean
+        default: false
+      confirm_ha_replicas_reviewed:
+        description: Confirm HA replica settings were reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_resources_bounded:
+        description: Confirm resource requests and limits were reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_security_contexts_reviewed:
+        description: Confirm non-root and security contexts were reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_network_policy_enabled:
+        description: Confirm NetworkPolicy is enabled
+        required: true
+        type: boolean
+        default: false
+      confirm_tls_ingress_reviewed:
+        description: Confirm TLS ingress was reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_operations_reports_read_only:
+        description: Confirm operations reports are mounted read-only
+        required: true
+        type: boolean
+        default: false
+      confirm_storage_expansion_rbac_disabled_by_default:
+        description: Confirm storage expansion RBAC is disabled by default
+        required: true
+        type: boolean
+        default: false
+      confirm_no_credential_values:
+        description: Confirm inputs contain references only, not credentials
+        required: true
+        type: boolean
+        default: false
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-helm-values-hardening-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  helm-values-hardening-evidence:
+    name: Manual Helm values hardening evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record Helm values hardening evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_REVIEW_STARTED_AT: ${{ inputs.review_started_at }}
+          OSMU_REVIEW_COMPLETED_AT: ${{ inputs.review_completed_at }}
+          OSMU_CHANGE_APPROVAL_REF: ${{ inputs.change_approval_ref }}
+          OSMU_EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          OSMU_HARDENING_REFS_JSON_BASE64: ${{ inputs.hardening_refs_json_base64 }}
+          OSMU_CONFIRM_SECRETS_EXTERNALIZED: ${{ inputs.confirm_secrets_externalized }}
+          OSMU_CONFIRM_DEFAULT_SECRET_PLACEHOLDERS_NOT_USED: ${{ inputs.confirm_default_secret_placeholders_not_used }}
+          OSMU_CONFIRM_HA_REPLICAS_REVIEWED: ${{ inputs.confirm_ha_replicas_reviewed }}
+          OSMU_CONFIRM_RESOURCES_BOUNDED: ${{ inputs.confirm_resources_bounded }}
+          OSMU_CONFIRM_SECURITY_CONTEXTS_REVIEWED: ${{ inputs.confirm_security_contexts_reviewed }}
+          OSMU_CONFIRM_NETWORK_POLICY_ENABLED: ${{ inputs.confirm_network_policy_enabled }}
+          OSMU_CONFIRM_TLS_INGRESS_REVIEWED: ${{ inputs.confirm_tls_ingress_reviewed }}
+          OSMU_CONFIRM_OPERATIONS_REPORTS_READ_ONLY: ${{ inputs.confirm_operations_reports_read_only }}
+          OSMU_CONFIRM_STORAGE_EXPANSION_RBAC_DISABLED_BY_DEFAULT: ${{ inputs.confirm_storage_expansion_rbac_disabled_by_default }}
+          OSMU_CONFIRM_NO_CREDENTIAL_VALUES: ${{ inputs.confirm_no_credential_values }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+        run: |
+          New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+          $refsPath = ".osmu-run/helm-values-hardening-refs.json"
+          [System.IO.File]::WriteAllBytes($refsPath, [Convert]::FromBase64String($env:OSMU_HARDENING_REFS_JSON_BASE64))
+          $refs = Get-Content -Raw -LiteralPath $refsPath | ConvertFrom-Json
+
+          $evidenceArgs = @(
+            "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+            "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+            "-Operator", $env:OSMU_OPERATOR,
+            "-ReviewStartedAt", $env:OSMU_REVIEW_STARTED_AT,
+            "-ReviewCompletedAt", $env:OSMU_REVIEW_COMPLETED_AT,
+            "-ChangeApprovalRef", $env:OSMU_CHANGE_APPROVAL_REF,
+            "-HelmVerifierEvidenceRef", ([string] $refs.helmVerifierEvidenceRef),
+            "-KubernetesVerifierEvidenceRef", ([string] $refs.kubernetesVerifierEvidenceRef),
+            "-ContainerHardeningEvidenceRef", ([string] $refs.containerHardeningEvidenceRef),
+            "-ClusterNetworkAccessReviewEvidenceRef", ([string] $refs.clusterNetworkAccessReviewEvidenceRef),
+            "-EvidenceRef", $env:OSMU_EVIDENCE_REF,
+            "-JsonOutputPath", ".osmu-run/latest-helm-values-hardening-evidence.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-helm-values-hardening-evidence.md"
+          )
+
+          if ($env:OSMU_CONFIRM_SECRETS_EXTERNALIZED -eq "true") { $evidenceArgs += "-ConfirmSecretsExternalized" }
+          if ($env:OSMU_CONFIRM_DEFAULT_SECRET_PLACEHOLDERS_NOT_USED -eq "true") { $evidenceArgs += "-ConfirmDefaultSecretPlaceholdersNotUsed" }
+          if ($env:OSMU_CONFIRM_HA_REPLICAS_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmHaReplicasReviewed" }
+          if ($env:OSMU_CONFIRM_RESOURCES_BOUNDED -eq "true") { $evidenceArgs += "-ConfirmResourcesBounded" }
+          if ($env:OSMU_CONFIRM_SECURITY_CONTEXTS_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmSecurityContextsReviewed" }
+          if ($env:OSMU_CONFIRM_NETWORK_POLICY_ENABLED -eq "true") { $evidenceArgs += "-ConfirmNetworkPolicyEnabled" }
+          if ($env:OSMU_CONFIRM_TLS_INGRESS_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmTlsIngressReviewed" }
+          if ($env:OSMU_CONFIRM_OPERATIONS_REPORTS_READ_ONLY -eq "true") { $evidenceArgs += "-ConfirmOperationsReportsReadOnly" }
+          if ($env:OSMU_CONFIRM_STORAGE_EXPANSION_RBAC_DISABLED_BY_DEFAULT -eq "true") { $evidenceArgs += "-ConfirmStorageExpansionRbacDisabledByDefault" }
+          if ($env:OSMU_CONFIRM_NO_CREDENTIAL_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoCredentialValues" }
+          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+          ./scripts/write-helm-values-hardening-evidence.ps1 @evidenceArgs
+          Remove-Item -LiteralPath $refsPath -Force -ErrorAction SilentlyContinue
+
+      - name: Remove decoded reference payload
+        if: always()
+        shell: pwsh
+        run: Remove-Item -LiteralPath ".osmu-run/helm-values-hardening-refs.json" -Force -ErrorAction SilentlyContinue
+
+      - name: Upload Helm values hardening evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-values-hardening-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-helm-values-hardening-evidence.json
+            .osmu-run/latest-helm-values-hardening-evidence.md
+          if-no-files-found: error
+          retention-days: 14

@@ -21,6 +21,7 @@ param(
     [string] $OperationsReadinessJsonPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $OperationsReadinessMarkdownPath = ".\.osmu-run\latest-operations-readiness.md",
     [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
+    [string] $DataFlowQueryRetentionBudgetEvidencePath = ".\.osmu-run\latest-data-flow-query-retention-budget-evidence.json",
     [string] $DataFlowStorageTransitionRunbookEvidencePath = ".\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json",
     [string] $ReportPath = ".\.osmu-run\latest-operations-readiness-finalize.json",
     [string] $SummaryPath = ".\.osmu-run\latest-operations-readiness-finalize.md",
@@ -63,6 +64,10 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Format-Value([string] $value) {
     if ($null -eq $value) {
         return ""
@@ -81,6 +86,17 @@ function Get-PowerShellExecutable() {
         return "powershell"
     }
     return "pwsh"
+}
+
+function Get-ObjectProperty($object, [string] $name) {
+    if ($null -eq $object) {
+        return $null
+    }
+    $property = $object.PSObject.Properties[$name]
+    if ($null -eq $property) {
+        return $null
+    }
+    return $property.Value
 }
 
 function Limit-Text([string] $text) {
@@ -183,7 +199,42 @@ function Read-JsonReport([string] $path) {
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
         return $null
     }
-    return Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+    return Read-Utf8Text $resolvedPath | ConvertFrom-Json
+}
+
+function Get-ReadinessPendingChecks([object] $ReadinessReport) {
+    if ($null -eq $ReadinessReport) {
+        return @()
+    }
+    $checks = @(Get-ObjectProperty $ReadinessReport "checks")
+    $pending = @()
+    foreach ($check in $checks) {
+        $passed = Get-ObjectProperty $check "passed"
+        if ($passed -is [bool] -and $passed) {
+            continue
+        }
+        $detail = [string] (Get-ObjectProperty $check "detail")
+        $pending += [pscustomobject] [ordered]@{
+            category = [string] (Get-ObjectProperty $check "category")
+            name = [string] (Get-ObjectProperty $check "name")
+            detail = Limit-Text $detail
+            path = [string] (Get-ObjectProperty $check "path")
+            requiredEvidence = [string] (Get-ObjectProperty $check "requiredEvidence")
+        }
+    }
+    return $pending
+}
+
+function Get-RejectedSelfTestTargetEvidenceChecks([object[]] $PendingChecks) {
+    return @($PendingChecks | Where-Object { ([string] $_.detail).Contains("rejected=self-test-target-evidence") })
+}
+
+function Format-ReadinessCheckNameList([object[]] $Checks, [int] $Limit = 8) {
+    $names = @($Checks | Select-Object -First $Limit | ForEach-Object { [string] $_.name } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($Checks.Count -gt $Limit) {
+        $names += "+$($Checks.Count - $Limit) more"
+    }
+    return ($names -join ", ")
 }
 
 function New-StorageExpansionArguments([bool] $ForPlan) {
@@ -320,6 +371,7 @@ function New-OperationsReadinessArguments() {
         "-JsonOutputPath", $OperationsReadinessJsonPath,
         "-MarkdownOutputPath", $OperationsReadinessMarkdownPath,
         "-DataFlowStoragePlanPath", $DataFlowStoragePlanPath,
+        "-DataFlowQueryRetentionBudgetEvidencePath", $DataFlowQueryRetentionBudgetEvidencePath,
         "-DataFlowStorageTransitionRunbookEvidencePath", $DataFlowStorageTransitionRunbookEvidencePath
     )
     if ($FailIfNotReady) {
@@ -377,6 +429,8 @@ function Write-FinalReport([string] $ResultValue, [string] $Status, [object[]] $
     $readinessReport = Read-JsonReport $OperationsReadinessJsonPath
     $completedAt = [DateTimeOffset]::UtcNow
     $readinessResult = if ($null -eq $readinessReport) { "missing" } else { [string] $readinessReport.result }
+    $readinessPendingChecks = @(Get-ReadinessPendingChecks $readinessReport)
+    $readinessRejectedSelfTestTargetEvidence = @(Get-RejectedSelfTestTargetEvidenceChecks $readinessPendingChecks)
 
     $report = [ordered]@{
         formatVersion = "osmu.operations-readiness-finalize.v1"
@@ -387,6 +441,10 @@ function Write-FinalReport([string] $ResultValue, [string] $Status, [object[]] $
         status = $Status
         readinessResult = $readinessResult
         readinessSummary = if ($null -eq $readinessReport) { "" } else { [string] $readinessReport.summary }
+        readinessPendingCount = $readinessPendingChecks.Count
+        readinessPendingChecks = $readinessPendingChecks
+        readinessRejectedSelfTestTargetEvidenceCount = $readinessRejectedSelfTestTargetEvidence.Count
+        readinessRejectedSelfTestTargetEvidence = $readinessRejectedSelfTestTargetEvidence
         namespace = $Namespace
         sourceNamespace = $SourceNamespace
         restoreNamespace = $RestoreNamespace
@@ -405,6 +463,7 @@ function Write-FinalReport([string] $ResultValue, [string] $Status, [object[]] $
             operationsReadinessJson = Resolve-ProjectPath $OperationsReadinessJsonPath
             operationsReadinessMarkdown = Resolve-ProjectPath $OperationsReadinessMarkdownPath
             dataFlowStoragePlan = Resolve-ProjectPath $DataFlowStoragePlanPath
+            dataFlowQueryRetentionBudgetEvidence = Resolve-ProjectPath $DataFlowQueryRetentionBudgetEvidencePath
             dataFlowStorageTransitionRunbookEvidence = Resolve-ProjectPath $DataFlowStorageTransitionRunbookEvidencePath
             report = $resolvedReportPath
             summary = $resolvedSummaryPath
@@ -435,12 +494,37 @@ function Write-FinalReport([string] $ResultValue, [string] $Status, [object[]] $
         "Status: $Status",
         "Operations readiness result: $readinessResult",
         "Operations readiness summary: $($report.readinessSummary)",
+        "Operations readiness pending checks: $($readinessPendingChecks.Count)",
+        "Rejected self-test target evidence: $($readinessRejectedSelfTestTargetEvidence.Count)",
         "",
         "## Commands",
         ""
     )
     foreach ($command in $Commands) {
         $summaryLines += "- $($command.name): ``$($command.command)``"
+    }
+    $summaryLines += ""
+    $summaryLines += "## Pending Readiness Checks"
+    if ($readinessPendingChecks.Count -eq 0) {
+        $summaryLines += "- None"
+    }
+    else {
+        foreach ($check in ($readinessPendingChecks | Select-Object -First 12)) {
+            $summaryLines += "- $($check.category) / $($check.name): $($check.detail)"
+        }
+        if ($readinessPendingChecks.Count -gt 12) {
+            $summaryLines += "- +$($readinessPendingChecks.Count - 12) more pending checks"
+        }
+    }
+    $summaryLines += ""
+    $summaryLines += "## Rejected Self-Test Target Evidence"
+    if ($readinessRejectedSelfTestTargetEvidence.Count -eq 0) {
+        $summaryLines += "- None"
+    }
+    else {
+        foreach ($check in $readinessRejectedSelfTestTargetEvidence) {
+            $summaryLines += "- $($check.category) / $($check.name): $($check.detail)"
+        }
     }
     $summaryLines += ""
     $summaryLines += "## Gaps"
@@ -483,7 +567,15 @@ try {
         $gaps += "Operations readiness report was not generated."
     }
     elseif ($readinessReport.result -ne "ready") {
+        $pendingChecks = @(Get-ReadinessPendingChecks $readinessReport)
+        $rejectedSelfTestChecks = @(Get-RejectedSelfTestTargetEvidenceChecks $pendingChecks)
         $gaps += "Operations readiness result is $($readinessReport.result): $($readinessReport.summary)."
+        if ($pendingChecks.Count -gt 0) {
+            $gaps += "Pending readiness checks: $(Format-ReadinessCheckNameList $pendingChecks)."
+        }
+        if ($rejectedSelfTestChecks.Count -gt 0) {
+            $gaps += "Replace self-test target evidence before handoff: $(Format-ReadinessCheckNameList $rejectedSelfTestChecks)."
+        }
     }
 
     $result = if ($failureCount -eq 0 -and $gaps.Count -eq 0) { "ready" } else { "pending" }

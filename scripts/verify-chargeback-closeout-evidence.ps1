@@ -10,6 +10,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw $Message }
 }
@@ -86,6 +90,8 @@ $plannedJsonPath = Join-Path $resolvedOutputDirectory "planned-chargeback-closeo
 $plannedMarkdownPath = Join-Path $resolvedOutputDirectory "planned-chargeback-closeout-evidence.md"
 $failedJsonPath = Join-Path $resolvedOutputDirectory "failed-chargeback-closeout-evidence.json"
 $failedMarkdownPath = Join-Path $resolvedOutputDirectory "failed-chargeback-closeout-evidence.md"
+$invalidWindowJsonPath = Join-Path $resolvedOutputDirectory "invalid-window-chargeback-closeout-evidence.json"
+$invalidWindowMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-window-chargeback-closeout-evidence.md"
 
 $readinessFixture = [ordered]@{
     success = $true
@@ -121,6 +127,20 @@ $closeoutFixture = [ordered]@{
     paidInvoiceCount = 4
     reconciliationDifferenceMinorUnits = 0
     failureCount = 0
+    closeoutReady = $true
+    invoiceFinalizationComplete = $true
+    paymentRequestsComplete = $true
+    paymentsSettled = $true
+    paymentHandoffsClosed = $true
+    notificationDeliveriesClosed = $true
+    reconciliationBalanced = $true
+    blockerCount = 0
+    missingFinalInvoiceBlockerCount = 0
+    missingPaymentRequestBlockerCount = 0
+    unpaidInvoiceBlockerCount = 0
+    openHandoffBlockerCount = 0
+    openNotificationBlockerCount = 0
+    reconciliationBlockerCount = 0
     rawCustomerPaymentDataStored = $false
     rawProviderResponseStored = $false
     rawSecretValuesStored = $false
@@ -134,8 +154,8 @@ if ($LASTEXITCODE -ne 0) { throw "write-chargeback-closeout-evidence.ps1 failed 
 Assert-True (Test-Path -LiteralPath $jsonOutputPath) "Chargeback closeout evidence JSON missing."
 Assert-True (Test-Path -LiteralPath $markdownOutputPath) "Chargeback closeout evidence markdown missing."
 
-$reportText = Get-Content -Raw -LiteralPath $jsonOutputPath
-$markdown = Get-Content -Raw -LiteralPath $markdownOutputPath
+$reportText = Read-Utf8Text $jsonOutputPath
+$markdown = Read-Utf8Text $markdownOutputPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 
@@ -145,13 +165,18 @@ Assert-True ($report.summary.failureCount -eq 0) "Expected zero failed checks."
 Assert-True ($report.summary.requiredEvidenceRefCount -eq 14) "Expected fourteen required evidence references."
 Assert-True ($report.summary.providedEvidenceRefCount -eq 14) "Expected fourteen provided evidence references."
 Assert-True ($report.summary.chargebackCloseoutSnapshotValid) "Expected valid closeout snapshot."
+Assert-True ($report.summary.chargebackCloseoutSnapshotReady) "Expected closeout snapshot readiness flag."
+Assert-True ($report.summary.chargebackCloseoutSnapshotBlockerCount -eq 0) "Expected zero closeout blockers."
 Assert-True ($report.summary.paymentProviderAdapterReadinessSnapshotValid) "Expected valid payment adapter readiness snapshot."
 Assert-True ($report.summary.commercialEvidenceReviewed) "Expected commercial evidence review."
 Assert-True ($report.confirmations.noRawCustomerPaymentData) "Expected no raw customer/payment confirmation."
 Assert-True ($report.confirmations.noRawProviderResponses) "Expected no raw provider response confirmation."
 Assert-True ($report.confirmations.noSecretValues) "Expected no secret values confirmation."
 Assert-True ($report.chargebackCloseoutSnapshot.valid) "Expected closeout snapshot valid flag."
+Assert-True ($report.chargebackCloseoutSnapshot.closeoutReady) "Expected closeout snapshot ready flag."
+Assert-True ($report.chargebackCloseoutSnapshot.readinessBooleansClosed) "Expected all closeout readiness booleans closed."
 Assert-True ($report.chargebackCloseoutSnapshot.counts.failureCount -eq 0) "Expected zero closeout snapshot failures."
+Assert-True ($report.chargebackCloseoutSnapshot.counts.blockerCount -eq 0) "Expected zero closeout snapshot blockers."
 Assert-True ($report.chargebackCloseoutSnapshot.counts.reconciliationDifferenceMinorUnits -eq 0) "Expected zero reconciliation difference."
 Assert-True ($report.paymentProviderAdapterReadiness.valid) "Expected payment provider readiness snapshot valid flag."
 Assert-True ($report.paymentProviderAdapterReadiness.profileCoverageValid) "Expected payment provider profile coverage."
@@ -162,9 +187,10 @@ Assert-Contains $markdown "# OSMU Chargeback Closeout Evidence" "chargeback clos
 Assert-Contains $markdown "Scope Policy" "chargeback closeout evidence markdown"
 Assert-Contains $markdown "Decision Rule" "chargeback closeout evidence markdown"
 Assert-Contains $markdown "Record Passed Target Evidence" "chargeback closeout evidence markdown"
-Assert-Contains $report.scopePolicy "does not claim native card, bank, tax, ERP, or external payment processor implementation" "chargeback closeout evidence JSON"
+Assert-Contains $report.scopePolicy "does not claim vendor-specific fixed SDK/schema card, bank, tax, ERP, or external payment processor implementation" "chargeback closeout evidence JSON"
 Assert-Contains $report.secretPolicy "raw customer data" "chargeback closeout evidence JSON"
 Assert-Contains $report.decisionRule "Production/B2B chargeback closeout readiness requires result=passed" "chargeback closeout evidence JSON"
+Assert-Contains $report.decisionRule "closeoutReady=true" "chargeback closeout evidence JSON"
 foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "customer@example.com", "cardNumber")) {
     Assert-NotContains $reportText $unexpected "chargeback closeout evidence JSON"
     Assert-NotContains $markdown $unexpected "chargeback closeout evidence markdown"
@@ -172,7 +198,7 @@ foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath -JsonOutputPath $plannedJsonPath -MarkdownOutputPath $plannedMarkdownPath | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "planned write-chargeback-closeout-evidence.ps1 failed with exit code $LASTEXITCODE." }
-$plannedReport = Get-Content -Raw -LiteralPath $plannedJsonPath | ConvertFrom-Json
+$plannedReport = Read-Utf8Text $plannedJsonPath | ConvertFrom-Json
 Assert-True ($plannedReport.result -eq "planned") "Expected no-input result=planned."
 Assert-True ($plannedReport.summary.plannedCount -ge 1) "Expected planned checks for no-input run."
 
@@ -189,7 +215,7 @@ $badWindowArgs = New-CommonArgs "2026-06-30T01:45:00Z" "2026-06-30T01:00:00Z" $t
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
-    $invalidWindowOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath @badWindowArgs -FailIfNotPassed 2>&1
+    $invalidWindowOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath @badWindowArgs -JsonOutputPath $invalidWindowJsonPath -MarkdownOutputPath $invalidWindowMarkdownPath -FailIfNotPassed 2>&1
     $invalidWindowExitCode = $LASTEXITCODE
 }
 finally { $ErrorActionPreference = $previousErrorActionPreference }
@@ -209,7 +235,7 @@ Assert-True ($unsafeExitCode -ne 0) "Unsafe closeout snapshot should be rejected
 $missingConfirmationArgs = New-CommonArgs "2026-06-30T01:00:00Z" "2026-06-30T01:45:00Z" $false
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath @missingConfirmationArgs -JsonOutputPath $failedJsonPath -MarkdownOutputPath $failedMarkdownPath | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "missing-confirmation write should generate failed evidence without exiting nonzero." }
-$failedReport = Get-Content -Raw -LiteralPath $failedJsonPath | ConvertFrom-Json
+$failedReport = Read-Utf8Text $failedJsonPath | ConvertFrom-Json
 Assert-True ($failedReport.result -eq "failed") "Expected missing confirmation result=failed."
 Assert-True ($failedReport.summary.failureCount -gt 0) "Expected missing confirmation failure count."
 Assert-True (@($failedReport.checks | Where-Object { $_.id -eq "reconciliation-reviewed" -and -not $_.passed }).Count -eq 1) "Expected reconciliation-reviewed failure."

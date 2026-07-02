@@ -165,11 +165,13 @@ Frontend/static 검증은 Node.js/npm이 필요하고, Backend Gradle test는 JD
 .\scripts\verify-prototype-prerequisites.ps1 -RequireNode
 ```
 
-`verify-local.ps1`, `verify-prototype-prerequisites.ps1`는 `-JavaHome`, `JAVA_HOME`, `PATH`, 흔한 Windows JDK 설치 경로를 순서대로 확인한다. Java가 없으면 Backend test gate는 실패하므로 JDK 17+ 설치 후 아래처럼 명시한다.
+`verify-local.ps1`, `verify-prototype-prerequisites.ps1`는 `-JavaHome`, `JAVA_HOME`, `PATH`, 흔한 Windows JDK 설치 경로를 순서대로 확인한다. `verify-local.ps1`의 backend gate는 resolved Java home을 Gradle Java toolchain 탐색 경로에도 전달하고 auto-detect/auto-download를 끄므로, stale temp JDK cache가 명시한 JDK를 덮어쓰지 않는다. Java가 없으면 Backend test gate는 실패하므로 JDK 17+ 설치 후 아래처럼 명시한다.
 
 ```powershell
 .\scripts\verify-local.ps1 -JavaHome C:\jdk-17
 ```
+
+The wrapper parses scripts and reads latest JSON evidence with explicit UTF-8 `ReadAllText`, so local verification is independent of the active Windows PowerShell codepage.
 
 JDK 없이 Frontend/static gate만 확인하려면 다음처럼 실행한다.
 
@@ -287,20 +289,23 @@ Durable MVP demo gate:
 ```powershell
 .\scripts\verify-durable-demo-preflight.ps1
 .\scripts\verify-durable-demo-gate.ps1
+.\scripts\verify-durable-demo-gate.ps1 -EnableRealMultipartEvidence
 ```
 
-The preflight command does not start containers. It checks Node/npm, Docker CLI, Docker daemon, Docker Compose config, AWS CLI, Python+boto3, AWS SDK JavaScript, AWS SDK Java via `OSMU_AWS_SDK_JAVA_CLASSPATH`, MinIO Client, Dockerized MinIO Client, and the selected real S3 client path, then writes `.osmu-run/latest-durable-demo-preflight.json` and `.osmu-run/latest-durable-demo-preflight.md`.
+The preflight command does not start containers. It checks Node/npm, Docker CLI, Docker daemon, Docker Compose config, AWS CLI, Python+boto3, AWS SDK JavaScript, AWS SDK Java via `OSMU_AWS_SDK_JAVA_CLASSPATH`, MinIO Client, Dockerized MinIO Client, and the selected real S3 client path, then writes `.osmu-run/latest-durable-demo-preflight.json` and `.osmu-run/latest-durable-demo-preflight.md` with `nextAction`, `nextActionCommand`, and `blockingActions[]` so Docker daemon or selected S3-client blockers are explicit before a durable gate/finalizer run.
 
-The gate command is the strongest single local demo verification command. It prepares `infra/local/.env` when missing, runs the durable preflight unless `-SkipPreflight` is set, checks Node/Docker/real S3 client prerequisites, starts the full Docker local demo, runs Browser E2E, runs Docker integration smoke, runs real S3 client smoke through the selected client (`docker-mc` by default), writes `.osmu-run/latest-durable-demo-gate.json` and `.osmu-run/latest-durable-demo-gate.md`, and stops the stack unless `-KeepRunning` is set.
+The gate command is the strongest single local demo verification command. It prepares `infra/local/.env` when missing, runs the durable preflight unless `-SkipPreflight` is set, checks Node/Docker/real S3 client prerequisites, starts the full Docker local demo, runs Browser E2E, runs Docker integration smoke, runs real S3 client smoke through the selected client (`docker-mc` by default), writes `.osmu-run/latest-durable-demo-gate.json` and `.osmu-run/latest-durable-demo-gate.md`, and stops the stack unless `-KeepRunning` is set. Use `-EnableRealMultipartEvidence` when the run should also rebuild the frontend with the real multipart Browser fixture, keep the full Browser E2E suite enabled, and require `.osmu-run/latest-browser-multipart-resume-evidence.json` plus `.md`.
 
 Durable MVP finalize wrapper:
 
 ```powershell
 .\scripts\finalize-durable-mvp-demo.ps1 -S3Client docker-mc
+.\scripts\finalize-durable-mvp-demo.ps1 -S3Client docker-mc -EnableRealMultipartEvidence
 .\scripts\finalize-durable-mvp-demo.ps1 -S3Client docker-mc -PlanOnly
+.\scripts\verify-durable-mvp-finalize-plan.ps1
 ```
 
-The finalize wrapper is the release-candidate local sequence for a Docker-ready machine. It runs durable preflight, backend Gradle tests, the durable demo gate, durable release artifact generation, and `verify-mvp-demo-readiness.ps1 -FailIfDurablePending`. `-PlanOnly` writes `.osmu-run/latest-durable-mvp-finalize.json` and `.osmu-run/latest-durable-mvp-finalize.md` with the planned commands without starting containers.
+The finalize wrapper is the release-candidate local sequence for a Docker-ready machine. It runs durable preflight, backend Gradle tests, the durable demo gate, durable release artifact generation, and `verify-mvp-demo-readiness.ps1 -FailIfDurablePending`. `-EnableRealMultipartEvidence` is passed through to the durable gate and records the requested browser multipart evidence paths in `.osmu-run/latest-durable-mvp-finalize.*`; `-PlanOnly` writes `.osmu-run/latest-durable-mvp-finalize-plan.*` by default without starting containers, preserving the latest ready finalizer evidence unless `-ReportPath` or `-SummaryPath` is explicitly supplied. `verify-durable-mvp-finalize-plan.ps1` checks that contract without starting Docker.
 
 Docker local demo Browser E2E:
 

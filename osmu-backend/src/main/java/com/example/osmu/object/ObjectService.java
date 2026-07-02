@@ -194,6 +194,8 @@ public class ObjectService {
                 .map(actual -> indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual))
                 .orElse(null);
         ObjectVersionRecord snapshot = null;
+        boolean activeObjectWritten = false;
+        boolean quotaApplied = false;
 
         bucketService.assertObjectChangeAllowed(normalizedBucketName, sizeBytes, 1L);
         try {
@@ -211,13 +213,22 @@ public class ObjectService {
                             parseTags(tags)
                     )
             );
+            activeObjectWritten = true;
             storedObject = storedObject.withChecksums(normalizeChecksums(checksums));
             storedObject = storedObject.withUserMetadata(normalizeUserMetadata(userMetadata));
             bucketService.applyObjectChange(normalizedBucketName, sizeBytes, 1L);
+            quotaApplied = true;
             objectMetadataRepository.save(normalizedBucketName, storedObject);
             return storedObject;
         } catch (RuntimeException exception) {
-            rollbackSnapshot(normalizedBucketName, snapshot);
+            if (quotaApplied) {
+                rollbackObjectChange(normalizedBucketName, sizeBytes, 1L);
+            }
+            if (activeObjectWritten) {
+                rollbackActiveObjectWrite(normalizedBucketName, normalizedKey, snapshot);
+            } else {
+                rollbackSnapshot(normalizedBucketName, snapshot);
+            }
             throw exception;
         }
     }
@@ -1791,6 +1802,42 @@ public class ObjectService {
         objectVersionRepository.delete(bucketName, snapshot.key(), snapshot.versionId());
     }
 
+    private void rollbackActiveObjectWrite(String bucketName, String objectKey, ObjectVersionRecord snapshot) {
+        boolean restored = false;
+        try {
+            if (snapshot == null) {
+                ObjectStorageFailures.run(
+                        "object upload rollback delete",
+                        () -> storageAdapter.deleteObject(bucketName, objectKey)
+                );
+                return;
+            }
+            restoreVersionContent(bucketName, objectKey, snapshot);
+            restored = true;
+        } catch (RuntimeException ignored) {
+            // Best-effort cleanup. The original database failure must remain visible to the caller.
+        } finally {
+            if (snapshot == null || restored) {
+                tryRollbackSnapshot(bucketName, snapshot);
+            }
+        }
+    }
+
+    private void rollbackObjectChange(String bucketName, long sizeDelta, long objectCountDelta) {
+        try {
+            bucketService.applyObjectChange(bucketName, -sizeDelta, -objectCountDelta);
+        } catch (RuntimeException ignored) {
+            // Best-effort quota rollback; keep the original write failure visible.
+        }
+    }
+
+    private void tryRollbackSnapshot(String bucketName, ObjectVersionRecord snapshot) {
+        try {
+            rollbackSnapshot(bucketName, snapshot);
+        } catch (RuntimeException ignored) {
+            // Best-effort snapshot cleanup after active object rollback.
+        }
+    }
     private StoredObjectRecord restoreVersionContent(
             String bucketName,
             String objectKey,

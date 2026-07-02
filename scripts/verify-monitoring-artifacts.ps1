@@ -13,6 +13,10 @@ function Resolve-ProjectPath($path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Read-RequiredFile([string] $path, [string] $label) {
     $resolvedPath = Resolve-ProjectPath $path
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
@@ -20,7 +24,7 @@ function Read-RequiredFile([string] $path, [string] $label) {
     }
     return [pscustomobject]@{
         Path = $resolvedPath
-        Content = Get-Content -Raw -LiteralPath $resolvedPath
+        Content = Read-Utf8Text $resolvedPath
     }
 }
 
@@ -132,6 +136,20 @@ Assert-Contains $operationMonitoring.Content "OsmuDataFlowRetentionFailures" "Op
 Assert-Contains $operationMonitoring.Content "OsmuDataFlowDailyRollupRetentionFailures" "Operation monitoring doc"
 Assert-Contains $operationMonitoring.Content "OsmuDataFlowMonthlyRollupRetentionFailures" "Operation monitoring doc"
 Assert-Contains $operationMonitoring.Content "Alertmanager routes" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "manual-data-flow-query-retention-budget-evidence.yml" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "manual-chargeback-closeout-evidence.yml" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "manual-enterprise-auth-jit-rollback-evidence.yml" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "data_flow_query_retention_budget_json_base64" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "DataFlowQueryRetentionBudgetEvidencePath" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "data-flow query/retention budget workflow" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "chargeback closeout workflow" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "Enterprise auth smoke and JIT rollback workflows" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "dataFlowQueryRetentionBudget" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "DATA_FLOW_QUERY_RETENTION_BUDGET" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "nested data-flow query/retention budget latency/retention summary" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "nested chargeback closeout period/invoice/payment/reconciliation summary" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "data-flow storage plan/query-retention budget/runbook evidence" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "query-retention budget result/candidate/latency/retention/failure/check counts" "Operation monitoring doc"
 
 Write-Host "Monitoring artifacts verified."
 Write-Host "Monitoring directory: $resolvedMonitoringDirectory"

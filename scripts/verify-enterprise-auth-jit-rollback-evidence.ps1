@@ -12,6 +12,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.Encoding]::UTF8)
+}
 function Assert-True([bool] $Condition, [string] $Message) {
     if (-not $Condition) {
         throw $Message
@@ -47,6 +51,10 @@ $plannedJsonPath = Join-Path $resolvedOutputDirectory "planned.json"
 $plannedMarkdownPath = Join-Path $resolvedOutputDirectory "planned.md"
 $passedJsonPath = Join-Path $resolvedOutputDirectory "passed.json"
 $passedMarkdownPath = Join-Path $resolvedOutputDirectory "passed.md"
+$missingSmokeJsonPath = Join-Path $resolvedOutputDirectory "missing-smoke.json"
+$missingSmokeMarkdownPath = Join-Path $resolvedOutputDirectory "missing-smoke.md"
+$invalidWindowJsonPath = Join-Path $resolvedOutputDirectory "invalid-window.json"
+$invalidWindowMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-window.md"
 
 [ordered]@{
     formatVersion = "osmu.enterprise-auth-smoke.v1"
@@ -96,8 +104,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "planned write-enterprise-auth-jit-rollback-evidence.ps1 failed with exit code $LASTEXITCODE."
 }
 
-$plannedReport = Get-Content -Raw -LiteralPath $plannedJsonPath | ConvertFrom-Json
-$plannedMarkdown = Get-Content -Raw -LiteralPath $plannedMarkdownPath
+$plannedReport = Read-Utf8Text $plannedJsonPath | ConvertFrom-Json
+$plannedMarkdown = Read-Utf8Text $plannedMarkdownPath
 Assert-True ($plannedReport.formatVersion -eq "osmu.enterprise-auth-jit-rollback-evidence.v1") "Unexpected JIT rollback evidence formatVersion."
 Assert-True ($plannedReport.result -eq "planned") "Default JIT rollback evidence should be planned."
 Assert-True ($plannedReport.summary.failureCount -gt 0) "Planned JIT rollback evidence should include missing checks."
@@ -134,8 +142,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "passed write-enterprise-auth-jit-rollback-evidence.ps1 failed with exit code $LASTEXITCODE."
 }
 
-$reportText = Get-Content -Raw -LiteralPath $passedJsonPath
-$markdown = Get-Content -Raw -LiteralPath $passedMarkdownPath
+$reportText = Read-Utf8Text $passedJsonPath
+$markdown = Read-Utf8Text $passedMarkdownPath
 $report = $reportText | ConvertFrom-Json
 $checks = @($report.checks)
 
@@ -183,6 +191,8 @@ try {
         -ConfirmAuditEventsReviewed `
         -ConfirmNoRawClaims `
         -ConfirmNoSecretValues `
+        -JsonOutputPath $missingSmokeJsonPath `
+        -MarkdownOutputPath $missingSmokeMarkdownPath `
         -FailIfNotPassed 2>&1
     $missingSmokeExitCode = $LASTEXITCODE
 }
@@ -246,6 +256,8 @@ try {
         -ConfirmAuditEventsReviewed `
         -ConfirmNoRawClaims `
         -ConfirmNoSecretValues `
+        -JsonOutputPath $invalidWindowJsonPath `
+        -MarkdownOutputPath $invalidWindowMarkdownPath `
         -FailIfNotPassed 2>&1
     $invalidWindowExitCode = $LASTEXITCODE
 }
@@ -256,3 +268,4 @@ Assert-True ($invalidWindowExitCode -ne 0) "Invalid review window should be reje
 Assert-Contains ($invalidWindowOutput | Out-String) "review-window-order" "invalid window output"
 
 Write-Host "Enterprise auth JIT rollback evidence verification passed: $passedJsonPath"
+exit 0

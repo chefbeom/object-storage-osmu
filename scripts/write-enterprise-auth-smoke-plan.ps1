@@ -1,5 +1,8 @@
 param(
     [string] $ApiBase = "http://localhost:8080/api",
+    [string] $EnvironmentName = "",
+    [string] $TargetCluster = "",
+    [string] $OperatorName = "",
     [string] $AdminLoginId = "admin",
     [string] $AdminPassword = "",
     [string] $OidcCallbackCode = "",
@@ -32,6 +35,10 @@ function Resolve-ProjectPath([string] $path) {
         return [System.IO.Path]::GetFullPath($path)
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
+}
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
 }
 
 function Get-JsonProperty([object] $Object, [string] $Name) {
@@ -196,7 +203,7 @@ function Read-JsonBodyFile([string] $Path, [string] $Label) {
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
         throw "$Label JSON file not found: $resolvedPath"
     }
-    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    $raw = Read-Utf8Text $resolvedPath
     Assert-SafeEvidenceText $raw "${Label}Json"
     $body = $raw | ConvertFrom-Json
     Assert-SafeEnterpriseAuthJsonObject $body $Label
@@ -241,6 +248,9 @@ $jitBodyInput = $null
 
 Assert-SafeEvidenceText $ScopeOutRef "ScopeOutRef"
 Assert-SafeEvidenceText $ScopeOutReason "ScopeOutReason"
+Assert-SafeEvidenceText $EnvironmentName "EnvironmentName"
+Assert-SafeEvidenceText $TargetCluster "TargetCluster"
+Assert-SafeEvidenceText $OperatorName "OperatorName"
 if (-not [string]::IsNullOrWhiteSpace($OidcClaimPreviewJsonPath)) {
     $claimPreviewBodyInput = Read-JsonBodyFile $OidcClaimPreviewJsonPath "OIDC claim preview"
 }
@@ -481,6 +491,9 @@ $report = [ordered]@{
     formatVersion = "osmu.enterprise-auth-smoke.v1"
     generatedAt = $generatedAt
     result = $result
+    environmentName = $EnvironmentName
+    targetCluster = $TargetCluster
+    operatorName = $OperatorName
     executionMode = if ($ConfirmScopeOut) { "scope-out" } elseif ($Execute) { "execute" } else { "plan-only" }
     apiBase = $ApiBase
     requireOidc = [bool] $RequireOidc
@@ -523,6 +536,9 @@ $markdownLines = @(
     "Result: $result",
     "Execution mode: $($report.executionMode)",
     "API base: $ApiBase",
+    "Environment: $EnvironmentName",
+    "Target cluster: $TargetCluster",
+    "Operator: $OperatorName",
     "",
     "## Decision Rule",
     "",
@@ -535,6 +551,9 @@ $markdownLines = @(
     "## Input Summary",
     "",
     "- Admin login id: $AdminLoginId",
+    "- Environment name: $EnvironmentName",
+    "- Target cluster: $TargetCluster",
+    "- Operator name: $OperatorName",
     "- Admin password provided: $($report.inputs.adminPasswordProvided)",
     "- OIDC callback code/state provided: $($report.inputs.oidcCallbackCodeProvided)/$($report.inputs.oidcCallbackStateProvided)",
     "- Claim preview JSON path provided: $($report.inputs.oidcClaimPreviewJsonPathProvided)",
@@ -563,9 +582,9 @@ $markdownLines += ""
 $markdownLines += "## Operator Commands"
 $markdownLines += ""
 $markdownLines += "- Plan only: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1``"
-$markdownLines += "- Live target smoke: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap``"
-$markdownLines += "- LDAP-only target smoke: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -LdapLoginId <directory-user> -LdapPassword <secret> -RequireLdap``"
-$markdownLines += "- Explicit commercial scope-out: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -ConfirmScopeOut -ScopeOutRef <contract-or-approval-ref> -ScopeOutReason <non-secret-reason> -FailIfNotPassed``"
+$markdownLines += "- Live target smoke: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -EnvironmentName <env> -TargetCluster <cluster> -OperatorName <operator> -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap``"
+$markdownLines += "- LDAP-only target smoke: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -EnvironmentName <env> -TargetCluster <cluster> -OperatorName <operator> -Execute -AdminLoginId <admin> -AdminPassword <secret> -LdapLoginId <directory-user> -LdapPassword <secret> -RequireLdap``"
+$markdownLines += "- Explicit commercial scope-out: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -EnvironmentName <env> -TargetCluster <cluster> -OperatorName <operator> -ConfirmScopeOut -ScopeOutRef <contract-or-approval-ref> -ScopeOutReason <non-secret-reason> -FailIfNotPassed``"
 $markdownLines += ""
 $markdownLines += "Plan-only and scope-out modes perform no HTTP requests."
 

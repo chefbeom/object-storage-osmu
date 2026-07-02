@@ -1559,7 +1559,7 @@
       "post": {
         "tags": ["Billing", "Admin"],
         "operationId": "sendChargebackPaymentProviderHandoffAdapter",
-        "summary": "Attempt configured chargeback payment provider webhook handoff delivery",
+        "summary": "Attempt configured chargeback payment provider adapter handoff delivery",
         "parameters": [
           {
             "name": "handoffId",
@@ -2996,7 +2996,44 @@
         }
       }
     },
-    "/api/admin/security/enterprise-auth-plan": {
+    "/api/admin/dashboard/summary": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getDashboardSummary",
+        "summary": "Read aggregate admin dashboard summary including readiness convergence",
+        "responses": {
+          "200": {
+            "description": "Admin dashboard summary response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DashboardSummaryEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/dashboard/readiness": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getDashboardReadiness",
+        "summary": "Read focused admin dashboard readiness and operations convergence state",
+        "responses": {
+          "200": {
+            "description": "Admin dashboard readiness response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DashboardReadinessEnvelope" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },    "/api/admin/security/enterprise-auth-plan": {
       "get": {
         "tags": ["Admin"],
         "operationId": "getEnterpriseAuthPlan",
@@ -4604,7 +4641,210 @@
           "visibility": { "type": "string", "default": "PRIVATE" }
         }
       },
-      "ListResponse": {
+      "DashboardSummaryEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "readiness": { "$ref": "#/components/schemas/DashboardReadinessResponse" },
+              "generatedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      },
+      "DashboardReadinessEnvelope": {
+        "type": "object",
+        "properties": {
+          "data": { "$ref": "#/components/schemas/DashboardReadinessResponse" }
+        }
+      },
+      "DashboardReadinessResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "status": { "type": "string" },
+          "runtimeProfile": { "type": "string" },
+          "blockerCount": { "type": "integer" },
+          "warningCount": { "type": "integer" },
+          "blockers": { "type": "array", "items": { "type": "string" } },
+          "warnings": { "type": "array", "items": { "type": "string" } },
+          "operationsReadinessConvergence": { "$ref": "#/components/schemas/DashboardOperationsReadinessConvergenceResponse" },
+          "operationsWorkflowRunIdPlan": { "$ref": "#/components/schemas/DashboardOperationsWorkflowRunIdPlanResponse" },
+          "generatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "DashboardOperationsWorkflowRunIdPlanResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "result": { "type": "string" },
+          "sourceInvocationReport": { "type": "string" },
+          "invocationResult": { "type": "string" },
+          "sourceSummary": { "type": "string" },
+          "sourcePassedCount": { "type": "integer" },
+          "sourcePendingCount": { "type": "integer" },
+          "sourceTotalCount": { "type": "integer" },
+          "sourceCheckCount": { "type": "integer" },
+          "selectedActionOrders": { "type": "array", "items": { "type": "integer" } },
+          "branch": { "type": "string" },
+          "githubRepository": { "type": "string" },
+          "queryMode": { "type": "string" },
+          "runListJsonDirectory": { "type": "string" },
+          "runListJsonDirectoryCommand": { "type": "string" },
+          "githubApiRunListCommand": { "type": "string" },
+          "githubApiBaseUrl": { "type": "string", "format": "uri" },
+          "runListJsonFilePattern": { "type": "string" },
+          "runListJsonHandoffNote": { "type": "string" },
+          "browserWorkflowRunsUrls": { "type": "array", "items": { "type": "string", "format": "uri" } },
+          "workflowRunIdInputs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DashboardOperationsWorkflowRunIdInputResponse" }
+          },
+          "recommendedCommands": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DashboardOperationsCommand" }
+          },
+          "limit": { "type": "integer" },
+          "workflowCount": { "type": "integer" },
+          "readyWorkflowCount": { "type": "integer" },
+          "missingWorkflowCount": { "type": "integer" },
+          "staleWorkflowCount": { "type": "integer" },
+          "imageSigningVersion": { "type": "string" },
+          "commitSha": { "type": "string" },
+          "artifactCollectionPlanCommand": { "type": "string" },
+          "securityEvidenceFinalizerReady": {
+            "type": "boolean",
+            "description": "True only after both security finalizer source workflow run ids are available."
+          },
+          "securityEvidenceFinalizerRunIdInputs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Security finalizer run-id inputs required by security-evidence-finalizer-ci.yml, such as ImageSigningRunId and ContainerSecurityRunId."
+          },
+          "securityEvidenceFinalizerRunIdInputHints": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DashboardOperationsWorkflowRunIdInputResponse" },
+            "description": "Run-id query and browser hints for every security finalizer input, including supplemental source workflows not selected by the current dispatch scope."
+          },
+          "securityEvidenceFinalizerMissingRunIdInputs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Required security finalizer run-id inputs that still need a GitHub Actions run id or run URL."
+          },
+          "securityEvidenceFinalizerDependencyNote": { "type": "string" },
+          "securityEvidenceFinalizerCommand": { "type": "string" },
+          "decisionRule": { "type": "string" },
+          "workflows": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DashboardOperationsWorkflowRunResponse" }
+          }
+        }
+      },
+      "DashboardOperationsWorkflowRunIdInputResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "workflow": { "type": "string" },
+          "group": { "type": "string" },
+          "actionOrders": { "type": "array", "items": { "type": "integer" } },
+          "runIdParameter": { "type": "string" },
+          "recommendedRunId": { "type": "string" },
+          "artifactName": { "type": "string" },
+          "requiredForReadiness": { "type": "boolean" },
+          "readyForArtifactDownload": { "type": "boolean" },
+          "runsUrl": { "type": "string", "format": "uri" },
+          "runListJsonPath": { "type": "string" },
+          "queryCommand": { "type": "string" },
+          "gitHubApiQueryUrl": { "type": "string", "format": "uri" },
+          "sourceSelected": { "type": "boolean" },
+          "supplementalForSecurityFinalizer": { "type": "boolean" }
+        }
+      },
+      "DashboardOperationsWorkflowRunResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "workflow": { "type": "string" },
+          "sourceActionCount": { "type": "integer" },
+          "primaryActionOrder": { "type": "integer" },
+          "primaryActionName": { "type": "string" },
+          "primaryActionStatus": { "type": "string" },
+          "actionOrders": { "type": "array", "items": { "type": "integer" } },
+          "actionNames": { "type": "array", "items": { "type": "string" } },
+          "actionStatuses": { "type": "array", "items": { "type": "string" } },
+          "actionCategories": { "type": "array", "items": { "type": "string" } },
+          "actionTypes": { "type": "array", "items": { "type": "string" } },
+          "group": { "type": "string" },
+          "queryCommand": { "type": "string" },
+          "gitHubApiQueryUrl": { "type": "string", "format": "uri" },
+          "runListJsonFile": { "type": "string" },
+          "runListJsonPath": { "type": "string" },
+          "runListJsonExists": { "type": "boolean" },
+          "runListJsonNote": { "type": "string" },
+          "runsUrl": { "type": "string", "format": "uri" },
+          "queryMode": { "type": "string" },
+          "candidateCount": { "type": "integer" },
+          "latestRunId": { "type": "string" },
+          "recommendedRunId": { "type": "string" },
+          "readyForArtifactDownload": { "type": "boolean" },
+          "requiredForReadiness": { "type": "boolean" },
+          "runIdParameter": { "type": "string" },
+          "artifactName": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      },      "DashboardOperationsReadinessConvergenceResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "result": { "type": "string" },
+          "generatedAt": { "type": "string", "format": "date-time" },
+          "currentBottleneck": { "$ref": "#/components/schemas/DashboardOperationsReadinessConvergenceBottleneck" },
+          "handoffBrowserDispatchDependencyNotes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Dependency notes lifted from the operations evidence handoff browserDispatchChecklist, including security finalizer run-id pairing such as ImageSigningRunId plus ContainerSecurityRunId."
+          },
+          "handoffPostDispatchCommands": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DashboardOperationsCommand" }
+          },
+          "recommendedCommands": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DashboardOperationsCommand" }
+          },
+          "kubernetesReportSyncReady": { "type": "boolean" },
+          "kubernetesReportSyncStale": { "type": "boolean" },
+          "missingWorkflowRunCount": { "type": "integer" },
+          "decisionRule": { "type": "string" },
+          "safetyPolicy": { "type": "string" }
+        }
+      },
+      "DashboardOperationsReadinessConvergenceBottleneck": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "code": { "type": "string" },
+          "title": { "type": "string" },
+          "reason": { "type": "string" },
+          "command": { "type": "string" },
+          "note": { "type": "string" },
+          "dispatchUrls": { "type": "array", "items": { "type": "string", "format": "uri" } }
+        }
+      },
+      "DashboardOperationsCommand": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "order": { "type": "integer" },
+          "name": { "type": "string" },
+          "command": { "type": "string" },
+          "reason": { "type": "string" },
+          "note": { "type": "string" },
+          "dispatchUrls": { "type": "array", "items": { "type": "string", "format": "uri" } }
+        }
+      },      "ListResponse": {
         "type": "object",
         "properties": {
           "items": {

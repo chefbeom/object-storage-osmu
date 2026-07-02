@@ -10,9 +10,12 @@ param(
     [string] $DataFlowStoragePlanConfigMapKey = "latest-data-flow-storage-plan.json",
     [string] $DataFlowStorageTransitionRunbookPath = ".\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json",
     [string] $DataFlowStorageTransitionRunbookConfigMapKey = "latest-data-flow-storage-transition-runbook-evidence.json",
+    [string] $DataFlowQueryRetentionBudgetPath = ".\.osmu-run\latest-data-flow-query-retention-budget-evidence.json",
+    [string] $DataFlowQueryRetentionBudgetConfigMapKey = "latest-data-flow-query-retention-budget-evidence.json",
     [switch] $SkipEvidenceConfigMapPublish,
     [switch] $SkipDataFlowStoragePlanConfigMapPublish,
     [switch] $SkipDataFlowStorageTransitionRunbookConfigMapPublish,
+    [switch] $SkipDataFlowQueryRetentionBudgetConfigMapPublish,
     [switch] $ServerDryRunOnly,
     [switch] $Apply,
     [switch] $PlanOnly
@@ -30,6 +33,10 @@ function Resolve-ProjectPath([string] $PathValue) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
 }
 
+function Read-Utf8Text([string] $PathValue) {
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
 function Format-Command([string[]] $Arguments) {
     $renderedArgs = $Arguments | ForEach-Object {
         if ($_ -match "\s") {
@@ -120,6 +127,22 @@ function Get-ObjectInt([object] $Value) {
     }
 }
 
+function Get-FirstJsonValue([object[]] $Values) {
+    foreach ($value in $Values) {
+        if ($null -ne $value -and "$value" -ne "") {
+            return $value
+        }
+    }
+    return $null
+}
+
+function Get-ObjectBoolOrNull([object] $Value) {
+    if ($Value -is [bool]) {
+        return [bool] $Value
+    }
+    return $null
+}
+
 function Test-SanitizedQueryPlanEvidenceSummary([object] $QueryPlanEvidence) {
     if ($null -eq $QueryPlanEvidence) {
         return [pscustomobject]@{
@@ -155,6 +178,7 @@ Assert-ConfigMapKey $ConfigMapKey
 Assert-ConfigMapKey $EvidenceConfigMapKey
 Assert-ConfigMapKey $DataFlowStoragePlanConfigMapKey
 Assert-ConfigMapKey $DataFlowStorageTransitionRunbookConfigMapKey
+Assert-ConfigMapKey $DataFlowQueryRetentionBudgetConfigMapKey
 
 $selectedModeCount = 0
 foreach ($selectedMode in @($PlanOnly.IsPresent, $ServerDryRunOnly.IsPresent, $Apply.IsPresent)) {
@@ -170,9 +194,11 @@ $resolvedReportPath = Resolve-ProjectPath $ReportPath
 $resolvedEvidencePath = Resolve-ProjectPath $EvidencePath
 $resolvedDataFlowStoragePlanPath = Resolve-ProjectPath $DataFlowStoragePlanPath
 $resolvedDataFlowStorageTransitionRunbookPath = Resolve-ProjectPath $DataFlowStorageTransitionRunbookPath
+$resolvedDataFlowQueryRetentionBudgetPath = Resolve-ProjectPath $DataFlowQueryRetentionBudgetPath
 $publishEvidenceToConfigMap = [bool](-not $SkipEvidenceConfigMapPublish)
 $publishDataFlowStoragePlanToConfigMap = [bool](-not $SkipDataFlowStoragePlanConfigMapPublish -and (Test-Path -LiteralPath $resolvedDataFlowStoragePlanPath))
 $publishDataFlowStorageTransitionRunbookToConfigMap = [bool](-not $SkipDataFlowStorageTransitionRunbookConfigMapPublish -and (Test-Path -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath))
+$publishDataFlowQueryRetentionBudgetToConfigMap = [bool](-not $SkipDataFlowQueryRetentionBudgetConfigMapPublish -and (Test-Path -LiteralPath $resolvedDataFlowQueryRetentionBudgetPath))
 
 if (-not (Test-Path -LiteralPath $resolvedReportPath)) {
     Add-Check "report-file-exists" $false "Report file is missing: $resolvedReportPath"
@@ -184,7 +210,7 @@ else {
 $reportJson = $null
 if (Test-Path -LiteralPath $resolvedReportPath) {
     try {
-        $reportJson = Get-Content -Raw -LiteralPath $resolvedReportPath | ConvertFrom-Json
+        $reportJson = Read-Utf8Text $resolvedReportPath | ConvertFrom-Json
         Add-Check "report-json-valid" $true "Report file is valid JSON."
     }
     catch {
@@ -234,7 +260,7 @@ elseif (-not (Test-Path -LiteralPath $resolvedDataFlowStoragePlanPath)) {
 else {
     Add-Check "data-flow-storage-plan-file-exists" $true "Data-flow storage plan file exists."
     try {
-        $dataFlowStoragePlanJson = Get-Content -Raw -LiteralPath $resolvedDataFlowStoragePlanPath | ConvertFrom-Json
+        $dataFlowStoragePlanJson = Read-Utf8Text $resolvedDataFlowStoragePlanPath | ConvertFrom-Json
         $dataFlowStoragePlanFormatVersion = [string] $dataFlowStoragePlanJson.formatVersion
         $dataFlowStoragePlanResult = [string] $dataFlowStoragePlanJson.result
         $dataFlowStoragePlanCandidateStore = [string] $dataFlowStoragePlanJson.candidateStore
@@ -291,7 +317,7 @@ elseif (-not (Test-Path -LiteralPath $resolvedDataFlowStorageTransitionRunbookPa
 else {
     Add-Check "data-flow-storage-transition-runbook-file-exists" $true "Data-flow storage transition runbook file exists."
     try {
-        $runbookRaw = Get-Content -Raw -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath
+        $runbookRaw = Read-Utf8Text $resolvedDataFlowStorageTransitionRunbookPath
         $runbookJson = $runbookRaw | ConvertFrom-Json
         $dataFlowStorageTransitionRunbookFormatVersion = [string] $runbookJson.formatVersion
         $dataFlowStorageTransitionRunbookResult = [string] $runbookJson.result
@@ -346,6 +372,128 @@ else {
     }
 }
 
+$dataFlowQueryRetentionBudgetFormatVersion = ""
+$dataFlowQueryRetentionBudgetResult = ""
+$dataFlowQueryRetentionBudgetStoragePlanResult = ""
+$dataFlowQueryRetentionBudgetCandidateStore = ""
+$dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs = 0
+$dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs = 0
+$dataFlowQueryRetentionBudgetObservedP99QueryLatencyMs = 0
+$dataFlowQueryRetentionBudgetRetentionBudgetSeconds = 0
+$dataFlowQueryRetentionBudgetFailureCount = 0
+$dataFlowQueryRetentionBudgetCheckCount = 0
+if ($SkipDataFlowQueryRetentionBudgetConfigMapPublish) {
+    Add-Check "data-flow-query-retention-budget-publish-skipped" $true "Data-flow query/retention budget ConfigMap publish skipped by parameter."
+}
+elseif (-not (Test-Path -LiteralPath $resolvedDataFlowQueryRetentionBudgetPath)) {
+    Add-Check "data-flow-query-retention-budget-optional" $true "Optional data-flow query/retention budget file is missing; ConfigMap will not include it."
+}
+else {
+    Add-Check "data-flow-query-retention-budget-file-exists" $true "Data-flow query/retention budget file exists."
+    try {
+        $budgetRaw = Read-Utf8Text $resolvedDataFlowQueryRetentionBudgetPath
+        $budgetJson = $budgetRaw | ConvertFrom-Json
+        $storagePlanSnapshot = $budgetJson.dataFlowStoragePlanSnapshot
+        $queryLatencyBudget = $budgetJson.queryLatencyBudget
+        $retentionBudget = $budgetJson.retentionBudget
+        $dataFlowQueryRetentionBudgetFormatVersion = [string] $budgetJson.formatVersion
+        $dataFlowQueryRetentionBudgetResult = [string] $budgetJson.result
+        $dataFlowQueryRetentionBudgetStoragePlanResult = [string] (Get-FirstJsonValue @($storagePlanSnapshot.result, $budgetJson.storagePlanResult))
+        $dataFlowQueryRetentionBudgetCandidateStore = [string] (Get-FirstJsonValue @($storagePlanSnapshot.candidateStore, $budgetJson.candidateStore))
+        $dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs = Get-ObjectInt (Get-FirstJsonValue @($queryLatencyBudget.targetP95QueryLatencyMs, $budgetJson.targetP95QueryLatencyMs, $storagePlanSnapshot.targetP95QueryLatencyMs))
+        $dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs = Get-ObjectInt (Get-FirstJsonValue @($queryLatencyBudget.observedP95QueryLatencyMs, $budgetJson.observedP95QueryLatencyMs))
+        $dataFlowQueryRetentionBudgetObservedP99QueryLatencyMs = Get-ObjectInt (Get-FirstJsonValue @($queryLatencyBudget.observedP99QueryLatencyMs, $budgetJson.observedP99QueryLatencyMs))
+        $querySampleCount = Get-ObjectInt (Get-FirstJsonValue @($queryLatencyBudget.querySampleCount, $budgetJson.querySampleCount))
+        $observedQueryWindowDays = Get-ObjectInt (Get-FirstJsonValue @($queryLatencyBudget.observedQueryWindowDays, $budgetJson.observedQueryWindowDays))
+        $dataFlowQueryRetentionBudgetRetentionBudgetSeconds = Get-ObjectInt (Get-FirstJsonValue @($retentionBudget.budgetSeconds, $retentionBudget.retentionBudgetSeconds, $budgetJson.retentionBudgetSeconds, $budgetJson.retentionJobBudgetSeconds))
+        $detailedRetentionObservedSeconds = Get-ObjectInt (Get-FirstJsonValue @($retentionBudget.detailedRetentionObservedSeconds, $budgetJson.detailedRetentionObservedSeconds))
+        $dailyRollupRetentionObservedSeconds = Get-ObjectInt (Get-FirstJsonValue @($retentionBudget.dailyRollupRetentionObservedSeconds, $budgetJson.dailyRollupRetentionObservedSeconds))
+        $monthlyRollupRetentionObservedSeconds = Get-ObjectInt (Get-FirstJsonValue @($retentionBudget.monthlyRollupRetentionObservedSeconds, $budgetJson.monthlyRollupRetentionObservedSeconds))
+        $dataFlowQueryRetentionBudgetFailureCount = Get-ObjectInt (Get-FirstJsonValue @($budgetJson.summary.failureCount, $budgetJson.failureCount))
+        $dataFlowQueryRetentionBudgetCheckCount = Get-ObjectInt (Get-FirstJsonValue @($budgetJson.summary.checkCount, $budgetJson.checkCount))
+        $storagePlanPendingCount = Get-ObjectInt (Get-FirstJsonValue @($storagePlanSnapshot.pendingCount, $budgetJson.storagePlanPendingCount))
+        $queryLatencyWithinBudget = Get-ObjectBoolOrNull (Get-FirstJsonValue @($queryLatencyBudget.withinBudget, $budgetJson.queryLatencyWithinBudget))
+        $retentionJobsWithinBudget = Get-ObjectBoolOrNull (Get-FirstJsonValue @($retentionBudget.withinBudget, $budgetJson.retentionJobsWithinBudget))
+        Add-Check "data-flow-query-retention-budget-json-valid" $true "Data-flow query/retention budget file is valid JSON."
+        Add-Check `
+            "data-flow-query-retention-budget-format-version" `
+            ($dataFlowQueryRetentionBudgetFormatVersion -eq "osmu.data-flow-query-retention-budget-evidence.v1") `
+            "formatVersion=$dataFlowQueryRetentionBudgetFormatVersion"
+        Add-Check `
+            "data-flow-query-retention-budget-result" `
+            ($dataFlowQueryRetentionBudgetResult -eq "passed") `
+            "result=$dataFlowQueryRetentionBudgetResult expected=passed before ConfigMap publish."
+        Add-Check `
+            "data-flow-query-retention-budget-storage-plan-result" `
+            ($dataFlowQueryRetentionBudgetStoragePlanResult -eq "passed") `
+            "storagePlanResult=$dataFlowQueryRetentionBudgetStoragePlanResult expected=passed."
+        Add-Check `
+            "data-flow-query-retention-budget-storage-plan-pending-count" `
+            ($storagePlanPendingCount -eq 0) `
+            "storagePlanPendingCount=$storagePlanPendingCount expected=0."
+        Add-Check `
+            "data-flow-query-retention-budget-query-latency-within-budget" `
+            (($null -ne $queryLatencyWithinBudget) -and [bool] $queryLatencyWithinBudget) `
+            "query latency within budget=$queryLatencyWithinBudget expected boolean true."
+        $queryMetricsValid = $dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs -gt 0 `
+            -and $dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs -gt 0 `
+            -and $dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs -le $dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs `
+            -and $dataFlowQueryRetentionBudgetObservedP99QueryLatencyMs -ge $dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs `
+            -and $querySampleCount -gt 0 `
+            -and $observedQueryWindowDays -gt 0
+        Add-Check `
+            "data-flow-query-retention-budget-query-metrics" `
+            $queryMetricsValid `
+            "targetP95=$dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs observedP95=$dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs observedP99=$dataFlowQueryRetentionBudgetObservedP99QueryLatencyMs sampleCount=$querySampleCount windowDays=$observedQueryWindowDays."
+        Add-Check `
+            "data-flow-query-retention-budget-retention-within-budget" `
+            (($null -ne $retentionJobsWithinBudget) -and [bool] $retentionJobsWithinBudget) `
+            "retention jobs within budget=$retentionJobsWithinBudget expected boolean true."
+        $retentionMetricsValid = $dataFlowQueryRetentionBudgetRetentionBudgetSeconds -gt 0 `
+            -and $detailedRetentionObservedSeconds -ge 0 `
+            -and $dailyRollupRetentionObservedSeconds -ge 0 `
+            -and $monthlyRollupRetentionObservedSeconds -ge 0 `
+            -and $detailedRetentionObservedSeconds -le $dataFlowQueryRetentionBudgetRetentionBudgetSeconds `
+            -and $dailyRollupRetentionObservedSeconds -le $dataFlowQueryRetentionBudgetRetentionBudgetSeconds `
+            -and $monthlyRollupRetentionObservedSeconds -le $dataFlowQueryRetentionBudgetRetentionBudgetSeconds
+        Add-Check `
+            "data-flow-query-retention-budget-retention-metrics" `
+            $retentionMetricsValid `
+            "budgetSeconds=$dataFlowQueryRetentionBudgetRetentionBudgetSeconds detailed=$detailedRetentionObservedSeconds daily=$dailyRollupRetentionObservedSeconds monthly=$monthlyRollupRetentionObservedSeconds."
+        Add-Check `
+            "data-flow-query-retention-budget-failure-count" `
+            ($dataFlowQueryRetentionBudgetFailureCount -eq 0) `
+            "failureCount=$dataFlowQueryRetentionBudgetFailureCount expected=0."
+        foreach ($confirmationName in @("queryLatencyReviewed", "retentionJobsWithinBudget", "noObjectKeysInEvidence", "noRawSqlOrExplain", "noSecretValues")) {
+            $confirmationValue = if ($null -ne $budgetJson.confirmations -and $budgetJson.confirmations.PSObject.Properties.Name -contains $confirmationName) { $budgetJson.confirmations.PSObject.Properties[$confirmationName].Value } else { $null }
+            Add-Check `
+                "data-flow-query-retention-budget-$confirmationName" `
+                (($confirmationValue -is [bool]) -and [bool] $confirmationValue) `
+                "confirmation $confirmationName=$confirmationValue expected boolean true."
+        }
+        $patterns = @(
+            '(?i)"(sql|rawSql|raw_sql|queryText|query_text|explain|explainJson|explain_json|rawExplain|raw_explain|rawEventMessage|raw_event_message|objectKey|object_key|password|passwd|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
+            '(?i)\b(password|passwd|credential|api[_-]?key|access[_-]?key|private[_-]?key|object[_-]?key)\s*=\s*\S+',
+            '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+            '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b',
+            '(?i)\bEXPLAIN\b[\s\S]{0,200}\bFORMAT\b'
+        )
+        $sanitized = $true
+        foreach ($pattern in $patterns) {
+            if ($budgetRaw -match $pattern) {
+                $sanitized = $false
+            }
+        }
+        Add-Check `
+            "data-flow-query-retention-budget-sanitized" `
+            $sanitized `
+            "Query/retention budget evidence contains no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content."
+    }
+    catch {
+        Add-Check "data-flow-query-retention-budget-json-valid" $false "Data-flow query/retention budget file is not valid JSON: $($_.Exception.Message)"
+    }
+}
+
 $dataFlowStoragePlanBytes = if ($publishDataFlowStoragePlanToConfigMap) {
     (Get-Item -LiteralPath $resolvedDataFlowStoragePlanPath).Length
 }
@@ -364,6 +512,19 @@ $dataFlowStorageTransitionRunbookBytes = if ($publishDataFlowStorageTransitionRu
 else {
     0
 }
+$dataFlowQueryRetentionBudgetBytes = if ($publishDataFlowQueryRetentionBudgetToConfigMap) {
+    (Get-Item -LiteralPath $resolvedDataFlowQueryRetentionBudgetPath).Length
+}
+else {
+    0
+}
+$dataFlowQueryRetentionBudgetSha256 = if ($publishDataFlowQueryRetentionBudgetToConfigMap) {
+    Get-FileSha256 $resolvedDataFlowQueryRetentionBudgetPath
+}
+else {
+    ""
+}
+
 $dataFlowStorageTransitionRunbookSha256 = if ($publishDataFlowStorageTransitionRunbookToConfigMap) {
     Get-FileSha256 $resolvedDataFlowStorageTransitionRunbookPath
 }
@@ -382,6 +543,9 @@ function New-CreateConfigMapArguments([bool] $IncludeEvidence, [string] $DryRunM
     }
     if ($publishDataFlowStorageTransitionRunbookToConfigMap) {
         $arguments += "--from-file=$DataFlowStorageTransitionRunbookConfigMapKey=$resolvedDataFlowStorageTransitionRunbookPath"
+    }
+    if ($publishDataFlowQueryRetentionBudgetToConfigMap) {
+        $arguments += "--from-file=$DataFlowQueryRetentionBudgetConfigMapKey=$resolvedDataFlowQueryRetentionBudgetPath"
     }
     if ($IncludeEvidence) {
         $arguments += "--from-file=$EvidenceConfigMapKey=$resolvedEvidencePath"
@@ -419,9 +583,11 @@ function New-ReportObject([string] $ResultValue) {
         evidenceConfigMapKey = $EvidenceConfigMapKey
         dataFlowStoragePlanConfigMapKey = $DataFlowStoragePlanConfigMapKey
         dataFlowStorageTransitionRunbookConfigMapKey = $DataFlowStorageTransitionRunbookConfigMapKey
+        dataFlowQueryRetentionBudgetConfigMapKey = $DataFlowQueryRetentionBudgetConfigMapKey
         publishEvidenceToConfigMap = [bool] $publishEvidenceToConfigMap
         publishDataFlowStoragePlanToConfigMap = [bool] $publishDataFlowStoragePlanToConfigMap
         publishDataFlowStorageTransitionRunbookToConfigMap = [bool] $publishDataFlowStorageTransitionRunbookToConfigMap
+        publishDataFlowQueryRetentionBudgetToConfigMap = [bool] $publishDataFlowQueryRetentionBudgetToConfigMap
         sourceReportPath = $resolvedReportPath
         sourceReportFormatVersion = $formatVersion
         sourceReportResult = $reportResult
@@ -439,6 +605,19 @@ function New-ReportObject([string] $ResultValue) {
         dataFlowQueryPlanEvidenceFailedCount = $dataFlowQueryPlanEvidenceFailedCount
         dataFlowQueryPlanEvidenceExpectedFormatVersion = $dataFlowQueryPlanEvidenceExpectedFormatVersion
         dataFlowQueryPlanEvidenceFormatVersion = $dataFlowQueryPlanEvidenceFormatVersion
+        dataFlowQueryRetentionBudgetPath = $resolvedDataFlowQueryRetentionBudgetPath
+        dataFlowQueryRetentionBudgetFormatVersion = $dataFlowQueryRetentionBudgetFormatVersion
+        dataFlowQueryRetentionBudgetResult = $dataFlowQueryRetentionBudgetResult
+        dataFlowQueryRetentionBudgetStoragePlanResult = $dataFlowQueryRetentionBudgetStoragePlanResult
+        dataFlowQueryRetentionBudgetCandidateStore = $dataFlowQueryRetentionBudgetCandidateStore
+        dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs = $dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs
+        dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs = $dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs
+        dataFlowQueryRetentionBudgetObservedP99QueryLatencyMs = $dataFlowQueryRetentionBudgetObservedP99QueryLatencyMs
+        dataFlowQueryRetentionBudgetRetentionBudgetSeconds = $dataFlowQueryRetentionBudgetRetentionBudgetSeconds
+        dataFlowQueryRetentionBudgetFailureCount = $dataFlowQueryRetentionBudgetFailureCount
+        dataFlowQueryRetentionBudgetCheckCount = $dataFlowQueryRetentionBudgetCheckCount
+        dataFlowQueryRetentionBudgetBytes = $dataFlowQueryRetentionBudgetBytes
+        dataFlowQueryRetentionBudgetSha256 = $dataFlowQueryRetentionBudgetSha256
         dataFlowStorageTransitionRunbookPath = $resolvedDataFlowStorageTransitionRunbookPath
         dataFlowStorageTransitionRunbookFormatVersion = $dataFlowStorageTransitionRunbookFormatVersion
         dataFlowStorageTransitionRunbookResult = $dataFlowStorageTransitionRunbookResult
@@ -459,7 +638,7 @@ function New-ReportObject([string] $ResultValue) {
         checkCount = @($checks).Count
         failedCount = $failureCount
         checks = $checks
-        safetyPolicy = "This script writes to Kubernetes only when -Apply is supplied. -ServerDryRunOnly talks to the API server without persisting changes. The default and -PlanOnly modes do not execute kubectl. When present, the data-flow storage plan and transition runbook evidence are included in the same ConfigMap so dashboard readiness can expose target analytics-storage planning and rehearsal evidence. After a successful apply, the sync evidence file is also published into the same ConfigMap unless -SkipEvidenceConfigMapPublish is supplied."
+        safetyPolicy = "This script writes to Kubernetes only when -Apply is supplied. -ServerDryRunOnly talks to the API server without persisting changes. The default and -PlanOnly modes do not execute kubectl. When present, the data-flow storage plan, query/retention budget evidence, and transition runbook evidence are included in the same ConfigMap so dashboard readiness can expose target analytics-storage planning, latency/retention budget, and rehearsal evidence. After a successful apply, the sync evidence file is also published into the same ConfigMap unless -SkipEvidenceConfigMapPublish is supplied."
     }
 }
 

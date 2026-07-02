@@ -25,6 +25,10 @@ function Resolve-ProjectPath([string] $path) {
     }
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
+function Read-Utf8Text([string] $PathValue) {
+    $resolved = Resolve-ProjectPath $PathValue
+    return [System.IO.File]::ReadAllText($resolved, [System.Text.UTF8Encoding]::new($false, $true))
+}
 
 function Assert-SafeText([string] $Value, [string] $Label) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -396,7 +400,7 @@ elseif (-not [string]::IsNullOrWhiteSpace($AdminInfoJsonPath)) {
     }
     $sourceMode = "admin-info-json-path"
     $sourceRef = $resolvedAdminInfoJsonPath
-    $adminInfoText = Get-Content -Raw -LiteralPath $resolvedAdminInfoJsonPath
+    $adminInfoText = Read-Utf8Text $resolvedAdminInfoJsonPath
 }
 elseif (-not [string]::IsNullOrWhiteSpace($AdminInfoJson)) {
     $sourceMode = "inline-admin-info-json"
