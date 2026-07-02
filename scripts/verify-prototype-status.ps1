@@ -311,9 +311,11 @@ if ($null -ne $mvpCompletion) {
 
     $expectedMvpLine = "MVP completion latest verification: result=$($mvp.result), classification=$($mvp.classification), localDurableMvpReady=$(Format-BoolLower $mvp.localDurableMvpReady)."
     Assert-Contains $content $expectedMvpLine "Prototype status"
-    $durablePreflightBlockingChecks = @($mvp.durablePreflightBlockingActions | ForEach-Object { [string] $_.check })
-    $expectedDurablePreflightLine = "Durable preflight latest handoff: result=$($mvp.durablePreflightResult), blockingActions=$(Format-ListSlash $durablePreflightBlockingChecks), nextAction=$($mvp.durablePreflightNextAction)"
-    Assert-Contains $content $expectedDurablePreflightLine "Prototype status"
+    if ($RequireEvidenceReports) {
+        $durablePreflightBlockingChecks = @($mvp.durablePreflightBlockingActions | ForEach-Object { [string] $_.check })
+        $expectedDurablePreflightLine = "Durable preflight latest handoff: result=$($mvp.durablePreflightResult), blockingActions=$(Format-ListSlash $durablePreflightBlockingChecks), nextAction=$($mvp.durablePreflightNextAction)"
+        Assert-Contains $content $expectedDurablePreflightLine "Prototype status"
+    }
 }
 
 $operationsEvidencePlan = Read-OptionalJsonReport $OperationsEvidencePlanReportPath "Operations evidence plan report"

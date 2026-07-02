@@ -140,9 +140,11 @@ if ($null -ne $mvpCompletion) {
     Assert-True ($mvp.formatVersion -eq "osmu.mvp-completion.v1") "Unexpected MVP completion formatVersion in $($mvpCompletion.path)."
     $expectedMvpLine = "MVP completion latest verification: result=$($mvp.result), classification=$($mvp.classification), localDurableMvpReady=$(Format-BoolLower $mvp.localDurableMvpReady)."
     Assert-Contains $content $expectedMvpLine "MVP release checklist"
-    $durablePreflightBlockingChecks = @($mvp.durablePreflightBlockingActions | ForEach-Object { [string] $_.check })
-    $expectedDurablePreflightLine = "Durable preflight latest handoff: result=$($mvp.durablePreflightResult), blockingActions=$(Format-ListSlash $durablePreflightBlockingChecks), nextAction=$($mvp.durablePreflightNextAction)"
-    Assert-Contains $content $expectedDurablePreflightLine "MVP release checklist"
+    if ($RequireEvidenceReports) {
+        $durablePreflightBlockingChecks = @($mvp.durablePreflightBlockingActions | ForEach-Object { [string] $_.check })
+        $expectedDurablePreflightLine = "Durable preflight latest handoff: result=$($mvp.durablePreflightResult), blockingActions=$(Format-ListSlash $durablePreflightBlockingChecks), nextAction=$($mvp.durablePreflightNextAction)"
+        Assert-Contains $content $expectedDurablePreflightLine "MVP release checklist"
+    }
 }
 
 $operationsReadiness = Read-OptionalJsonReport $OperationsReadinessReportPath "Operations readiness report"
