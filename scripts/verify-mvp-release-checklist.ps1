@@ -216,6 +216,8 @@ if ($null -ne $operationsEvidenceHandoff) {
     Assert-Contains $content $expectedEvidenceHandoffLine "MVP release checklist"
     $expectedEvidenceHandoffRunIdQueryLine = "Operations evidence handoff run-id query: mode=$($handoff.workflowRunIdPlanQueryMode), executed=$(Format-BoolLower $handoff.workflowRunIdPlanQueryExecuted), executedWorkflows=$($handoff.workflowRunIdPlanQueryExecutedCount), succeeded=$($handoff.workflowRunIdPlanQuerySucceededCount)/$($handoff.workflowRunIdPlanQueryWorkflowCount), errors=$($handoff.workflowRunIdPlanQueryErrorCount), candidates=$($handoff.workflowRunIdPlanCandidateCount)."
     Assert-Contains $content $expectedEvidenceHandoffRunIdQueryLine "MVP release checklist"
+    $expectedEvidenceHandoffInputFreeReviewLine = "Operations evidence handoff input-free review: exists=$(Format-BoolLower $handoff.inputFreeBlockedReviewReportExists), result=$($handoff.inputFreeBlockedReviewReportResult), actionOrders=$(Format-IntListCsv @($handoff.inputFreeBlockedReviewReportActionOrders)), selected=$($handoff.inputFreeBlockedReviewReportSelectedActionCount), blocked=$($handoff.inputFreeBlockedReviewReportBlockedCount), stale=$(Format-BoolLower $handoff.inputFreeBlockedReviewReportStale), scopeMismatch=$(Format-BoolLower $handoff.inputFreeBlockedReviewReportScopeMismatch)."
+    Assert-Contains $content $expectedEvidenceHandoffInputFreeReviewLine "MVP release checklist"
     $browserDispatchChecklist = @($handoff.browserDispatchChecklist)
     Assert-True ([int] $handoff.browserDispatchChecklistCount -eq $browserDispatchChecklist.Count) "Operations evidence handoff browserDispatchChecklistCount does not match checklist length."
     $browserDispatchChecklistActionOrders = @($browserDispatchChecklist | ForEach-Object { $_.actionOrder })
@@ -233,6 +235,8 @@ if ($null -ne $operationsReadinessConvergence) {
     Assert-Contains $content $expectedConvergenceLine "MVP release checklist"
     $expectedConvergenceRunIdQueryLine = "Operations readiness convergence run-id query: mode=$($convergence.handoffWorkflowRunIdPlanQueryMode), executed=$(Format-BoolLower $convergence.handoffWorkflowRunIdPlanQueryExecuted), executedWorkflows=$($convergence.handoffWorkflowRunIdPlanQueryExecutedCount), succeeded=$($convergence.handoffWorkflowRunIdPlanQuerySucceededCount)/$($convergence.handoffWorkflowRunIdPlanQueryWorkflowCount), errors=$($convergence.handoffWorkflowRunIdPlanQueryErrorCount), candidates=$($convergence.handoffWorkflowRunIdPlanCandidateCount)."
     Assert-Contains $content $expectedConvergenceRunIdQueryLine "MVP release checklist"
+    $expectedConvergenceInputFreeReviewLine = "Operations readiness convergence input-free review: exists=$(Format-BoolLower $convergence.handoffInputFreeBlockedReviewReportExists), result=$($convergence.handoffInputFreeBlockedReviewReportResult), actionOrders=$(Format-IntListCsv @($convergence.handoffInputFreeBlockedReviewReportActionOrders)), selected=$($convergence.handoffInputFreeBlockedReviewReportSelectedActionCount), blocked=$($convergence.handoffInputFreeBlockedReviewReportBlockedCount), stale=$(Format-BoolLower $convergence.handoffInputFreeBlockedReviewReportStale), scopeMismatch=$(Format-BoolLower $convergence.handoffInputFreeBlockedReviewReportScopeMismatch)."
+    Assert-Contains $content $expectedConvergenceInputFreeReviewLine "MVP release checklist"
 }
 
 Write-Host "MVP release checklist verified."

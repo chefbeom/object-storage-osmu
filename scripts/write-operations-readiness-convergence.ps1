@@ -399,6 +399,18 @@ $handoffInputFreeBlockedReviewReportCommand = Get-Text $handoff.json "inputFreeB
 $handoffInputFreeBlockedReviewReportJsonPath = Get-Text $handoff.json "inputFreeBlockedReviewReportJsonPath"
 $handoffInputFreeBlockedReviewReportMarkdownPath = Get-Text $handoff.json "inputFreeBlockedReviewReportMarkdownPath"
 $handoffInputFreeBlockedConfirmedPlanCommand = Get-Text $handoff.json "inputFreeBlockedConfirmedPlanCommand"
+$handoffInputFreeBlockedReviewReportExists = Get-Bool $handoff.json "inputFreeBlockedReviewReportExists"
+$handoffInputFreeBlockedReviewReportResult = Get-Text $handoff.json "inputFreeBlockedReviewReportResult"
+$handoffInputFreeBlockedReviewReportGeneratedAt = Get-Text $handoff.json "inputFreeBlockedReviewReportGeneratedAt"
+$handoffInputFreeBlockedReviewReportSelectedActionCount = Get-Int $handoff.json "inputFreeBlockedReviewReportSelectedActionCount"
+$handoffInputFreeBlockedReviewReportPlannedCount = Get-Int $handoff.json "inputFreeBlockedReviewReportPlannedCount"
+$handoffInputFreeBlockedReviewReportBlockedCount = Get-Int $handoff.json "inputFreeBlockedReviewReportBlockedCount"
+$handoffInputFreeBlockedReviewReportFailedCount = Get-Int $handoff.json "inputFreeBlockedReviewReportFailedCount"
+$handoffInputFreeBlockedReviewReportExecutedCount = Get-Int $handoff.json "inputFreeBlockedReviewReportExecutedCount"
+$handoffInputFreeBlockedReviewReportActionOrders = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedReviewReportActionOrders") | ForEach-Object { try { [int] $_ } catch { 0 } } | Where-Object { $_ -gt 0 })
+$handoffInputFreeBlockedReviewReportActionOrdersText = if ($handoffInputFreeBlockedReviewReportActionOrders.Count -gt 0) { $handoffInputFreeBlockedReviewReportActionOrders -join "," } else { "none" }
+$handoffInputFreeBlockedReviewReportStale = Get-Bool $handoff.json "inputFreeBlockedReviewReportStale"
+$handoffInputFreeBlockedReviewReportScopeMismatch = Get-Bool $handoff.json "inputFreeBlockedReviewReportScopeMismatch"
 if ([string]::IsNullOrWhiteSpace($handoffInputFreeBlockedConfirmedPlanCommand)) { $handoffInputFreeBlockedConfirmedPlanCommand = Get-Text $handoff.json "inputFreeBlockedPlanCommand" }
 $handoffInputFreeBlockedActions = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedActions") | ForEach-Object {
     [ordered]@{
@@ -624,6 +636,17 @@ $report = [ordered]@{
     handoffInputFreeBlockedReviewReportCommand = $handoffInputFreeBlockedReviewReportCommand
     handoffInputFreeBlockedReviewReportJsonPath = $handoffInputFreeBlockedReviewReportJsonPath
     handoffInputFreeBlockedReviewReportMarkdownPath = $handoffInputFreeBlockedReviewReportMarkdownPath
+    handoffInputFreeBlockedReviewReportExists = $handoffInputFreeBlockedReviewReportExists
+    handoffInputFreeBlockedReviewReportResult = $handoffInputFreeBlockedReviewReportResult
+    handoffInputFreeBlockedReviewReportGeneratedAt = $handoffInputFreeBlockedReviewReportGeneratedAt
+    handoffInputFreeBlockedReviewReportSelectedActionCount = $handoffInputFreeBlockedReviewReportSelectedActionCount
+    handoffInputFreeBlockedReviewReportPlannedCount = $handoffInputFreeBlockedReviewReportPlannedCount
+    handoffInputFreeBlockedReviewReportBlockedCount = $handoffInputFreeBlockedReviewReportBlockedCount
+    handoffInputFreeBlockedReviewReportFailedCount = $handoffInputFreeBlockedReviewReportFailedCount
+    handoffInputFreeBlockedReviewReportExecutedCount = $handoffInputFreeBlockedReviewReportExecutedCount
+    handoffInputFreeBlockedReviewReportActionOrders = @($handoffInputFreeBlockedReviewReportActionOrders)
+    handoffInputFreeBlockedReviewReportStale = $handoffInputFreeBlockedReviewReportStale
+    handoffInputFreeBlockedReviewReportScopeMismatch = $handoffInputFreeBlockedReviewReportScopeMismatch
     handoffInputFreeBlockedConfirmedPlanCommand = $handoffInputFreeBlockedConfirmedPlanCommand
     handoffInputFreeBlockedActions = @($handoffInputFreeBlockedActions)
     handoffWorkflowRunIdPlanQueryMode = $handoffWorkflowRunIdPlanQueryMode
@@ -689,6 +712,14 @@ $markdownLines = @(
     "- Input-free review report command: ``$handoffInputFreeBlockedReviewReportCommand``",
     "- Input-free review report JSON: $handoffInputFreeBlockedReviewReportJsonPath",
     "- Input-free review report Markdown: $handoffInputFreeBlockedReviewReportMarkdownPath",
+    "- Input-free review report exists: $handoffInputFreeBlockedReviewReportExists",
+    "- Input-free review report result: $handoffInputFreeBlockedReviewReportResult",
+    "- Input-free review report generated at: $handoffInputFreeBlockedReviewReportGeneratedAt",
+    "- Input-free review report selected actions: $handoffInputFreeBlockedReviewReportSelectedActionCount",
+    "- Input-free review report action orders: $handoffInputFreeBlockedReviewReportActionOrdersText",
+    "- Input-free review report planned/blocked/failed/executed: $handoffInputFreeBlockedReviewReportPlannedCount/$handoffInputFreeBlockedReviewReportBlockedCount/$handoffInputFreeBlockedReviewReportFailedCount/$handoffInputFreeBlockedReviewReportExecutedCount",
+    "- Input-free review report stale: $handoffInputFreeBlockedReviewReportStale",
+    "- Input-free review report scope mismatch: $handoffInputFreeBlockedReviewReportScopeMismatch",
     "- Input-free confirmed plan command: ``$handoffInputFreeBlockedConfirmedPlanCommand``",
     "- Workflow run-id query mode: $($report.handoffWorkflowRunIdPlanQueryMode)",
     "- Workflow run-id GitHub API token present: $($report.handoffWorkflowRunIdPlanGithubApiTokenPresent)",

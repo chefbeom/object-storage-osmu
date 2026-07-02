@@ -140,8 +140,10 @@ Assert-Contains $content "Operations evidence plan remediation coverage:" "Devel
 Assert-Contains $content "Operations workflow run-id security finalizer hints:" "Development roadmap"
 Assert-Contains $content "Operations artifact collection latest verification:" "Development roadmap"
 Assert-Contains $content "Operations evidence handoff latest verification:" "Development roadmap"
+Assert-Contains $content "Operations evidence handoff input-free review:" "Development roadmap"
 Assert-Contains $content "Operations evidence handoff browser dispatch checklist:" "Development roadmap"
 Assert-Contains $content "Operations readiness convergence latest verification:" "Development roadmap"
+Assert-Contains $content "Operations readiness convergence input-free review:" "Development roadmap"
 Assert-Contains $content "S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed." "Development roadmap"
 Assert-Contains $testCasesContent "2026-06-30 snapshot" "Test cases"
 Assert-NotContains $testCasesContent "2026-06-23 snapshot" "Test cases"
@@ -240,6 +242,8 @@ if ($null -ne $operationsEvidenceHandoff) {
     Assert-True ($handoff.formatVersion -eq "osmu.operations-evidence-handoff.v1") "Unexpected operations evidence handoff formatVersion in $($operationsEvidenceHandoff.path)."
     $expectedEvidenceHandoffLine = "Operations evidence handoff latest verification: result=$($handoff.result), bottleneck=$($handoff.currentBottleneck.code), missingWorkflowRunCount=$($handoff.missingWorkflowRunCount)."
     Assert-Contains $content $expectedEvidenceHandoffLine "Development roadmap"
+    $expectedEvidenceHandoffInputFreeReviewLine = "Operations evidence handoff input-free review: exists=$(Format-BoolLower $handoff.inputFreeBlockedReviewReportExists), result=$($handoff.inputFreeBlockedReviewReportResult), actionOrders=$(Format-IntListCsv @($handoff.inputFreeBlockedReviewReportActionOrders)), selected=$($handoff.inputFreeBlockedReviewReportSelectedActionCount), blocked=$($handoff.inputFreeBlockedReviewReportBlockedCount), stale=$(Format-BoolLower $handoff.inputFreeBlockedReviewReportStale), scopeMismatch=$(Format-BoolLower $handoff.inputFreeBlockedReviewReportScopeMismatch)."
+    Assert-Contains $content $expectedEvidenceHandoffInputFreeReviewLine "Development roadmap"
     $browserDispatchChecklist = @($handoff.browserDispatchChecklist)
     Assert-True ([int] $handoff.browserDispatchChecklistCount -eq $browserDispatchChecklist.Count) "Operations evidence handoff browserDispatchChecklistCount does not match checklist length."
     $browserDispatchChecklistActionOrders = @($browserDispatchChecklist | ForEach-Object { $_.actionOrder })
@@ -255,6 +259,8 @@ if ($null -ne $operationsReadinessConvergence) {
     Assert-True ($convergence.formatVersion -eq "osmu.operations-readiness-convergence.v1") "Unexpected operations readiness convergence formatVersion in $($operationsReadinessConvergence.path)."
     $expectedConvergenceLine = "Operations readiness convergence latest verification: result=$($convergence.result), readinessResult=$($convergence.readinessResult), bottleneck=$($convergence.currentBottleneck.code), missingWorkflowRunCount=$($convergence.missingWorkflowRunCount), kubernetesReportSyncStale=$(Format-BoolLower $convergence.kubernetesReportSyncStale)."
     Assert-Contains $content $expectedConvergenceLine "Development roadmap"
+    $expectedConvergenceInputFreeReviewLine = "Operations readiness convergence input-free review: exists=$(Format-BoolLower $convergence.handoffInputFreeBlockedReviewReportExists), result=$($convergence.handoffInputFreeBlockedReviewReportResult), actionOrders=$(Format-IntListCsv @($convergence.handoffInputFreeBlockedReviewReportActionOrders)), selected=$($convergence.handoffInputFreeBlockedReviewReportSelectedActionCount), blocked=$($convergence.handoffInputFreeBlockedReviewReportBlockedCount), stale=$(Format-BoolLower $convergence.handoffInputFreeBlockedReviewReportStale), scopeMismatch=$(Format-BoolLower $convergence.handoffInputFreeBlockedReviewReportScopeMismatch)."
+    Assert-Contains $content $expectedConvergenceInputFreeReviewLine "Development roadmap"
 }
 $operationsReadiness = Read-OptionalJsonReport $OperationsReadinessReportPath "Operations readiness report"
 if ($null -ne $operationsReadiness) {

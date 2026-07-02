@@ -252,8 +252,10 @@ Assert-Contains $content "Operations evidence plan remediation coverage:" "Proto
 Assert-Contains $content "Operations workflow run-id security finalizer hints:" "Prototype status"
 Assert-Contains $content "Operations artifact collection latest verification:" "Prototype status"
 Assert-Contains $content "Operations evidence handoff latest verification:" "Prototype status"
+Assert-Contains $content "Operations evidence handoff input-free review:" "Prototype status"
 Assert-Contains $content "Operations evidence handoff browser dispatch checklist:" "Prototype status"
 Assert-Contains $content "Operations readiness convergence latest verification:" "Prototype status"
+Assert-Contains $content "Operations readiness convergence input-free review:" "Prototype status"
 Assert-Contains $content "S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed." "Prototype status"
 Assert-Contains $content 'Prototype status verifier output: `.osmu-run/latest-prototype-status.json` records the reduced snapshot, durable preflight handoff, total/check counts, source readiness pending category summary/counts, pending remediation count, workflow run-id security finalizer hint summary, artifact collection security finalizer input checklist, handoff browser dispatch checklist, convergence, and evidence cross-check.' "Prototype status"
 Assert-Contains $apiSpecContent 'The response JSON below is a synthetic field-shape fixture; its `passed=36 pending=6` operations readiness summary is not the current evidence snapshot.' "API spec"
@@ -355,6 +357,8 @@ if ($null -ne $operationsEvidenceHandoff) {
     Assert-True ($handoff.formatVersion -eq "osmu.operations-evidence-handoff.v1") "Unexpected operations evidence handoff formatVersion in $($operationsEvidenceHandoff.path)."
     $expectedEvidenceHandoffLine = "Operations evidence handoff latest verification: result=$($handoff.result), bottleneck=$($handoff.currentBottleneck.code), missingWorkflowRunCount=$($handoff.missingWorkflowRunCount)."
     Assert-Contains $content $expectedEvidenceHandoffLine "Prototype status"
+    $expectedEvidenceHandoffInputFreeReviewLine = "Operations evidence handoff input-free review: exists=$(Format-BoolLower $handoff.inputFreeBlockedReviewReportExists), result=$($handoff.inputFreeBlockedReviewReportResult), actionOrders=$(Format-IntListCsv @($handoff.inputFreeBlockedReviewReportActionOrders)), selected=$($handoff.inputFreeBlockedReviewReportSelectedActionCount), blocked=$($handoff.inputFreeBlockedReviewReportBlockedCount), stale=$(Format-BoolLower $handoff.inputFreeBlockedReviewReportStale), scopeMismatch=$(Format-BoolLower $handoff.inputFreeBlockedReviewReportScopeMismatch)."
+    Assert-Contains $content $expectedEvidenceHandoffInputFreeReviewLine "Prototype status"
     $browserDispatchChecklist = @($handoff.browserDispatchChecklist)
     Assert-True ([int] $handoff.browserDispatchChecklistCount -eq $browserDispatchChecklist.Count) "Operations evidence handoff browserDispatchChecklistCount does not match checklist length."
     $browserDispatchChecklistActionOrders = @($browserDispatchChecklist | ForEach-Object { $_.actionOrder })
@@ -370,6 +374,8 @@ if ($null -ne $operationsReadinessConvergence) {
     Assert-True ($convergence.formatVersion -eq "osmu.operations-readiness-convergence.v1") "Unexpected operations readiness convergence formatVersion in $($operationsReadinessConvergence.path)."
     $expectedConvergenceLine = "Operations readiness convergence latest verification: result=$($convergence.result), readinessResult=$($convergence.readinessResult), bottleneck=$($convergence.currentBottleneck.code), missingWorkflowRunCount=$($convergence.missingWorkflowRunCount), kubernetesReportSyncStale=$(Format-BoolLower $convergence.kubernetesReportSyncStale)."
     Assert-Contains $content $expectedConvergenceLine "Prototype status"
+    $expectedConvergenceInputFreeReviewLine = "Operations readiness convergence input-free review: exists=$(Format-BoolLower $convergence.handoffInputFreeBlockedReviewReportExists), result=$($convergence.handoffInputFreeBlockedReviewReportResult), actionOrders=$(Format-IntListCsv @($convergence.handoffInputFreeBlockedReviewReportActionOrders)), selected=$($convergence.handoffInputFreeBlockedReviewReportSelectedActionCount), blocked=$($convergence.handoffInputFreeBlockedReviewReportBlockedCount), stale=$(Format-BoolLower $convergence.handoffInputFreeBlockedReviewReportStale), scopeMismatch=$(Format-BoolLower $convergence.handoffInputFreeBlockedReviewReportScopeMismatch)."
+    Assert-Contains $content $expectedConvergenceInputFreeReviewLine "Prototype status"
 }
 
 $operationsReadiness = Read-OptionalJsonReport $OperationsReadinessReportPath "Operations readiness report"

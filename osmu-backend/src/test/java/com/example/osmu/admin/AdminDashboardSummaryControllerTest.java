@@ -3174,6 +3174,19 @@ class AdminDashboardSummaryControllerTest {
                             "workflowRunIdPlanQuerySucceededCount":  1,
                             "workflowRunIdPlanQueryErrorCount":  0,
                             "workflowRunIdPlanCandidateCount":  0,
+                            "inputFreeBlockedReviewReportExists":  true,
+                            "inputFreeBlockedReviewReportResult":  "blocked",
+                            "inputFreeBlockedReviewReportGeneratedAt":  "2026-06-30T12:48:09.0000000+09:00",
+                            "inputFreeBlockedReviewReportSelectedActionCount":  1,
+                            "inputFreeBlockedReviewReportPlannedCount":  0,
+                            "inputFreeBlockedReviewReportBlockedCount":  1,
+                            "inputFreeBlockedReviewReportFailedCount":  0,
+                            "inputFreeBlockedReviewReportExecutedCount":  0,
+                            "inputFreeBlockedReviewReportActionOrders":  [
+                                                                           6
+                                                                       ],
+                            "inputFreeBlockedReviewReportStale":  false,
+                            "inputFreeBlockedReviewReportScopeMismatch":  false,
                             "artifactCollectionStale":  false,
                             "artifactCollectionScopeMismatch":  false,
                             "staleReportCount":  0,
@@ -3422,6 +3435,19 @@ class AdminDashboardSummaryControllerTest {
                             "handoffWorkflowRunIdPlanQuerySucceededCount":  1,
                             "handoffWorkflowRunIdPlanQueryErrorCount":  0,
                             "handoffWorkflowRunIdPlanCandidateCount":  0,
+                            "handoffInputFreeBlockedReviewReportExists":  true,
+                            "handoffInputFreeBlockedReviewReportResult":  "blocked",
+                            "handoffInputFreeBlockedReviewReportGeneratedAt":  "2026-06-30T12:48:09.0000000+09:00",
+                            "handoffInputFreeBlockedReviewReportSelectedActionCount":  1,
+                            "handoffInputFreeBlockedReviewReportPlannedCount":  0,
+                            "handoffInputFreeBlockedReviewReportBlockedCount":  1,
+                            "handoffInputFreeBlockedReviewReportFailedCount":  0,
+                            "handoffInputFreeBlockedReviewReportExecutedCount":  0,
+                            "handoffInputFreeBlockedReviewReportActionOrders":  [
+                                                                                  6
+                                                                              ],
+                            "handoffInputFreeBlockedReviewReportStale":  false,
+                            "handoffInputFreeBlockedReviewReportScopeMismatch":  false,
                             "missingWorkflowRunCount":  1,
                             "missingRequiredArtifactCount":  0,
                             "failedImportCount":  0,
@@ -4349,6 +4375,15 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanQuerySucceededCount").value(1));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanQueryErrorCount").value(0));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanCandidateCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportExists").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportResult").value("blocked"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportSelectedActionCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportBlockedCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportFailedCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportExecutedCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportActionOrders[0]").value(6));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportStale").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportScopeMismatch").value(false));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.artifactCollectionStale").value(false));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.artifactCollectionScopeMismatch").value(false));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.readyDispatchWorkflows[0].actionOrder").value(6));
@@ -4416,6 +4451,15 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanQuerySucceededCount").value(1));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanQueryErrorCount").value(0));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanCandidateCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportExists").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportResult").value("blocked"));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportSelectedActionCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportBlockedCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportFailedCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportExecutedCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportActionOrders[0]").value(6));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportStale").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportScopeMismatch").value(false));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.currentBottleneck.dispatchUrls[0]").value("https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.recommendedCommands[0].name").value("Open browser or API dispatch for ready subset"));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.recommendedCommands[0].note").value(containsString("container-security-ci.yml")));

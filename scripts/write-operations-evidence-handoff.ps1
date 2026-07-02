@@ -12,6 +12,8 @@ param(
     [string] $OperationsReadinessFinalizeReportPath = ".\.osmu-run\latest-operations-readiness-finalize.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-evidence-handoff.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-evidence-handoff.md",
+    [string] $InputFreeBlockedReviewReportJsonPath = ".\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.json",
+    [string] $InputFreeBlockedReviewReportMarkdownPath = ".\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.md",
     [switch] $NoWrite
 )
 
@@ -571,12 +573,38 @@ $inputFreeBlockedActionCount = $inputFreeBlockedActions.Count
 $inputFreeBlockedRequiredSecretCount = Sum-IntProperty $inputFreeBlockedActions "requiredSecretCount"
 $inputFreeBlockedOperatorApprovalActionCount = @($inputFreeBlockedActions | Where-Object { Get-Bool $_ "needsOperatorApprovalConfirmation" }).Count
 $inputFreeBlockedKubeconfigSecretActionCount = @($inputFreeBlockedActions | Where-Object { Get-Bool $_ "needsKubeconfigSecretConfirmation" }).Count
+$inputFreeBlockedActionOrders = @($inputFreeBlockedActions | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
 $inputFreeBlockedReviewCommand = New-InputFreeBlockedInvokeCommand $inputFreeBlockedActions $false $false
-$inputFreeBlockedReviewReportJsonPath = ".\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.json"
-$inputFreeBlockedReviewReportMarkdownPath = ".\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.md"
+$inputFreeBlockedReviewReportJsonPath = $InputFreeBlockedReviewReportJsonPath
+$inputFreeBlockedReviewReportMarkdownPath = $InputFreeBlockedReviewReportMarkdownPath
 $inputFreeBlockedReviewReportCommand = New-InputFreeBlockedInvokeCommand $inputFreeBlockedActions $false $false $inputFreeBlockedReviewReportJsonPath $inputFreeBlockedReviewReportMarkdownPath
 $inputFreeBlockedPlanCommand = New-InputFreeBlockedInvokeCommand $inputFreeBlockedActions $false $true
 $inputFreeBlockedExecuteCommand = New-InputFreeBlockedInvokeCommand $inputFreeBlockedActions $true $true
+$inputFreeBlockedReviewReport = Read-OptionalJson $inputFreeBlockedReviewReportJsonPath
+if ($inputFreeBlockedReviewReport.exists -and $evidencePlan.exists) {
+    $inputFreeBlockedReviewReportSourcePlan = Get-Text $inputFreeBlockedReviewReport.json "sourcePlan"
+    if (-not [string]::IsNullOrWhiteSpace($inputFreeBlockedReviewReportSourcePlan)) {
+        try {
+            $resolvedReviewSourcePlan = Resolve-ProjectPath $inputFreeBlockedReviewReportSourcePlan
+            if (-not $resolvedReviewSourcePlan.Equals($evidencePlan.path, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $inputFreeBlockedReviewReport = [ordered]@{ path = (Resolve-ProjectPath $inputFreeBlockedReviewReportJsonPath); exists = $false; json = $null }
+            }
+        }
+        catch {
+            $inputFreeBlockedReviewReport = [ordered]@{ path = (Resolve-ProjectPath $inputFreeBlockedReviewReportJsonPath); exists = $false; json = $null }
+        }
+    }
+}
+$inputFreeBlockedReviewReportResult = Get-Text $inputFreeBlockedReviewReport.json "result"
+$inputFreeBlockedReviewReportGeneratedAt = Get-Text $inputFreeBlockedReviewReport.json "generatedAt"
+$inputFreeBlockedReviewReportSelectedActionCount = Get-Int $inputFreeBlockedReviewReport.json "selectedActionCount"
+$inputFreeBlockedReviewReportPlannedCount = Get-Int $inputFreeBlockedReviewReport.json "plannedCount"
+$inputFreeBlockedReviewReportBlockedCount = Get-Int $inputFreeBlockedReviewReport.json "blockedCount"
+$inputFreeBlockedReviewReportFailedCount = Get-Int $inputFreeBlockedReviewReport.json "failedCount"
+$inputFreeBlockedReviewReportExecutedCount = Get-Int $inputFreeBlockedReviewReport.json "executedCount"
+$inputFreeBlockedReviewReportActionOrders = @(Get-InvocationActionOrders $inputFreeBlockedReviewReport.json)
+$inputFreeBlockedReviewReportStale = $inputFreeBlockedReviewReport.exists -and $invocation.exists -and (Test-GeneratedBefore $inputFreeBlockedReviewReport.json $invocation.json)
+$inputFreeBlockedReviewReportScopeMismatch = $inputFreeBlockedReviewReport.exists -and $inputFreeBlockedActionOrders.Count -gt 0 -and $inputFreeBlockedReviewReportActionOrders.Count -gt 0 -and -not (Test-SameIntSet $inputFreeBlockedReviewReportActionOrders $inputFreeBlockedActionOrders)
 $dispatchPreflightResult = Get-Text $dispatchPreflight.json "result"
 $dispatchPreflightRequiredInputCount = Get-Int $dispatchPreflight.json "requiredInputCount"
 $dispatchPreflightMissingInputCount = Get-Int $dispatchPreflight.json "missingInputCount"
@@ -613,7 +641,6 @@ $readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
 $finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizeResult) -and (Is-ReadyResult $finalizeReadinessResult) -and $finalizeFailedCount -eq 0 -and $finalizeGapCount -eq 0
 $dispatchTemplates = @(Get-Array (Get-JsonProperty $dispatchPreflight.json "inputTemplates"))
 $requiredGitHubSecretNames = @(Get-TextListFromJsonArray (Get-JsonProperty $dispatchPreflight.json "requiredGitHubSecrets"))
-$inputFreeBlockedActionOrders = @($inputFreeBlockedActions | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
 $inputFreeBlockedActionOrdersText = Join-IntList $inputFreeBlockedActionOrders
 $requiredGitHubSecretSummaries = @(New-RequiredSecretSummaries $dispatchTemplates $inputFreeBlockedActionOrders)
 if ($requiredGitHubSecretNames.Count -eq 0 -and $requiredGitHubSecretSummaries.Count -gt 0) {
@@ -739,7 +766,7 @@ $operatorValuesCheckStale = $operatorValuesCheck.exists -and $operatorWorksheet.
 $operatorValuesCheckCountMismatch = $operatorValuesCheck.exists -and $operatorWorksheet.exists -and $operatorWorksheetInputRowCount -ne $operatorValuesCheckValueCount
 $workflowRunIdPlanStale = $runIds.exists -and $invocation.exists -and (Test-GeneratedBefore $runIds.json $invocation.json)
 $artifactCollectionStale = $collection.exists -and (($invocation.exists -and (Test-GeneratedBefore $collection.json $invocation.json)) -or ($runIds.exists -and (Test-GeneratedBefore $collection.json $runIds.json)))
-$staleReportCount = @(($invocationStale, $dispatchPreflightStale, $dispatchPreflightScopeMismatch, $operatorWorksheetStale, $operatorValuesCheckStale, $operatorValuesCheckCountMismatch, $workflowRunIdPlanStale, $workflowRunIdPlanScopeMismatch, $artifactCollectionStale, $artifactCollectionScopeMismatch) | Where-Object { $_ }).Count
+$staleReportCount = @(($invocationStale, $dispatchPreflightStale, $dispatchPreflightScopeMismatch, $operatorWorksheetStale, $operatorValuesCheckStale, $operatorValuesCheckCountMismatch, $inputFreeBlockedReviewReportStale, $inputFreeBlockedReviewReportScopeMismatch, $workflowRunIdPlanStale, $workflowRunIdPlanScopeMismatch, $artifactCollectionStale, $artifactCollectionScopeMismatch) | Where-Object { $_ }).Count
 $invocationStaleText = if ($invocationStale) { " stale=true" } else { "" }
 $dispatchPreflightStaleText = if ($dispatchPreflightStale) { " stale=true" } else { "" }
 $dispatchPreflightScopeMismatchText = if ($dispatchPreflightScopeMismatch) { " scopeMismatch=true" } else { "" }
@@ -845,6 +872,18 @@ $report = [ordered]@{
     invocationStale = $invocationStale; dispatchPreflightStale = $dispatchPreflightStale; dispatchPreflightScopeMismatch = $dispatchPreflightScopeMismatch; operatorInputWorksheetStale = $operatorWorksheetStale; operatorInputWorksheetResult = $operatorWorksheetResult; operatorInputWorksheetReportPath = $operatorWorksheetReportPath; operatorInputWorksheetCsvPath = $operatorWorksheetCsvPath; operatorInputValuesTemplatePath = $operatorWorksheetValuesTemplatePath; operatorInputValuesTemplateMarkdownPath = $operatorWorksheetValuesTemplateMarkdownPath; operatorInputWorksheetInputRowCount = $operatorWorksheetInputRowCount; operatorInputWorksheetAmbiguousInputRowCount = $operatorWorksheetAmbiguousInputRowCount; operatorInputWorksheetExpandedInputRowDelta = $operatorInputWorksheetExpandedInputRowDelta; operatorInputValuesCheckStale = $operatorValuesCheckStale; operatorInputValuesCheckCountMismatch = $operatorValuesCheckCountMismatch; operatorInputValuesCheckResult = $operatorValuesCheckResult; operatorInputValuesCheckValueCount = $operatorValuesCheckValueCount; operatorInputValuesCheckReadyValueCount = $operatorValuesCheckReadyValueCount; operatorInputValuesCheckMissingValueCount = $operatorValuesCheckMissingValueCount; operatorInputValuesCheckUnsafeValueCount = $operatorValuesCheckUnsafeValueCount; operatorInputValuesCheckInvalidValueCount = $operatorValuesCheckInvalidValueCount; operatorInputValuesCheckValueReadyActionCount = $operatorValuesCheckValueReadyActionCount; operatorInputValuesCheckNonReadyActionCount = $operatorValuesCheckNonReadyActionCount; workflowRunIdPlanStale = $workflowRunIdPlanStale; workflowRunIdPlanScopeMismatch = $workflowRunIdPlanScopeMismatch; workflowRunIdPlanQueryMode = $workflowRunIdPlanQueryMode; workflowRunIdPlanGithubApiTokenPresent = $workflowRunIdPlanGithubApiTokenPresent; workflowRunIdPlanGithubApiUnauthenticated = $workflowRunIdPlanGithubApiUnauthenticated; workflowRunIdPlanQueryExecuted = $workflowRunIdPlanQueryExecuted; workflowRunIdPlanQueryExecutedCount = $workflowRunIdPlanQueryExecutedCount; workflowRunIdPlanQueryWorkflowCount = $workflowRunIdPlanQueryWorkflowCount; workflowRunIdPlanQuerySucceededCount = $workflowRunIdPlanQuerySucceededCount; workflowRunIdPlanQueryErrorCount = $workflowRunIdPlanQueryErrorCount; workflowRunIdPlanCandidateCount = $workflowRunIdPlanCandidateCount; artifactCollectionStale = $artifactCollectionStale; artifactCollectionScopeMismatch = $artifactCollectionScopeMismatch; staleReportCount = $staleReportCount; blockedActionCount = Get-Int $invocation.json "blockedCount"; missingWorkflowRunCount = Get-Int $runIds.json "missingWorkflowCount"; missingRequiredArtifactCount = Get-Int $collection.json "missingRequiredArtifactCount"; failedImportCount = Get-Int $import.json "failedCount"; finalizerFailedCount = $finalizeFailedCount; finalizerGapCount = $finalizeGapCount; browserDispatchChecklistCount = $browserDispatchChecklist.Count; browserDispatchChecklist = @($browserDispatchChecklist); securityEvidenceFinalizerRunIdInputHintCount = $securityEvidenceFinalizerRunIdInputHints.Count; securityEvidenceFinalizerRunIdInputHints = @($securityEvidenceFinalizerRunIdInputHints); postDispatchCommands = @($postDispatchCommands); stages = $stages
 }
 
+$report["inputFreeBlockedReviewReportExists"] = [bool] $inputFreeBlockedReviewReport.exists
+$report["inputFreeBlockedReviewReportResult"] = $inputFreeBlockedReviewReportResult
+$report["inputFreeBlockedReviewReportGeneratedAt"] = $inputFreeBlockedReviewReportGeneratedAt
+$report["inputFreeBlockedReviewReportSelectedActionCount"] = $inputFreeBlockedReviewReportSelectedActionCount
+$report["inputFreeBlockedReviewReportPlannedCount"] = $inputFreeBlockedReviewReportPlannedCount
+$report["inputFreeBlockedReviewReportBlockedCount"] = $inputFreeBlockedReviewReportBlockedCount
+$report["inputFreeBlockedReviewReportFailedCount"] = $inputFreeBlockedReviewReportFailedCount
+$report["inputFreeBlockedReviewReportExecutedCount"] = $inputFreeBlockedReviewReportExecutedCount
+$report["inputFreeBlockedReviewReportActionOrders"] = @($inputFreeBlockedReviewReportActionOrders)
+$report["inputFreeBlockedReviewReportStale"] = [bool] $inputFreeBlockedReviewReportStale
+$report["inputFreeBlockedReviewReportScopeMismatch"] = [bool] $inputFreeBlockedReviewReportScopeMismatch
+
 $dispatchGithubRepositoryLabel = if ([string]::IsNullOrWhiteSpace($dispatchGithubRepository)) { "none" } else { $dispatchGithubRepository }
 $defaultBranchRefLabel = if ([string]::IsNullOrWhiteSpace($defaultBranchRef)) { "none" } else { $defaultBranchRef }
 $markdownLines = @("# OSMU Operations Evidence Handoff", "", "Generated at: $generatedAt", "Result: $handoffResult", "", "## Current Bottleneck", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Readiness Source", "", "- Summary: $readinessSummary", "- Counts: passed=$readinessPassedCount pending=$readinessPendingCount total=$readinessTotalCount checks=$readinessCheckCount", "", "## Next Step", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Invocation Unblock Summary", "", "- Plan exists: $([bool] $invocationUnblockPlan.exists)", "- Actions: $invocationUnblockPlanActionCount", "- Block reasons: $invocationUnblockPlanBlockReasonCount", "- Required inputs: $invocationUnblockPlanRequiredInputCount", "- Required secrets: $invocationUnblockPlanRequiredSecretCount", "- Operator approval actions: $invocationUnblockPlanOperatorApprovalActionCount", "- Kubeconfig secret actions: $invocationUnblockPlanKubeconfigSecretActionCount", "- Default-branch missing actions: $invocationUnblockPlanDefaultBranchMissingActionCount")
@@ -856,7 +895,7 @@ else {
         $markdownLines += "- action $($action.actionOrder): status=$($action.status) blockers=$($action.blockReasonCount) inputs=$($action.requiredInputCount) secrets=$($action.requiredSecretCount) - $($action.name)"
     }
 }
-$markdownLines += @("", "## Operator Input Expansion", "", "- Dispatch required inputs: $dispatchPreflightRequiredInputCount", "- Dispatch missing inputs: $dispatchPreflightMissingInputCount", "- Worksheet report: $operatorWorksheetReportPath", "- Worksheet CSV: $operatorWorksheetCsvPath", "- Values template JSON: $operatorWorksheetValuesTemplatePath", "- Values template Markdown: $operatorWorksheetValuesTemplateMarkdownPath", "- Worksheet input rows: $operatorWorksheetInputRowCount", "- Expanded worksheet row delta: $operatorInputWorksheetExpandedInputRowDelta", "- Ambiguous worksheet rows: $operatorWorksheetAmbiguousInputRowCount", "- Values check rows: $operatorValuesCheckValueCount", "- Missing values: $operatorValuesCheckMissingValueCount", "", "## Input-Free Blocked Actions", "", "- Actions: $inputFreeBlockedActionCount", "- Action orders: $inputFreeBlockedActionOrdersText", "- Review command before confirmations: ``$inputFreeBlockedReviewCommand``", "- Review report command: ``$inputFreeBlockedReviewReportCommand``", "- Review report JSON: $inputFreeBlockedReviewReportJsonPath", "- Review report Markdown: $inputFreeBlockedReviewReportMarkdownPath", "- Confirmed plan command: ``$inputFreeBlockedPlanCommand``", "- Required secrets: $inputFreeBlockedRequiredSecretCount", "- Operator approval actions: $inputFreeBlockedOperatorApprovalActionCount", "- Kubeconfig secret actions: $inputFreeBlockedKubeconfigSecretActionCount", "- Execute command after confirmations: ``$inputFreeBlockedExecuteCommand``")
+$markdownLines += @("", "## Operator Input Expansion", "", "- Dispatch required inputs: $dispatchPreflightRequiredInputCount", "- Dispatch missing inputs: $dispatchPreflightMissingInputCount", "- Worksheet report: $operatorWorksheetReportPath", "- Worksheet CSV: $operatorWorksheetCsvPath", "- Values template JSON: $operatorWorksheetValuesTemplatePath", "- Values template Markdown: $operatorWorksheetValuesTemplateMarkdownPath", "- Worksheet input rows: $operatorWorksheetInputRowCount", "- Expanded worksheet row delta: $operatorInputWorksheetExpandedInputRowDelta", "- Ambiguous worksheet rows: $operatorWorksheetAmbiguousInputRowCount", "- Values check rows: $operatorValuesCheckValueCount", "- Missing values: $operatorValuesCheckMissingValueCount", "", "## Input-Free Blocked Actions", "", "- Actions: $inputFreeBlockedActionCount", "- Action orders: $inputFreeBlockedActionOrdersText", "- Review command before confirmations: ``$inputFreeBlockedReviewCommand``", "- Review report command: ``$inputFreeBlockedReviewReportCommand``", "- Review report JSON: $inputFreeBlockedReviewReportJsonPath", "- Review report Markdown: $inputFreeBlockedReviewReportMarkdownPath", "- Review report exists: $([bool] $inputFreeBlockedReviewReport.exists)", "- Review report result: $inputFreeBlockedReviewReportResult", "- Review report generated at: $inputFreeBlockedReviewReportGeneratedAt", "- Review report selected actions: $inputFreeBlockedReviewReportSelectedActionCount", "- Review report action orders: $(Join-IntList $inputFreeBlockedReviewReportActionOrders)", "- Review report planned/blocked/failed/executed: $inputFreeBlockedReviewReportPlannedCount/$inputFreeBlockedReviewReportBlockedCount/$inputFreeBlockedReviewReportFailedCount/$inputFreeBlockedReviewReportExecutedCount", "- Review report stale: $inputFreeBlockedReviewReportStale", "- Review report scope mismatch: $inputFreeBlockedReviewReportScopeMismatch", "- Confirmed plan command: ``$inputFreeBlockedPlanCommand``", "- Required secrets: $inputFreeBlockedRequiredSecretCount", "- Operator approval actions: $inputFreeBlockedOperatorApprovalActionCount", "- Kubeconfig secret actions: $inputFreeBlockedKubeconfigSecretActionCount", "- Execute command after confirmations: ``$inputFreeBlockedExecuteCommand``")
 if ($inputFreeBlockedActions.Count -eq 0) {
     $markdownLines += "- Candidates: none"
 }

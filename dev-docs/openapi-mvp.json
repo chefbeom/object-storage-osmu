@@ -4670,6 +4670,7 @@
           "warningCount": { "type": "integer" },
           "blockers": { "type": "array", "items": { "type": "string" } },
           "warnings": { "type": "array", "items": { "type": "string" } },
+          "operationsEvidenceHandoff": { "$ref": "#/components/schemas/DashboardOperationsEvidenceHandoffResponse" },
           "operationsReadinessConvergence": { "$ref": "#/components/schemas/DashboardOperationsReadinessConvergenceResponse" },
           "operationsWorkflowRunIdPlan": { "$ref": "#/components/schemas/DashboardOperationsWorkflowRunIdPlanResponse" },
           "generatedAt": { "type": "string", "format": "date-time" }
@@ -4794,7 +4795,43 @@
           "artifactName": { "type": "string" },
           "note": { "type": "string" }
         }
-      },      "DashboardOperationsReadinessConvergenceResponse": {
+      },
+      "DashboardOperationsEvidenceHandoffResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "result": { "type": "string" },
+          "generatedAt": { "type": "string", "format": "date-time" },
+          "currentBottleneck": { "$ref": "#/components/schemas/DashboardOperationsReadinessConvergenceBottleneck" },
+          "nextStep": { "$ref": "#/components/schemas/DashboardOperationsReadinessConvergenceBottleneck" },
+          "workflowRunIdPlanQueryMode": { "type": "string" },
+          "workflowRunIdPlanGithubApiTokenPresent": { "type": "boolean" },
+          "workflowRunIdPlanGithubApiUnauthenticated": { "type": "boolean" },
+          "workflowRunIdPlanQueryExecuted": { "type": "boolean" },
+          "workflowRunIdPlanQueryExecutedCount": { "type": "integer" },
+          "workflowRunIdPlanQueryWorkflowCount": { "type": "integer" },
+          "workflowRunIdPlanQuerySucceededCount": { "type": "integer" },
+          "workflowRunIdPlanQueryErrorCount": { "type": "integer" },
+          "workflowRunIdPlanCandidateCount": { "type": "integer" },
+          "inputFreeBlockedReviewReportExists": { "type": "boolean" },
+          "inputFreeBlockedReviewReportResult": { "type": "string" },
+          "inputFreeBlockedReviewReportGeneratedAt": { "type": "string", "format": "date-time" },
+          "inputFreeBlockedReviewReportSelectedActionCount": { "type": "integer" },
+          "inputFreeBlockedReviewReportPlannedCount": { "type": "integer" },
+          "inputFreeBlockedReviewReportBlockedCount": { "type": "integer" },
+          "inputFreeBlockedReviewReportFailedCount": { "type": "integer" },
+          "inputFreeBlockedReviewReportExecutedCount": { "type": "integer" },
+          "inputFreeBlockedReviewReportActionOrders": { "type": "array", "items": { "type": "integer" } },
+          "inputFreeBlockedReviewReportStale": { "type": "boolean" },
+          "inputFreeBlockedReviewReportScopeMismatch": { "type": "boolean" },
+          "browserDispatchChecklistCount": { "type": "integer" },
+          "missingWorkflowRunCount": { "type": "integer" },
+          "missingRequiredArtifactCount": { "type": "integer" },
+          "finalizerFailedCount": { "type": "integer" },
+          "finalizerGapCount": { "type": "integer" }
+        }
+      },
+      "DashboardOperationsReadinessConvergenceResponse": {
         "type": "object",
         "additionalProperties": true,
         "properties": {
@@ -4817,6 +4854,17 @@
           "kubernetesReportSyncReady": { "type": "boolean" },
           "kubernetesReportSyncStale": { "type": "boolean" },
           "missingWorkflowRunCount": { "type": "integer" },
+          "handoffInputFreeBlockedReviewReportExists": { "type": "boolean" },
+          "handoffInputFreeBlockedReviewReportResult": { "type": "string" },
+          "handoffInputFreeBlockedReviewReportGeneratedAt": { "type": "string", "format": "date-time" },
+          "handoffInputFreeBlockedReviewReportSelectedActionCount": { "type": "integer" },
+          "handoffInputFreeBlockedReviewReportPlannedCount": { "type": "integer" },
+          "handoffInputFreeBlockedReviewReportBlockedCount": { "type": "integer" },
+          "handoffInputFreeBlockedReviewReportFailedCount": { "type": "integer" },
+          "handoffInputFreeBlockedReviewReportExecutedCount": { "type": "integer" },
+          "handoffInputFreeBlockedReviewReportActionOrders": { "type": "array", "items": { "type": "integer" } },
+          "handoffInputFreeBlockedReviewReportStale": { "type": "boolean" },
+          "handoffInputFreeBlockedReviewReportScopeMismatch": { "type": "boolean" },
           "decisionRule": { "type": "string" },
           "safetyPolicy": { "type": "string" }
         }

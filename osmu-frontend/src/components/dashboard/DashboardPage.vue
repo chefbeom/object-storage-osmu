@@ -2069,6 +2069,12 @@
           {{ operationsEvidenceHandoffRunIdQuerySummary }}
         </small>
         <small
+          v-if="operationsEvidenceHandoffInputFreeReviewSummary"
+          data-testid="readiness-evidence-handoff-input-free-review"
+        >
+          {{ operationsEvidenceHandoffInputFreeReviewSummary }}
+        </small>
+        <small
           v-if="operationsEvidenceHandoffNextStep.note"
           data-testid="readiness-evidence-handoff-next-note"
         >
@@ -2265,6 +2271,12 @@
           data-testid="readiness-convergence-run-id-query"
         >
           {{ operationsReadinessConvergenceRunIdQuerySummary }}
+        </small>
+        <small
+          v-if="operationsReadinessConvergenceInputFreeReviewSummary"
+          data-testid="readiness-convergence-input-free-review"
+        >
+          {{ operationsReadinessConvergenceInputFreeReviewSummary }}
         </small>
         <small v-if="operationsReadinessConvergence.kubernetesReportSyncConfigMapName">
           report sync {{ operationsReadinessConvergence.kubernetesReportSyncConfigMapName }} /
@@ -4774,6 +4786,21 @@ const operationsEvidenceHandoffRunIdQuerySummary = computed(() => {
   return `Run-id query ${mode || 'unknown'} / ${execution} / ${succeeded} of ${queried} rows OK / errors ${errors} / candidates ${candidates} / ${auth}`
 })
 
+const operationsEvidenceHandoffInputFreeReviewSummary = computed(() => {
+  const handoff = operationsEvidenceHandoff.value || {}
+  const exists = Boolean(handoff.inputFreeBlockedReviewReportExists)
+  const result = handoff.inputFreeBlockedReviewReportResult || ''
+  const selected = Number(handoff.inputFreeBlockedReviewReportSelectedActionCount || 0)
+  const blocked = Number(handoff.inputFreeBlockedReviewReportBlockedCount || 0)
+  const failed = Number(handoff.inputFreeBlockedReviewReportFailedCount || 0)
+  const executed = Number(handoff.inputFreeBlockedReviewReportExecutedCount || 0)
+  const orders = Array.isArray(handoff.inputFreeBlockedReviewReportActionOrders) ? handoff.inputFreeBlockedReviewReportActionOrders : []
+  if (!exists && !result && selected === 0 && blocked === 0 && failed === 0 && executed === 0 && orders.length === 0) return ''
+  const freshness = handoff.inputFreeBlockedReviewReportStale ? 'stale' : 'fresh'
+  const scope = handoff.inputFreeBlockedReviewReportScopeMismatch ? 'scope mismatch' : 'scope ok'
+  const orderText = orders.length > 0 ? orders.join(', ') : 'none'
+  return `Input-free review ${exists ? result || 'available' : 'missing'} / actions ${selected} (${orderText}) / blocked ${blocked} / failed ${failed} / executed ${executed} / ${freshness} / ${scope}`
+})
 const operationsEvidenceHandoffDispatchSummary = computed(() => {
   const handoff = operationsEvidenceHandoff.value || {}
   const readyOrders = Array.isArray(handoff.readyDispatchActionOrders) ? handoff.readyDispatchActionOrders : []
@@ -5656,6 +5683,21 @@ const operationsReadinessConvergenceRunIdQuerySummary = computed(() => {
   return `Run-id query ${mode || 'unknown'} / ${execution} / ${succeeded} of ${queried} rows OK / errors ${errors} / candidates ${candidates} / ${auth}`
 })
 
+const operationsReadinessConvergenceInputFreeReviewSummary = computed(() => {
+  const convergence = operationsReadinessConvergence.value || {}
+  const exists = Boolean(convergence.handoffInputFreeBlockedReviewReportExists)
+  const result = convergence.handoffInputFreeBlockedReviewReportResult || ''
+  const selected = Number(convergence.handoffInputFreeBlockedReviewReportSelectedActionCount || 0)
+  const blocked = Number(convergence.handoffInputFreeBlockedReviewReportBlockedCount || 0)
+  const failed = Number(convergence.handoffInputFreeBlockedReviewReportFailedCount || 0)
+  const executed = Number(convergence.handoffInputFreeBlockedReviewReportExecutedCount || 0)
+  const orders = Array.isArray(convergence.handoffInputFreeBlockedReviewReportActionOrders) ? convergence.handoffInputFreeBlockedReviewReportActionOrders : []
+  if (!exists && !result && selected === 0 && blocked === 0 && failed === 0 && executed === 0 && orders.length === 0) return ''
+  const freshness = convergence.handoffInputFreeBlockedReviewReportStale ? 'stale' : 'fresh'
+  const scope = convergence.handoffInputFreeBlockedReviewReportScopeMismatch ? 'scope mismatch' : 'scope ok'
+  const orderText = orders.length > 0 ? orders.join(', ') : 'none'
+  return `Input-free review ${exists ? result || 'available' : 'missing'} / actions ${selected} (${orderText}) / blocked ${blocked} / failed ${failed} / executed ${executed} / ${freshness} / ${scope}`
+})
 const operationsReadinessConvergenceCommands = computed(() => {
   const commands = Array.isArray(operationsReadinessConvergence.value?.recommendedCommands)
     ? operationsReadinessConvergence.value.recommendedCommands

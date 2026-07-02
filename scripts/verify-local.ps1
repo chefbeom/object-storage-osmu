@@ -208,6 +208,14 @@ function Assert-OperationsIntArrayEqual([int[]] $expected, [int[]] $actual, [str
     }
 }
 
+function Get-OperationsInputFreeBlockedActionOrders() {
+    $handoff = Get-JsonFile ".osmu-run\latest-operations-evidence-handoff.json"
+    if ($null -eq $handoff) {
+        return @()
+    }
+    return @(Get-OperationsIntArray $handoff "inputFreeBlockedActionOrders")
+}
+
 function Assert-OperationsSelectedActionScope([int[]] $expectedActionOrders, [object] $report, [string] $fieldName, [string] $label) {
     if (@($expectedActionOrders).Count -eq 0) {
         return
@@ -630,6 +638,12 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-operato
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1$operationsBranchArgument$operationsGitHubRepositoryArgument$operationsImageSigningVersionArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1$operationsImageSigningVersionArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1"
+$operationsInputFreeBlockedActionOrders = @(Get-OperationsInputFreeBlockedActionOrders)
+$operationsInputFreeReviewActionOrderArgument = New-ActionOrderArgument $operationsInputFreeBlockedActionOrders
+if ($operationsInputFreeBlockedActionOrders.Count -gt 0) {
+    Run "powershell -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1$operationsInputFreeReviewActionOrderArgument -JsonOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.json -MarkdownOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.md"
+    Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1"
+}
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness-convergence.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\sync-kubernetes-operations-reports.ps1 -PlanOnly -SkipDataFlowQueryRetentionBudgetConfigMapPublish"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness-convergence.ps1"
