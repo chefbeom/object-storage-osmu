@@ -260,10 +260,12 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
     selectedActionCount = 3
     missingInputCount = 2
     requiredInputCount = 2
+    requiredGitHubSecrets = @("OSMU_KUBECONFIG_BASE64", "GITHUB_TOKEN")
     defaultBranchRef = "origin/main"
     workflowFiles = @(
         [ordered]@{
             workflow = "storage-expansion-finalizer-ci.yml"
+            requiredSecrets = @("OSMU_KUBECONFIG_BASE64")
             defaultBranchRef = "origin/main"
             existsOnDefaultBranch = $true
             actionOrder = 1
@@ -271,6 +273,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
         },
         [ordered]@{
             workflow = "container-security-ci.yml"
+            requiredSecrets = @("GITHUB_TOKEN")
             defaultBranchRef = "origin/main"
             existsOnDefaultBranch = $true
             actionOrder = 2
@@ -292,6 +295,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
             actionOrder = 1
             name = "Storage expansion finalizer live evidence"
             workflow = "storage-expansion-finalizer-ci.yml"
+            requiredSecrets = @("OSMU_KUBECONFIG_BASE64")
             readyToDispatch = $false
             missingInputCount = 0
             unsafeInputCount = 0
@@ -303,6 +307,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
             actionOrder = 2
             name = "Container scan/SBOM evidence"
             workflow = "container-security-ci.yml"
+            requiredSecrets = @("GITHUB_TOKEN")
             dispatchUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"
             readyToDispatch = $true
             missingInputCount = 0
@@ -315,6 +320,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
             actionOrder = 3
             name = "Kubernetes DR finalizer live evidence"
             workflow = "kubernetes-dr-finalizer-ci.yml"
+            requiredSecrets = @("OSMU_KUBECONFIG_BASE64")
             dispatchUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml"
             readyToDispatch = $false
             missingInputCount = 2
@@ -393,6 +399,15 @@ Assert-Equal @($blockedReport.nextStep.dispatchUrls)[0] "https://github.com/chef
 Assert-Equal $blockedReport.dispatchGithubRepository "chefbeom/object-storage-osmu" "blocked dispatch github repository"
 Assert-Equal $blockedReport.defaultBranchRef "origin/main" "blocked default branch ref"
 Assert-Equal $blockedReport.defaultBranchMissingWorkflowCount 1 "blocked default branch missing workflow count"
+Assert-Equal $blockedReport.requiredGitHubSecretCount 2 "blocked required GitHub secret count"
+Assert-True (@($blockedReport.requiredGitHubSecrets) -contains "OSMU_KUBECONFIG_BASE64") "blocked required kubeconfig secret"
+Assert-True (@($blockedReport.requiredGitHubSecrets) -contains "GITHUB_TOKEN") "blocked required github token secret"
+$blockedKubeSecret = @($blockedReport.requiredGitHubSecretSummaries | Where-Object { $_.secretName -eq "OSMU_KUBECONFIG_BASE64" } | Select-Object -First 1)
+$blockedGithubSecret = @($blockedReport.requiredGitHubSecretSummaries | Where-Object { $_.secretName -eq "GITHUB_TOKEN" } | Select-Object -First 1)
+Assert-Equal $blockedKubeSecret.actionCount 2 "blocked kubeconfig secret action count"
+Assert-Equal $blockedKubeSecret.inputFreeBlockedActionCount 1 "blocked kubeconfig input-free action count"
+Assert-True (@($blockedKubeSecret.actionOrders) -contains 3) "blocked kubeconfig action orders"
+Assert-Equal $blockedGithubSecret.actionCount 1 "blocked github token action count"
 Assert-Equal @($blockedReport.defaultBranchMissingActionOrders)[0] 3 "blocked default branch missing action order"
 Assert-Equal $blockedReport.invocationUnblockPlanExists $true "blocked unblock plan exists"
 Assert-Equal $blockedReport.invocationUnblockPlanActionCount 3 "blocked unblock action count"
@@ -440,6 +455,9 @@ Assert-Contains $blockedMarkdown "## Input-Free Blocked Actions" "blocked markdo
 Assert-Contains $blockedMarkdown "Actions: 1" "blocked markdown input-free action count"
 Assert-Contains $blockedMarkdown "action 1: blockers=2 secrets=OSMU_KUBECONFIG_BASE64" "blocked markdown input-free action summary"
 Assert-Contains $blockedMarkdown "-KubeconfigSecretConfirmed" "blocked markdown input-free plan command"
+Assert-Contains $blockedMarkdown "## Required GitHub Secrets" "blocked markdown required secrets section"
+Assert-Contains $blockedMarkdown "OSMU_KUBECONFIG_BASE64: actions=1,3 inputFreeBlocked=1" "blocked markdown kubeconfig secret summary"
+Assert-Contains $blockedMarkdown "GITHUB_TOKEN: actions=2 inputFreeBlocked=none" "blocked markdown github token secret summary"
 Assert-Contains $blockedMarkdown "Dispatch required inputs: 2" "blocked markdown dispatch required inputs"
 Assert-Contains $blockedMarkdown "Expanded worksheet row delta: 2" "blocked markdown worksheet expansion delta"
 Assert-Contains $blockedMarkdown "Values check rows: 4" "blocked markdown values check rows"

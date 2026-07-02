@@ -166,6 +166,42 @@ function Sum-IntProperty([object[]] $Items, [string] $Name) {
     return $sum
 }
 
+function New-RequiredSecretSummaries([object[]] $Templates, [int[]] $InputFreeBlockedActionOrders) {
+    $groups = [ordered]@{}
+    foreach ($template in @($Templates)) {
+        $order = Get-Int $template "actionOrder"
+        if ($order -le 0) { continue }
+        foreach ($secret in @(Get-TextListFromJsonArray (Get-JsonProperty $template "requiredSecrets"))) {
+            if ([string]::IsNullOrWhiteSpace($secret)) { continue }
+            if (-not $groups.Contains($secret)) {
+                $groups[$secret] = [ordered]@{
+                    secretName = $secret
+                    actionOrders = (New-Object System.Collections.Generic.List[int])
+                    inputFreeBlockedActionOrders = (New-Object System.Collections.Generic.List[int])
+                }
+            }
+            $group = $groups[$secret]
+            if (-not $group.actionOrders.Contains($order)) { $group.actionOrders.Add($order) | Out-Null }
+            if ($InputFreeBlockedActionOrders -contains $order -and -not $group.inputFreeBlockedActionOrders.Contains($order)) {
+                $group.inputFreeBlockedActionOrders.Add($order) | Out-Null
+            }
+        }
+    }
+    $summaries = New-Object System.Collections.ArrayList
+    foreach ($group in $groups.Values) {
+        $orders = @($group.actionOrders | ForEach-Object { [int] $_ })
+        $inputFreeOrders = @($group.inputFreeBlockedActionOrders | ForEach-Object { [int] $_ })
+        $summaries.Add([ordered]@{
+            secretName = [string] $group.secretName
+            actionCount = $orders.Count
+            actionOrders = $orders
+            inputFreeBlockedActionCount = $inputFreeOrders.Count
+            inputFreeBlockedActionOrders = $inputFreeOrders
+        }) | Out-Null
+    }
+    return @($summaries | Sort-Object secretName)
+}
+
 function Get-ArtifactCollectionStageCommand([object] $CollectionPlan) {
     foreach ($name in @("operationsArtifactFinalizerCommand", "localImportCommand", "securityEvidenceFinalizerCommand")) {
         $command = Get-Text $CollectionPlan $name
@@ -539,6 +575,13 @@ $finalizeGapCount = Get-ArrayCount (Get-JsonProperty $finalize.json "gaps")
 $readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
 $finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizeResult) -and (Is-ReadyResult $finalizeReadinessResult) -and $finalizeFailedCount -eq 0 -and $finalizeGapCount -eq 0
 $dispatchTemplates = @(Get-Array (Get-JsonProperty $dispatchPreflight.json "inputTemplates"))
+$requiredGitHubSecretNames = @(Get-TextListFromJsonArray (Get-JsonProperty $dispatchPreflight.json "requiredGitHubSecrets"))
+$inputFreeBlockedActionOrders = @($inputFreeBlockedActions | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
+$requiredGitHubSecretSummaries = @(New-RequiredSecretSummaries $dispatchTemplates $inputFreeBlockedActionOrders)
+if ($requiredGitHubSecretNames.Count -eq 0 -and $requiredGitHubSecretSummaries.Count -gt 0) {
+    $requiredGitHubSecretNames = @($requiredGitHubSecretSummaries | ForEach-Object { Get-Text $_ "secretName" })
+}
+$requiredGitHubSecretCount = $requiredGitHubSecretNames.Count
 $readyDispatchTemplates = @($dispatchTemplates | Where-Object { Get-Bool $_ "readyToDispatch" })
 $blockedDispatchTemplates = @($dispatchTemplates | Where-Object { -not (Get-Bool $_ "readyToDispatch") })
 $readyDispatchActionOrders = @($readyDispatchTemplates | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
@@ -721,7 +764,7 @@ else { $nextStep = New-NextStep "regenerate-readiness" "Regenerate operations re
 
 $generatedAt = [DateTimeOffset]::Now.ToString("o")
 $report = [ordered]@{
-    formatVersion = "osmu.operations-evidence-handoff.v1"; generatedAt = $generatedAt; result = $handoffResult; nextStep = $nextStep; currentBottleneck = $nextStep; stageCount = $stages.Count; readyStageCount = @($stages | Where-Object { $_.ready }).Count; readinessSummary = $readinessSummary; readinessPassedCount = $readinessPassedCount; readinessPendingCount = $readinessPendingCount; readinessTotalCount = $readinessTotalCount; readinessCheckCount = $readinessCheckCount; dispatchPreflightResult = $dispatchPreflightResult; dispatchGithubRepository = $dispatchGithubRepository; dispatchPreflightRequiredInputCount = $dispatchPreflightRequiredInputCount; dispatchPreflightMissingInputCount = $dispatchPreflightMissingInputCount; readyDispatchTemplateCount = $readyDispatchTemplateCount; blockedDispatchTemplateCount = $blockedDispatchTemplateCount
+    formatVersion = "osmu.operations-evidence-handoff.v1"; generatedAt = $generatedAt; result = $handoffResult; nextStep = $nextStep; currentBottleneck = $nextStep; stageCount = $stages.Count; readyStageCount = @($stages | Where-Object { $_.ready }).Count; readinessSummary = $readinessSummary; readinessPassedCount = $readinessPassedCount; readinessPendingCount = $readinessPendingCount; readinessTotalCount = $readinessTotalCount; readinessCheckCount = $readinessCheckCount; dispatchPreflightResult = $dispatchPreflightResult; dispatchGithubRepository = $dispatchGithubRepository; requiredGitHubSecretCount = $requiredGitHubSecretCount; requiredGitHubSecrets = @($requiredGitHubSecretNames); requiredGitHubSecretSummaries = @($requiredGitHubSecretSummaries); dispatchPreflightRequiredInputCount = $dispatchPreflightRequiredInputCount; dispatchPreflightMissingInputCount = $dispatchPreflightMissingInputCount; readyDispatchTemplateCount = $readyDispatchTemplateCount; blockedDispatchTemplateCount = $blockedDispatchTemplateCount
     defaultBranchRef = $defaultBranchRef; defaultBranchMissingWorkflowCount = $defaultBranchMissingWorkflowCount; defaultBranchMissingActionOrders = @($defaultBranchMissingActionOrders); defaultBranchMissingWorkflows = @($defaultBranchMissingWorkflows)
     invocationUnblockPlanExists = [bool] $invocationUnblockPlan.exists; invocationUnblockPlanPath = $invocationUnblockPlan.path; invocationUnblockPlanActionCount = $invocationUnblockPlanActionCount; invocationUnblockPlanBlockReasonCount = $invocationUnblockPlanBlockReasonCount; invocationUnblockPlanRequiredInputCount = $invocationUnblockPlanRequiredInputCount; invocationUnblockPlanRequiredSecretCount = $invocationUnblockPlanRequiredSecretCount; invocationUnblockPlanOperatorApprovalActionCount = $invocationUnblockPlanOperatorApprovalActionCount; invocationUnblockPlanKubeconfigSecretActionCount = $invocationUnblockPlanKubeconfigSecretActionCount; invocationUnblockPlanDefaultBranchMissingActionCount = $invocationUnblockPlanDefaultBranchMissingActionCount; invocationUnblockActions = @($unblockActionSummaries); inputFreeBlockedActionCount = $inputFreeBlockedActionCount; inputFreeBlockedRequiredSecretCount = $inputFreeBlockedRequiredSecretCount; inputFreeBlockedOperatorApprovalActionCount = $inputFreeBlockedOperatorApprovalActionCount; inputFreeBlockedKubeconfigSecretActionCount = $inputFreeBlockedKubeconfigSecretActionCount; inputFreeBlockedActions = @($inputFreeBlockedActions)
     readyDispatchActionOrders = @($readyDispatchActionOrders); blockedDispatchActionOrders = @($blockedDispatchActionOrders); invocationSelectedActionOrders = @($invocationSelectedActionOrders); dispatchPreflightSelectedActionOrders = @($dispatchPreflightSelectedActionOrders); workflowRunIdPlanActionOrders = @($workflowRunIdPlanActionOrders); artifactCollectionActionOrders = @($artifactCollectionActionOrders); readyDispatchWorkflows = @($readyDispatchWorkflows); blockedDispatchWorkflows = @($blockedDispatchWorkflows)
@@ -750,6 +793,16 @@ else {
         $markdownLines += "- action $($action.actionOrder): blockers=$($action.blockReasonCount) secrets=$secretLabel - $($action.name)"
         $markdownLines += "  - Blockers: $blockerLabel"
         if (-not [string]::IsNullOrWhiteSpace($action.planCommand)) { $markdownLines += "  - Plan command: ``$($action.planCommand)``" }
+    }
+}
+$markdownLines += @("", "## Required GitHub Secrets", "", "- Secrets: $requiredGitHubSecretCount")
+if ($requiredGitHubSecretSummaries.Count -eq 0) {
+    $markdownLines += "- Required secrets: none"
+}
+else {
+    foreach ($secret in @($requiredGitHubSecretSummaries)) {
+        $inputFreeOrders = if (@($secret.inputFreeBlockedActionOrders).Count -eq 0) { "none" } else { @($secret.inputFreeBlockedActionOrders) -join "," }
+        $markdownLines += "- $($secret.secretName): actions=$(Join-IntList @($secret.actionOrders)) inputFreeBlocked=$inputFreeOrders"
     }
 }
 $markdownLines += @("", "## Dispatch Preflight", "", "- Result: $dispatchPreflightResult", "- GitHub repository: $dispatchGithubRepositoryLabel", "- Default branch ref: $defaultBranchRefLabel", "- Default-branch workflow files missing: $defaultBranchMissingWorkflowCount", "- Default-branch missing action orders: $(Join-IntList $defaultBranchMissingActionOrders)", "- Ready templates: $readyDispatchTemplateCount", "- Blocked templates: $blockedDispatchTemplateCount", "- Ready action orders: $(Join-IntList $readyDispatchActionOrders)", "- Blocked action orders: $(Join-IntList $blockedDispatchActionOrders)", "- Stale reports: $staleReportCount", "", "## Dispatch Workflow Handoff", "")
