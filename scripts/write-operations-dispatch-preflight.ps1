@@ -304,6 +304,21 @@ function Normalize-GitRefName([string] $Value) {
     return $trimmed
 }
 
+function Get-RemoteHeadCommit([string] $RemoteName, [string] $BranchName) {
+    if ([string]::IsNullOrWhiteSpace($RemoteName) -or [string]::IsNullOrWhiteSpace($BranchName)) {
+        return ""
+    }
+    $remoteRef = "refs/heads/$BranchName"
+    $line = [string] ((Invoke-GitText @("ls-remote", "--heads", $RemoteName, $remoteRef) | Select-Object -First 1))
+    if ([string]::IsNullOrWhiteSpace($line)) {
+        return ""
+    }
+    if ($line -match '^\s*([0-9a-fA-F]{40})\s+') {
+        return $matches[1].ToLowerInvariant()
+    }
+    return ""
+}
+
 function Get-GitRefSafetyReport([string] $ExpectedGitHubRef, [bool] $Enabled) {
     $report = [ordered]@{
         checked = [bool] $Enabled
@@ -350,6 +365,12 @@ function Get-GitRefSafetyReport([string] $ExpectedGitHubRef, [bool] $Enabled) {
     $expectedRef = Normalize-GitRefName $ExpectedGitHubRef
     $refMatchesBranch = -not [string]::IsNullOrWhiteSpace($branch) -and $expectedRef -eq $branch
     $suggestedRef = if ([string]::IsNullOrWhiteSpace($shortSha)) { "codex/operations-readiness" } else { "codex/operations-readiness-$shortSha" }
+    $remoteRefCommit = ""
+    $remoteRefMatchesCommit = $false
+    if (-not $dirty -and -not $refMatchesBranch -and -not [string]::IsNullOrWhiteSpace($expectedRef) -and -not [string]::IsNullOrWhiteSpace($commit)) {
+        $remoteRefCommit = Get-RemoteHeadCommit "origin" $expectedRef
+        $remoteRefMatchesCommit = -not [string]::IsNullOrWhiteSpace($remoteRefCommit) -and $remoteRefCommit -eq $commit.ToLowerInvariant()
+    }
 
     $report.currentBranch = $branch
     $report.commitSha = $commit
@@ -360,7 +381,7 @@ function Get-GitRefSafetyReport([string] $ExpectedGitHubRef, [bool] $Enabled) {
     $report.behindCount = $behind
     $report.workingTreeDirty = $dirty
     $report.githubRefMatchesCurrentBranch = $refMatchesBranch
-    $report.githubRefLikelyContainsCommit = $refMatchesBranch -and -not [string]::IsNullOrWhiteSpace($upstream) -and $ahead -eq 0
+    $report.githubRefLikelyContainsCommit = ($refMatchesBranch -and -not [string]::IsNullOrWhiteSpace($upstream) -and $ahead -eq 0) -or $remoteRefMatchesCommit
     $report.suggestedGitHubRef = $suggestedRef
     if (-not $dirty) {
         $report.suggestedPushCommand = "git push origin HEAD:refs/heads/$suggestedRef"
@@ -374,14 +395,19 @@ function Get-GitRefSafetyReport([string] $ExpectedGitHubRef, [bool] $Enabled) {
         $report.status = "review-required"
         $report.note = "Detached HEAD detected; push the commit to a named branch and pass that branch with -GitHubRef before dispatch. Suggested ref: $suggestedRef."
     }
-    elseif (-not $refMatchesBranch) {
-        $report.status = "review-required"
-        $report.note = "GitHubRef '$ExpectedGitHubRef' does not match current branch '$branch'. Ensure the selected ref contains commit $shortSha before dispatch. Suggested ref: $suggestedRef."
-    }
     elseif ($dirty) {
         $report.status = "action-required"
         $aheadNote = if ($ahead -gt 0 -and -not [string]::IsNullOrWhiteSpace($upstream)) { " Current branch '$branch' is also $ahead commit(s) ahead of '$upstream'." } else { "" }
         $report.note = "Working tree has uncommitted changes; GitHub Actions will only run committed content from GitHubRef '$ExpectedGitHubRef', not local dirty files.$aheadNote Commit or intentionally exclude the changes, rerun preflight, then push a branch and dispatch that ref. Suggested ref after commit: $suggestedRef."
+    }
+    elseif ($remoteRefMatchesCommit) {
+        $report.status = "ready"
+        $report.suggestedPushCommand = ""
+        $report.note = "Remote GitHubRef '$ExpectedGitHubRef' resolves to local commit $shortSha on origin."
+    }
+    elseif (-not $refMatchesBranch) {
+        $report.status = "review-required"
+        $report.note = "GitHubRef '$ExpectedGitHubRef' does not match current branch '$branch'. Ensure the selected ref contains commit $shortSha before dispatch. Suggested ref: $suggestedRef."
     }
     elseif ([string]::IsNullOrWhiteSpace($upstream)) {
         $report.status = "review-required"
