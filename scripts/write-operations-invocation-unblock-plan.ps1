@@ -1,5 +1,6 @@
 param(
     [string] $InvocationReportPath = ".\.osmu-run\latest-operations-evidence-plan-invocation.json",
+    [string] $DispatchPreflightReportPath = ".\.osmu-run\latest-operations-dispatch-preflight.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-invocation-unblock-plan.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-invocation-unblock-plan.md",
     [switch] $NoWrite
@@ -18,6 +19,21 @@ function Resolve-ProjectPath([string] $PathValue) {
 function Read-Utf8Text([string] $PathValue) {
     $resolvedPath = Resolve-ProjectPath $PathValue
     return [System.IO.File]::ReadAllText($resolvedPath, [System.Text.UTF8Encoding]::new($false, $true))
+}
+function Read-OptionalJson([string] $PathValue) {
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [ordered]@{
+            path = $resolvedPath
+            exists = $false
+            json = $null
+        }
+    }
+    return [ordered]@{
+        path = $resolvedPath
+        exists = $true
+        json = (Read-Utf8Text $resolvedPath | ConvertFrom-Json)
+    }
 }
 function Get-JsonProperty([object] $Object, [string] $Name) {
     if ($null -eq $Object) {
@@ -180,6 +196,75 @@ function Add-UniqueInt([System.Collections.Generic.List[int]] $List, [int] $Valu
         $List.Add($Value)
     }
 }
+
+function Get-IntArrayFromValue([object] $Value) {
+    if ($null -eq $Value) {
+        return @()
+    }
+    $items = if ($Value -is [System.Array]) {
+        @($Value)
+    }
+    elseif ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
+        @($Value)
+    }
+    else {
+        @($Value)
+    }
+    return @($items | ForEach-Object {
+        try {
+            [int] $_
+        }
+        catch {
+            0
+        }
+    } | Where-Object { $_ -gt 0 })
+}
+
+function Get-DefaultBranchWorkflowGroups([object] $DispatchPreflightReport) {
+    if ($null -eq $DispatchPreflightReport) {
+        return @()
+    }
+    $defaultBranchRef = Get-Text $DispatchPreflightReport "defaultBranchRef"
+    if ([string]::IsNullOrWhiteSpace($defaultBranchRef)) {
+        $defaultBranchRef = "default branch"
+    }
+    $groups = New-Object System.Collections.ArrayList
+    foreach ($workflowFile in @(Get-ObjectValue $DispatchPreflightReport "workflowFiles")) {
+        if ($null -eq $workflowFile) {
+            continue
+        }
+        $existsOnDefaultBranchValue = Get-ObjectValue $workflowFile "existsOnDefaultBranch"
+        if ($null -eq $existsOnDefaultBranchValue -or [System.Convert]::ToBoolean($existsOnDefaultBranchValue)) {
+            continue
+        }
+        $workflow = Get-Text $workflowFile "workflow"
+        if ([string]::IsNullOrWhiteSpace($workflow)) {
+            $workflow = Get-Text $workflowFile "workflowFile"
+        }
+        if ([string]::IsNullOrWhiteSpace($workflow)) {
+            continue
+        }
+        $workflowDefaultBranchRef = Get-Text $workflowFile "defaultBranchRef"
+        if ([string]::IsNullOrWhiteSpace($workflowDefaultBranchRef)) {
+            $workflowDefaultBranchRef = $defaultBranchRef
+        }
+        $orders = New-Object System.Collections.Generic.List[int]
+        Add-UniqueInt $orders (Get-Int $workflowFile "actionOrder")
+        foreach ($order in @(Get-IntArrayFromValue (Get-ObjectValue $workflowFile "actionOrders"))) {
+            Add-UniqueInt $orders $order
+        }
+        $orderArray = @($orders | ForEach-Object { [int] $_ })
+        $groups.Add([ordered]@{
+            kind = "default-branch-workflow"
+            workflow = $workflow
+            defaultBranchRef = $workflowDefaultBranchRef
+            actionCount = $orderArray.Count
+            actionOrders = $orderArray
+            note = "Publish or merge this workflow file onto $workflowDefaultBranchRef before using GitHub workflow_dispatch for the listed action orders."
+        }) | Out-Null
+    }
+    return @($groups)
+}
 function New-InvokeCommand([int[]] $Orders, [bool] $NeedKubeconfig, [bool] $NeedApproval, [string[]] $Placeholders) {
     if ($null -eq $Orders -or $Orders.Count -eq 0) {
         return ""
@@ -309,6 +394,15 @@ $invocation = Read-Utf8Text $resolvedInvocationPath | ConvertFrom-Json
 if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1") {
     throw "Unexpected operations evidence invocation formatVersion: $($invocation.formatVersion)"
 }
+$dispatchPreflight = Read-OptionalJson $DispatchPreflightReportPath
+$defaultBranchWorkflowGroups = @(Get-DefaultBranchWorkflowGroups $dispatchPreflight.json)
+$defaultBranchWorkflowMissingOrders = New-Object System.Collections.Generic.List[int]
+foreach ($group in $defaultBranchWorkflowGroups) {
+    foreach ($order in @(Get-ObjectValue $group "actionOrders")) {
+        Add-UniqueInt $defaultBranchWorkflowMissingOrders ([int] $order)
+    }
+}
+$defaultBranchWorkflowMissingOrdersArray = @($defaultBranchWorkflowMissingOrders | ForEach-Object { [int] $_ })
 
 $actionPlans = New-Object System.Collections.ArrayList
 $blockedOrders = New-Object System.Collections.Generic.List[int]
@@ -329,6 +423,7 @@ foreach ($action in @($invocation.actions)) {
     $invalidPlaceholders = @(Get-TextArray $action "invalidPlaceholders")
     $requiresOperatorApproval = Get-Bool $action "requiresOperatorApproval"
     $requiresKubeconfigSecret = Get-Bool $action "requiresKubeconfigSecret"
+    $defaultBranchMissingForAction = $defaultBranchWorkflowMissingOrdersArray -contains $order
     $needsActionKubeconfig = $requiresKubeconfigSecret -and ($blockReasons -contains "kubeconfig secret not confirmed")
     $needsActionApproval = $requiresOperatorApproval -and ($blockReasons -contains "operator approval not confirmed")
     $requiredInputs = New-Object System.Collections.ArrayList
@@ -399,6 +494,7 @@ foreach ($action in @($invocation.actions)) {
         requiresKubeconfigSecret = $requiresKubeconfigSecret
         needsOperatorApprovalConfirmation = $needsActionApproval
         needsKubeconfigSecretConfirmation = $needsActionKubeconfig
+        defaultBranchWorkflowMissing = $defaultBranchMissingForAction
         requiredInputs = @($requiredInputs)
         ambiguousRepeatedPlaceholders = $actionHasAmbiguousPlaceholders
         planCommand = $actionPlanCommand
@@ -409,7 +505,7 @@ $allPlaceholdersArray = @($allRequiredPlaceholders | ForEach-Object { [string] $
 $blockedOrdersArray = @($blockedOrders | ForEach-Object { [int] $_ })
 $plannedOrdersArray = @($plannedOrders | ForEach-Object { [int] $_ })
 $allSelectedOrdersArray = @($allSelectedOrders | ForEach-Object { [int] $_ })
-$result = if ((Get-Int $invocation "blockedCount") -gt 0) { "action-required" } else { "ready" }
+$result = if ((Get-Int $invocation "blockedCount") -gt 0 -or $defaultBranchWorkflowGroups.Count -gt 0) { "action-required" } else { "ready" }
 $generatedAt = [DateTimeOffset]::Now.ToString("o")
 $confirmedPlanCommand = New-InvokeCommand `
     -Orders $allSelectedOrdersArray `
@@ -465,20 +561,26 @@ $report = [ordered]@{
     plannedCount = (Get-Int $invocation "plannedCount")
     blockedCount = (Get-Int $invocation "blockedCount")
     failedCount = (Get-Int $invocation "failedCount")
+    sourceDispatchPreflightReport = $dispatchPreflight.path
+    dispatchPreflightExists = [bool] $dispatchPreflight.exists
     needsKubeconfigSecretConfirmation = $needsKubeconfig
     needsOperatorApprovalConfirmation = $needsApproval
     requiredPlaceholderCount = $allPlaceholdersArray.Count
     ambiguousRepeatedPlaceholderCount = $ambiguousRepeatedPlaceholderCount
+    defaultBranchWorkflowMissingCount = $defaultBranchWorkflowGroups.Count
+    defaultBranchWorkflowMissingActionOrders = $defaultBranchWorkflowMissingOrdersArray
     confirmationGroupCount = $confirmationGroups.Count
     requiredInputGroupCount = $requiredInputGroups.Count
+    defaultBranchWorkflowGroupCount = $defaultBranchWorkflowGroups.Count
     blockedActionOrders = $blockedOrdersArray
     plannedActionOrders = $plannedOrdersArray
     confirmedPlanCommand = $confirmedPlanCommand
     blockedOnlyPlanCommand = $blockedOnlyCommand
     plannedOnlyCommand = $plannedOnlyCommand
-    decisionRule = "Resolve placeholders, confirm operator approval when required, confirm OSMU_KUBECONFIG_BASE64 readiness when required, then rerun invoke-operations-evidence-plan.ps1 in plan-only mode before using -Execute."
+    decisionRule = "Resolve placeholders, confirm operator approval when required, confirm OSMU_KUBECONFIG_BASE64 readiness when required, publish selected workflow files to the default branch when required, then rerun invoke-operations-evidence-plan.ps1 in plan-only mode before using -Execute."
     confirmationGroups = @($confirmationGroups)
     requiredInputGroups = @($requiredInputGroups)
+    defaultBranchWorkflowGroups = @($defaultBranchWorkflowGroups)
     actions = @($actionPlans)
 }
 
@@ -500,13 +602,15 @@ $markdownLines = @(
     "- Needs operator approval confirmation: $($report.needsOperatorApprovalConfirmation)",
     "- Required placeholder values: $($report.requiredPlaceholderCount)",
     "- Ambiguous repeated placeholders: $($report.ambiguousRepeatedPlaceholderCount)",
+    "- Default-branch workflow files missing: $($report.defaultBranchWorkflowMissingCount)",
     "- Confirmation groups: $($report.confirmationGroupCount)",
     "- Required input groups: $($report.requiredInputGroupCount)",
+    "- Default-branch workflow groups: $($report.defaultBranchWorkflowGroupCount)",
     "",
     "## Unblock Groups",
     ""
 )
-if (@($confirmationGroups).Count -eq 0 -and @($requiredInputGroups).Count -eq 0) {
+if (@($confirmationGroups).Count -eq 0 -and @($requiredInputGroups).Count -eq 0 -and @($defaultBranchWorkflowGroups).Count -eq 0) {
     $markdownLines += "- No grouped blockers detected."
 }
 foreach ($group in @($confirmationGroups)) {
@@ -519,6 +623,12 @@ foreach ($group in @($requiredInputGroups)) {
     $workflowInputText = if (@($group.workflowInputs).Count -gt 0) { " workflow inputs: $(@($group.workflowInputs) -join ', ')" } else { " workflow inputs: n/a" }
     $ambiguityText = if ($group.ambiguousRepeatedPlaceholder) { " ambiguous" } else { "" }
     $markdownLines += "- Input: $($group.parameter) $($group.placeholder) for actions $(@($group.actionOrders) -join ', ') ($($group.actionCount) actions,$workflowInputText,$ambiguityText occurrenceCount=$($group.occurrenceCount))"
+    if (-not [string]::IsNullOrWhiteSpace($group.note)) {
+        $markdownLines += "  - Note: $($group.note)"
+    }
+}
+foreach ($group in @($defaultBranchWorkflowGroups)) {
+    $markdownLines += "- Default branch workflow: $($group.workflow) missing from $($group.defaultBranchRef) for actions $(@($group.actionOrders) -join ', ')"
     if (-not [string]::IsNullOrWhiteSpace($group.note)) {
         $markdownLines += "  - Note: $($group.note)"
     }
@@ -557,6 +667,9 @@ foreach ($action in $actionPlans) {
     }
     if ($action.ambiguousRepeatedPlaceholders) {
         $markdownLines += "  - Note: repeated generic placeholders may need workflow run id/artifact collection helpers instead of one shared replacement value."
+    }
+    if ($action.defaultBranchWorkflowMissing) {
+        $markdownLines += "  - Note: workflow_dispatch requires the workflow file to exist on the default branch before dispatch."
     }
     if (-not [string]::IsNullOrWhiteSpace($action.planCommand)) {
         $markdownLines += "  - Plan command: ``$($action.planCommand)``"

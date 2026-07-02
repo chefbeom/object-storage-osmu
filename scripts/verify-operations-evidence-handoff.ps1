@@ -208,6 +208,30 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
     githubRepository = "chefbeom/object-storage-osmu"
     selectedActionCount = 3
     missingInputCount = 2
+    defaultBranchRef = "origin/main"
+    workflowFiles = @(
+        [ordered]@{
+            workflow = "storage-expansion-finalizer-ci.yml"
+            defaultBranchRef = "origin/main"
+            existsOnDefaultBranch = $true
+            actionOrder = 1
+            actionOrders = @(1)
+        },
+        [ordered]@{
+            workflow = "container-security-ci.yml"
+            defaultBranchRef = "origin/main"
+            existsOnDefaultBranch = $true
+            actionOrder = 2
+            actionOrders = @(2)
+        },
+        [ordered]@{
+            workflow = "manual-data-flow-query-retention-budget-evidence.yml"
+            defaultBranchRef = "origin/main"
+            existsOnDefaultBranch = $false
+            actionOrder = 3
+            actionOrders = @(3)
+        }
+    )
     readySubsetPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2"
     readySubsetExecuteCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2 -Execute"
     readySubsetApiExecuteCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -GitHubRef main -Execute"
@@ -280,11 +304,17 @@ Assert-Equal $blockedReport.nextStep.code "dispatch-ready-subset" "blocked next 
 Assert-Contains $blockedReport.nextStep.command "-ActionOrder 2" "blocked ready subset command"
 Assert-Contains $blockedReport.nextStep.reason "1 action(s) are ready" "blocked ready subset reason"
 Assert-Contains $blockedReport.nextStep.note "remaining blocked actions" "blocked ready subset note"
+Assert-Contains $blockedReport.nextStep.note "Default-branch workflow blocker" "blocked ready subset default branch hint"
+Assert-Contains $blockedReport.nextStep.note "manual-data-flow-query-retention-budget-evidence.yml" "blocked ready subset default branch workflow"
 Assert-Contains $blockedReport.nextStep.note "Web dispatch URL(s) for ready templates" "blocked ready subset dispatch URL hint"
 Assert-Contains $blockedReport.nextStep.note "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked ready subset dispatch URL hint value"
 Assert-Equal @($blockedReport.nextStep.dispatchUrls).Count 1 "blocked ready subset structured dispatch URL count"
 Assert-Equal @($blockedReport.nextStep.dispatchUrls)[0] "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked ready subset structured dispatch URL"
 Assert-Equal $blockedReport.dispatchGithubRepository "chefbeom/object-storage-osmu" "blocked dispatch github repository"
+Assert-Equal $blockedReport.defaultBranchRef "origin/main" "blocked default branch ref"
+Assert-Equal $blockedReport.defaultBranchMissingWorkflowCount 1 "blocked default branch missing workflow count"
+Assert-Equal @($blockedReport.defaultBranchMissingActionOrders)[0] 3 "blocked default branch missing action order"
+Assert-Equal @($blockedReport.defaultBranchMissingWorkflows)[0].workflow "manual-data-flow-query-retention-budget-evidence.yml" "blocked default branch missing workflow name"
 Assert-Equal $blockedReport.blockedActionCount 5 "blocked count"
 Assert-Equal $blockedReport.missingWorkflowRunCount 6 "blocked missing workflow run count"
 Assert-Equal @($blockedReport.readyDispatchWorkflows).Count 1 "blocked ready dispatch workflow count"
@@ -300,6 +330,8 @@ Assert-Contains $blockedMarkdown "GitHub repository: chefbeom/object-storage-osm
 Assert-Contains $blockedMarkdown "ready action 2: container-security-ci.yml" "blocked markdown ready workflow"
 Assert-Contains $blockedMarkdown "dispatchUrl=https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked markdown ready dispatch url"
 Assert-Contains $blockedMarkdown "blocked action 3: kubernetes-dr-finalizer-ci.yml" "blocked markdown blocked workflow"
+Assert-Contains $blockedMarkdown "Default Branch Workflow Readiness" "blocked markdown default branch section"
+Assert-Contains $blockedMarkdown "missing workflow: manual-data-flow-query-retention-budget-evidence.yml" "blocked markdown default branch workflow"
 
 $preflightBlockReadinessPath = Join-Path $resolvedOutputDirectory "preflight-block-readiness.json"
 $preflightBlockPlanPath = Join-Path $resolvedOutputDirectory "preflight-block-plan.json"

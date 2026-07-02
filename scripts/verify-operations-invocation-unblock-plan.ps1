@@ -144,6 +144,7 @@ Write-JsonFixture $blockedInvocationPath ([ordered]@{
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -InvocationReportPath $blockedInvocationPath `
+    -DispatchPreflightReportPath (Join-Path $resolvedOutputDirectory "missing-dispatch-preflight.json") `
     -JsonOutputPath $blockedJsonPath `
     -MarkdownOutputPath $blockedMarkdownPath | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -240,6 +241,7 @@ Write-JsonFixture $readyInvocationPath ([ordered]@{
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -InvocationReportPath $readyInvocationPath `
+    -DispatchPreflightReportPath (Join-Path $resolvedOutputDirectory "missing-dispatch-preflight.json") `
     -JsonOutputPath $readyJsonPath `
     -MarkdownOutputPath $readyMarkdownPath | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -255,6 +257,82 @@ Assert-Equal $readyReport.confirmationGroupCount 0 "ready confirmation group cou
 Assert-Equal $readyReport.requiredInputGroupCount 0 "ready required input group count"
 Assert-Contains $readyReport.plannedOnlyCommand "-ActionOrder 1" "ready planned-only command"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown"
+
+$defaultBranchInvocationPath = Join-Path $resolvedOutputDirectory "default-branch-missing-invocation.json"
+$defaultBranchDispatchPreflightPath = Join-Path $resolvedOutputDirectory "default-branch-missing-dispatch-preflight.json"
+$defaultBranchJsonPath = Join-Path $resolvedOutputDirectory "default-branch-missing-unblock-plan.json"
+$defaultBranchMarkdownPath = Join-Path $resolvedOutputDirectory "default-branch-missing-unblock-plan.md"
+
+Write-JsonFixture $defaultBranchInvocationPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    generatedAt = "2026-06-16T07:30:00+09:00"
+    result = "planned"
+    sourcePlan = ".osmu-run/latest-operations-evidence-plan.json"
+    sourceSummary = "passed=83 pending=19"
+    sourcePassedCount = 83
+    sourcePendingCount = 19
+    sourceTotalCount = 102
+    sourceCheckCount = 102
+    commandMode = "Workflow"
+    executionMode = "plan-only"
+    selectedActionCount = 1
+    plannedCount = 1
+    blockedCount = 0
+    executedCount = 0
+    failedCount = 0
+    actions = @(
+        [ordered]@{
+            order = 8
+            name = "Data-flow query retention budget evidence"
+            category = "data-flow"
+            actionType = "manual-evidence"
+            evidencePath = ".osmu-run/latest-data-flow-query-retention-budget-evidence.json"
+            commandMode = "Workflow"
+            command = "gh workflow run manual-data-flow-query-retention-budget-evidence.yml"
+            status = "planned"
+            blockReasons = @()
+            unresolvedPlaceholders = @()
+            invalidPlaceholders = @()
+            requiresOperatorApproval = $false
+            requiresKubeconfigSecret = $false
+        }
+    )
+})
+Write-JsonFixture $defaultBranchDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    generatedAt = "2026-06-16T07:31:00+09:00"
+    result = "action-required"
+    defaultBranchRef = "origin/main"
+    workflowFiles = @(
+        [ordered]@{
+            workflow = "manual-data-flow-query-retention-budget-evidence.yml"
+            defaultBranchRef = "origin/main"
+            existsOnDefaultBranch = $false
+            actionOrder = 8
+            actionOrders = @(8)
+        }
+    )
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -InvocationReportPath $defaultBranchInvocationPath `
+    -DispatchPreflightReportPath $defaultBranchDispatchPreflightPath `
+    -JsonOutputPath $defaultBranchJsonPath `
+    -MarkdownOutputPath $defaultBranchMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-invocation-unblock-plan.ps1 default-branch fixture failed with exit code $LASTEXITCODE."
+}
+
+$defaultBranchReport = Read-Utf8Text $defaultBranchJsonPath | ConvertFrom-Json
+$defaultBranchMarkdown = Read-Utf8Text $defaultBranchMarkdownPath
+Assert-Equal $defaultBranchReport.result "action-required" "default branch result"
+Assert-Equal $defaultBranchReport.blockedCount 0 "default branch invocation blocked count"
+Assert-Equal $defaultBranchReport.defaultBranchWorkflowMissingCount 1 "default branch missing workflow count"
+Assert-Equal $defaultBranchReport.defaultBranchWorkflowGroupCount 1 "default branch workflow group count"
+Assert-Equal @($defaultBranchReport.defaultBranchWorkflowMissingActionOrders)[0] 8 "default branch missing action order"
+Assert-True @($defaultBranchReport.actions)[0].defaultBranchWorkflowMissing "default branch action should carry missing workflow flag"
+Assert-Contains $defaultBranchMarkdown "Default branch workflow: manual-data-flow-query-retention-budget-evidence.yml" "default branch markdown workflow group"
+Assert-Contains $defaultBranchMarkdown "workflow_dispatch requires the workflow file to exist on the default branch" "default branch markdown note"
 
 Write-JsonFixture $invalidInvocationPath ([ordered]@{
     formatVersion = "osmu.operations-evidence-plan-invocation.v1"
@@ -294,6 +372,7 @@ Write-JsonFixture $invalidInvocationPath ([ordered]@{
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -InvocationReportPath $invalidInvocationPath `
+    -DispatchPreflightReportPath (Join-Path $resolvedOutputDirectory "missing-dispatch-preflight.json") `
     -JsonOutputPath $invalidJsonPath `
     -MarkdownOutputPath $invalidMarkdownPath | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -313,4 +392,5 @@ Assert-Contains $invalidMarkdown "<YYYYMMDDTHHMMSSZ> via BackupTimestamp" "inval
 Write-Host "Operations invocation unblock plan verified."
 Write-Host "Blocked report: $blockedJsonPath"
 Write-Host "Ready report: $readyJsonPath"
+Write-Host "Default branch report: $defaultBranchJsonPath"
 Write-Host "Invalid report: $invalidJsonPath"

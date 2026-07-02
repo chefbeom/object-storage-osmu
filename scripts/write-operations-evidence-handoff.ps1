@@ -242,6 +242,59 @@ function Get-WorkflowRunUrlHint([object] $RunIdPlan) {
     $suffix = if ($labels.Count -gt 5) { " / ..." } else { "" }
     return " Browser workflow runs URL(s): $($visible -join ' / ')$suffix."
 }
+
+function Get-DefaultBranchMissingWorkflows([object] $DispatchPreflightReport) {
+    if ($null -eq $DispatchPreflightReport) { return @() }
+    $defaultBranchRef = Get-Text $DispatchPreflightReport "defaultBranchRef"
+    if ([string]::IsNullOrWhiteSpace($defaultBranchRef)) { $defaultBranchRef = "default branch" }
+    $items = New-Object System.Collections.ArrayList
+    foreach ($workflowFile in @(Get-JsonProperty $DispatchPreflightReport "workflowFiles")) {
+        if ($null -eq $workflowFile) { continue }
+        $existsOnDefaultBranchValue = Get-JsonProperty $workflowFile "existsOnDefaultBranch"
+        if ($null -eq $existsOnDefaultBranchValue -or [System.Convert]::ToBoolean($existsOnDefaultBranchValue)) { continue }
+        $workflow = Get-Text $workflowFile "workflow"
+        if ([string]::IsNullOrWhiteSpace($workflow)) { $workflow = Get-Text $workflowFile "workflowFile" }
+        if ([string]::IsNullOrWhiteSpace($workflow)) { continue }
+        $workflowDefaultBranchRef = Get-Text $workflowFile "defaultBranchRef"
+        if ([string]::IsNullOrWhiteSpace($workflowDefaultBranchRef)) { $workflowDefaultBranchRef = $defaultBranchRef }
+        $orders = New-Object System.Collections.Generic.List[int]
+        $primaryOrder = Get-Int $workflowFile "actionOrder"
+        if ($primaryOrder -gt 0 -and -not $orders.Contains($primaryOrder)) { $orders.Add($primaryOrder) | Out-Null }
+        foreach ($order in @(Get-IntListFromJsonArray (Get-JsonProperty $workflowFile "actionOrders"))) {
+            if ($order -gt 0 -and -not $orders.Contains($order)) { $orders.Add($order) | Out-Null }
+        }
+        $items.Add([ordered]@{
+            workflow = $workflow
+            defaultBranchRef = $workflowDefaultBranchRef
+            actionOrders = @($orders | ForEach-Object { [int] $_ })
+            actionCount = $orders.Count
+            note = "workflow_dispatch requires this workflow file on $workflowDefaultBranchRef before dispatch."
+        }) | Out-Null
+    }
+    return @($items)
+}
+
+function Get-DefaultBranchMissingActionOrders([object[]] $Workflows) {
+    $orders = New-Object System.Collections.Generic.List[int]
+    foreach ($workflow in @($Workflows)) {
+        foreach ($order in @(Get-IntListFromJsonArray (Get-JsonProperty $workflow "actionOrders"))) {
+            if ($order -gt 0 -and -not $orders.Contains($order)) { $orders.Add($order) | Out-Null }
+        }
+    }
+    return @($orders | Sort-Object -Unique | ForEach-Object { [int] $_ })
+}
+
+function Get-DefaultBranchMissingWorkflowHint([object[]] $Workflows) {
+    $items = @($Workflows)
+    if ($items.Count -eq 0) { return "" }
+    $labels = @($items | Select-Object -First 5 | ForEach-Object {
+        $orders = @(Get-IntListFromJsonArray (Get-JsonProperty $_ "actionOrders"))
+        $orderText = if ($orders.Count -gt 0) { " actions=$($orders -join ',')" } else { "" }
+        "$((Get-Text $_ "workflow")) on $((Get-Text $_ "defaultBranchRef"))$orderText"
+    })
+    $suffix = if ($items.Count -gt 5) { " / ..." } else { "" }
+    return " Default-branch workflow blocker(s): $($labels -join ' / ')$suffix. Merge or publish these workflow files to the default branch before workflow_dispatch."
+}
 function Find-WorkflowRunIdInput([object] $RunIdPlan, [string] $WorkflowName, [int] $ActionOrder) {
     foreach ($input in @(Get-JsonProperty $RunIdPlan "workflowRunIdInputs")) {
         $inputWorkflow = Get-Text $input "workflow"
@@ -391,6 +444,11 @@ $dispatchPreflightFailedCheckCount = Get-Int $dispatchPreflight.json "failedChec
 $dispatchPreflightWarningCheckCount = Get-Int $dispatchPreflight.json "warningCheckCount"
 $dispatchPreflightFixCommand = New-DispatchPreflightCommand $dispatchPreflight.json $invocationSelectedActionOrders
 $dispatchPreflightFailureSummary = Get-DispatchPreflightFailureSummary $dispatchPreflight.json
+$defaultBranchRef = Get-Text $dispatchPreflight.json "defaultBranchRef"
+$defaultBranchMissingWorkflows = @(Get-DefaultBranchMissingWorkflows $dispatchPreflight.json)
+$defaultBranchMissingWorkflowCount = $defaultBranchMissingWorkflows.Count
+$defaultBranchMissingActionOrders = @(Get-DefaultBranchMissingActionOrders $defaultBranchMissingWorkflows)
+$defaultBranchWorkflowHint = Get-DefaultBranchMissingWorkflowHint $defaultBranchMissingWorkflows
 $readyDispatchUrlHint = Get-ReadyDispatchUrlHint $readyDispatchWorkflows
 $readyDispatchUrls = @(Get-ReadyDispatchUrls $readyDispatchWorkflows)
 $workflowRunUrlHint = Get-WorkflowRunUrlHint $runIds.json
@@ -505,14 +563,14 @@ elseif ((Get-Int $invocation.json "blockedCount") -gt 0 -or "blocked".Equals($in
         $readyOrdersText = Join-IntList $readyDispatchActionOrders
         $executeHint = if (-not [string]::IsNullOrWhiteSpace($readySubsetExecuteCommand)) { "Execute command is available after plan review: $readySubsetExecuteCommand." } else { "Ready subset GitHub CLI execute command is unavailable until GitHub CLI/auth checks pass; rerun dispatch preflight with -CheckGitHubCli before live execution." }
         $apiExecuteHint = if (-not [string]::IsNullOrWhiteSpace($readySubsetApiExecuteCommand)) { " API dispatch is also available after setting GH_TOKEN or GITHUB_TOKEN: $readySubsetApiExecuteCommand." } else { "" }
-        $nextStep = New-NextStep "dispatch-ready-subset" "Plan ready dispatch subset" $readySubsetPlanCommand "The invocation report still has blocked actions, but $readyDispatchTemplateCount action(s) are ready to dispatch: $readyOrdersText." "Run the ready subset plan command first without -Execute, then dispatch only after review and continue resolving the remaining blocked actions. $executeHint$apiExecuteHint$readyDispatchUrlHint" $readyDispatchUrls
+        $nextStep = New-NextStep "dispatch-ready-subset" "Plan ready dispatch subset" $readySubsetPlanCommand "The invocation report still has blocked actions, but $readyDispatchTemplateCount action(s) are ready to dispatch: $readyOrdersText." "Run the ready subset plan command first without -Execute, then dispatch only after review and continue resolving the remaining blocked actions. $executeHint$apiExecuteHint$readyDispatchUrlHint$defaultBranchWorkflowHint" $readyDispatchUrls
     }
-    else { $nextStep = New-NextStep "resolve-invocation-blockers" "Resolve invocation blockers" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1" "The invocation report still has blocked actions." "Generate the unblock plan, fill placeholders, confirm operator approvals, and confirm kubeconfig-secret readiness before dispatch." }
+    else { $nextStep = New-NextStep "resolve-invocation-blockers" "Resolve invocation blockers" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1" "The invocation report still has blocked actions." "Generate the unblock plan, fill placeholders, confirm operator approvals, confirm kubeconfig-secret readiness, and resolve default-branch workflow blockers before dispatch.$defaultBranchWorkflowHint" }
 }
 elseif ((Get-Int $invocation.json "plannedCount") -gt 0 -and (Get-Int $invocation.json "executedCount") -eq 0 -and "planned".Equals($invocationResult, [System.StringComparison]::OrdinalIgnoreCase)) {
     if ($dispatchPreflight.exists -and -not (Is-ReadyResult $dispatchPreflightResult)) {
-        if ($browserDispatchReady) { $readyOrdersText = Join-IntList $readyDispatchActionOrders; $apiExecuteHint = if (-not [string]::IsNullOrWhiteSpace($readySubsetApiExecuteCommand)) { " Alternatively, set GH_TOKEN or GITHUB_TOKEN and run API dispatch: $readySubsetApiExecuteCommand." } else { "" }; $nextStep = New-NextStep "dispatch-ready-subset-browser" "Open browser or API dispatch for ready subset" $readySubsetPlanCommand "The invocation is planned and dispatch preflight only failed because GitHub CLI is unavailable; ready web/API dispatch exists for action(s): $readyOrdersText." "Run the ready subset plan command first without -Execute, then use the web dispatch URL(s) after operator review.$apiExecuteHint $dispatchPreflightFailureSummary$readyDispatchUrlHint" $readyDispatchUrls }
-        else { $nextStep = New-NextStep "fix-dispatch-preflight" "Fix dispatch preflight before execution" $dispatchPreflightFixCommand "The invocation is planned, but dispatch preflight is ${dispatchPreflightResult}: failedChecks=$dispatchPreflightFailedCheckCount, warnings=$dispatchPreflightWarningCheckCount, missingInputs=$((Get-Int $dispatchPreflight.json "missingInputCount"))." "Fix failed preflight checks before live execution. $dispatchPreflightFailureSummary$readyDispatchUrlHint" $readyDispatchUrls }
+        if ($browserDispatchReady) { $readyOrdersText = Join-IntList $readyDispatchActionOrders; $apiExecuteHint = if (-not [string]::IsNullOrWhiteSpace($readySubsetApiExecuteCommand)) { " Alternatively, set GH_TOKEN or GITHUB_TOKEN and run API dispatch: $readySubsetApiExecuteCommand." } else { "" }; $nextStep = New-NextStep "dispatch-ready-subset-browser" "Open browser or API dispatch for ready subset" $readySubsetPlanCommand "The invocation is planned and dispatch preflight only failed because GitHub CLI is unavailable; ready web/API dispatch exists for action(s): $readyOrdersText." "Run the ready subset plan command first without -Execute, then use the web dispatch URL(s) after operator review.$apiExecuteHint $dispatchPreflightFailureSummary$readyDispatchUrlHint$defaultBranchWorkflowHint" $readyDispatchUrls }
+        else { $nextStep = New-NextStep "fix-dispatch-preflight" "Fix dispatch preflight before execution" $dispatchPreflightFixCommand "The invocation is planned, but dispatch preflight is ${dispatchPreflightResult}: failedChecks=$dispatchPreflightFailedCheckCount, warnings=$dispatchPreflightWarningCheckCount, missingInputs=$((Get-Int $dispatchPreflight.json "missingInputCount"))." "Fix failed preflight checks before live execution. $dispatchPreflightFailureSummary$readyDispatchUrlHint$defaultBranchWorkflowHint" $readyDispatchUrls }
     }
     else { $nextStep = New-NextStep "execute-invocation" "Execute guarded evidence invocation" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -Execute" "The invocation is planned but has not executed workflows yet." "Use only after reviewing generated commands and approval requirements." }
 }
@@ -539,14 +597,26 @@ else { $nextStep = New-NextStep "regenerate-readiness" "Regenerate operations re
 $generatedAt = [DateTimeOffset]::Now.ToString("o")
 $report = [ordered]@{
     formatVersion = "osmu.operations-evidence-handoff.v1"; generatedAt = $generatedAt; result = $handoffResult; nextStep = $nextStep; currentBottleneck = $nextStep; stageCount = $stages.Count; readyStageCount = @($stages | Where-Object { $_.ready }).Count; readinessSummary = $readinessSummary; readinessPassedCount = $readinessPassedCount; readinessPendingCount = $readinessPendingCount; readinessTotalCount = $readinessTotalCount; readinessCheckCount = $readinessCheckCount; dispatchPreflightResult = $dispatchPreflightResult; dispatchGithubRepository = $dispatchGithubRepository; readyDispatchTemplateCount = $readyDispatchTemplateCount; blockedDispatchTemplateCount = $blockedDispatchTemplateCount
+    defaultBranchRef = $defaultBranchRef; defaultBranchMissingWorkflowCount = $defaultBranchMissingWorkflowCount; defaultBranchMissingActionOrders = @($defaultBranchMissingActionOrders); defaultBranchMissingWorkflows = @($defaultBranchMissingWorkflows)
     readyDispatchActionOrders = @($readyDispatchActionOrders); blockedDispatchActionOrders = @($blockedDispatchActionOrders); invocationSelectedActionOrders = @($invocationSelectedActionOrders); dispatchPreflightSelectedActionOrders = @($dispatchPreflightSelectedActionOrders); workflowRunIdPlanActionOrders = @($workflowRunIdPlanActionOrders); artifactCollectionActionOrders = @($artifactCollectionActionOrders); readyDispatchWorkflows = @($readyDispatchWorkflows); blockedDispatchWorkflows = @($blockedDispatchWorkflows)
     invocationStale = $invocationStale; dispatchPreflightStale = $dispatchPreflightStale; dispatchPreflightScopeMismatch = $dispatchPreflightScopeMismatch; workflowRunIdPlanStale = $workflowRunIdPlanStale; workflowRunIdPlanScopeMismatch = $workflowRunIdPlanScopeMismatch; artifactCollectionStale = $artifactCollectionStale; artifactCollectionScopeMismatch = $artifactCollectionScopeMismatch; staleReportCount = $staleReportCount; blockedActionCount = Get-Int $invocation.json "blockedCount"; missingWorkflowRunCount = Get-Int $runIds.json "missingWorkflowCount"; missingRequiredArtifactCount = Get-Int $collection.json "missingRequiredArtifactCount"; failedImportCount = Get-Int $import.json "failedCount"; finalizerFailedCount = $finalizeFailedCount; finalizerGapCount = $finalizeGapCount; browserDispatchChecklistCount = $browserDispatchChecklist.Count; browserDispatchChecklist = @($browserDispatchChecklist); securityEvidenceFinalizerRunIdInputHintCount = $securityEvidenceFinalizerRunIdInputHints.Count; securityEvidenceFinalizerRunIdInputHints = @($securityEvidenceFinalizerRunIdInputHints); postDispatchCommands = @($postDispatchCommands); stages = $stages
 }
 
 $dispatchGithubRepositoryLabel = if ([string]::IsNullOrWhiteSpace($dispatchGithubRepository)) { "none" } else { $dispatchGithubRepository }
-$markdownLines = @("# OSMU Operations Evidence Handoff", "", "Generated at: $generatedAt", "Result: $handoffResult", "", "## Current Bottleneck", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Readiness Source", "", "- Summary: $readinessSummary", "- Counts: passed=$readinessPassedCount pending=$readinessPendingCount total=$readinessTotalCount checks=$readinessCheckCount", "", "## Next Step", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Dispatch Preflight", "", "- Result: $dispatchPreflightResult", "- GitHub repository: $dispatchGithubRepositoryLabel", "- Ready templates: $readyDispatchTemplateCount", "- Blocked templates: $blockedDispatchTemplateCount", "- Ready action orders: $(Join-IntList $readyDispatchActionOrders)", "- Blocked action orders: $(Join-IntList $blockedDispatchActionOrders)", "- Stale reports: $staleReportCount", "", "## Dispatch Workflow Handoff", "")
+$defaultBranchRefLabel = if ([string]::IsNullOrWhiteSpace($defaultBranchRef)) { "none" } else { $defaultBranchRef }
+$markdownLines = @("# OSMU Operations Evidence Handoff", "", "Generated at: $generatedAt", "Result: $handoffResult", "", "## Current Bottleneck", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Readiness Source", "", "- Summary: $readinessSummary", "- Counts: passed=$readinessPassedCount pending=$readinessPendingCount total=$readinessTotalCount checks=$readinessCheckCount", "", "## Next Step", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Dispatch Preflight", "", "- Result: $dispatchPreflightResult", "- GitHub repository: $dispatchGithubRepositoryLabel", "- Default branch ref: $defaultBranchRefLabel", "- Default-branch workflow files missing: $defaultBranchMissingWorkflowCount", "- Default-branch missing action orders: $(Join-IntList $defaultBranchMissingActionOrders)", "- Ready templates: $readyDispatchTemplateCount", "- Blocked templates: $blockedDispatchTemplateCount", "- Ready action orders: $(Join-IntList $readyDispatchActionOrders)", "- Blocked action orders: $(Join-IntList $blockedDispatchActionOrders)", "- Stale reports: $staleReportCount", "", "## Dispatch Workflow Handoff", "")
 if ($readyDispatchWorkflows.Count -eq 0) { $markdownLines += "- Ready workflows: none" } else { foreach ($workflow in $readyDispatchWorkflows) { $workflowName = if ([string]::IsNullOrWhiteSpace($workflow.workflow)) { "local command" } else { $workflow.workflow }; $dispatchLabel = if ([string]::IsNullOrWhiteSpace($workflow.dispatchUrl)) { "" } else { " / dispatchUrl=$($workflow.dispatchUrl)" }; $markdownLines += "- ready action $($workflow.actionOrder): $workflowName - $($workflow.name)$dispatchLabel" } }
 if ($blockedDispatchWorkflows.Count -eq 0) { $markdownLines += "- Blocked workflows: none" } else { foreach ($workflow in $blockedDispatchWorkflows) { $workflowName = if ([string]::IsNullOrWhiteSpace($workflow.workflow)) { "local command" } else { $workflow.workflow }; $dispatchLabel = if ([string]::IsNullOrWhiteSpace($workflow.dispatchUrl)) { "" } else { " / dispatchUrl=$($workflow.dispatchUrl)" }; $markdownLines += "- blocked action $($workflow.actionOrder): $workflowName - missingInputs=$($workflow.missingInputCount), unsafeInputs=$($workflow.unsafeInputCount), invalidInputs=$($workflow.invalidInputCount)$dispatchLabel" } }
+$markdownLines += @("", "## Default Branch Workflow Readiness", "")
+if ($defaultBranchMissingWorkflows.Count -eq 0) {
+    $markdownLines += "- Missing default-branch workflow files: none"
+}
+else {
+    foreach ($workflow in $defaultBranchMissingWorkflows) {
+        $markdownLines += "- missing workflow: $($workflow.workflow) on $($workflow.defaultBranchRef) / actions=$(@($workflow.actionOrders) -join ', ')"
+        if (-not [string]::IsNullOrWhiteSpace($workflow.note)) { $markdownLines += "  - Note: $($workflow.note)" }
+    }
+}
 $markdownLines += @("", "## Browser Dispatch Checklist", "")
 if ($browserDispatchChecklist.Count -eq 0) {
     $markdownLines += "- Checklist: none"
