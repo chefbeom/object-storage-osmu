@@ -9,6 +9,8 @@ public record DashboardOperationsDispatchPreflightWorkflowFileResponse(
         String workflow,
         String path,
         boolean exists,
+        String defaultBranchRef,
+        boolean existsOnDefaultBranch,
         String dispatchUrl,
         List<String> requiredSecrets
 ) {

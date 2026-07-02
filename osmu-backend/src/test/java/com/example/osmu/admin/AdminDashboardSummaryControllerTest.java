@@ -2618,6 +2618,7 @@ class AdminDashboardSummaryControllerTest {
                             "githubCliAvailableForDispatch":  false,
                             "githubRepository":  "chefbeom/object-storage-osmu",
                             "githubRef":  "main",
+                            "defaultBranchRef":  "origin/main",
                             "githubApiTokenPresent":  false,
                             "githubApiDispatchAvailable":  false,
                             "githubApiDispatchUnavailableReasons":  [
@@ -2629,6 +2630,8 @@ class AdminDashboardSummaryControllerTest {
                                                       "workflow":  "container-security-ci.yml",
                                                       "path":  "C:\\\\project\\\\object-storage-osmu\\\\.github\\\\workflows\\\\container-security-ci.yml",
                                                       "exists":  true,
+                                                      "defaultBranchRef":  "origin/main",
+                                                      "existsOnDefaultBranch":  true,
                                                       "dispatchUrl":  "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml",
                                                       "requiredSecrets":  [
 
@@ -3797,6 +3800,7 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubCliAvailableForDispatch").value(false));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubRepository").value("chefbeom/object-storage-osmu"));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubRef").value("main"));
+        readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.defaultBranchRef").value("origin/main"));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubApiTokenPresent").value(false));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubApiDispatchAvailable").value(false));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubApiDispatchUnavailableReasons[0]").value("GH_TOKEN or GITHUB_TOKEN is not set"));
@@ -3809,6 +3813,8 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.readySubsetApiExecuteCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -GitHubRef main -Execute"));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.apiExecuteCommand").doesNotExist());
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.workflowFiles[0].workflow").value("container-security-ci.yml"));
+        readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.workflowFiles[0].defaultBranchRef").value("origin/main"));
+        readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.workflowFiles[0].existsOnDefaultBranch").value(true));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.workflowFiles[0].dispatchUrl").value("https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.workflowFiles[0].requiredSecrets").doesNotExist());
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.checks[0].code").value("ACTION_SELECTION"));

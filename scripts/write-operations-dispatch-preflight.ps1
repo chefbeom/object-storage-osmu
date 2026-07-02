@@ -15,6 +15,7 @@ param(
     [string] $GitHubCliPath = "",
     [string] $GitHubRepository = "",
     [string] $GitHubRef = "main",
+    [string] $DefaultBranchRef = "origin/main",
     [switch] $CheckGitRefSafety,
     [switch] $NoWrite
 )
@@ -290,6 +291,19 @@ function Invoke-GitText([string[]] $Arguments) {
     }
     catch {
         return @()
+    }
+}
+
+function Test-GitObjectExists([string] $ObjectSpec) {
+    if ([string]::IsNullOrWhiteSpace($ObjectSpec)) {
+        return $false
+    }
+    try {
+        & git -C $root cat-file -e $ObjectSpec 2>$null
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
     }
 }
 
@@ -615,6 +629,8 @@ foreach ($action in @($selectedActions)) {
     if (-not [string]::IsNullOrWhiteSpace($workflowName)) {
         $workflowPath = Resolve-ProjectPath ".\.github\workflows\$workflowName"
         $workflowExists = Test-Path -LiteralPath $workflowPath
+        $workflowDefaultBranchSpec = if ([string]::IsNullOrWhiteSpace($DefaultBranchRef)) { "" } else { "$DefaultBranchRef`:.github/workflows/$workflowName" }
+        $workflowExistsOnDefaultBranch = (Test-GitObjectExists $workflowDefaultBranchSpec)
         $secrets = @(Get-RequiredWorkflowSecrets $workflowName (Get-Text $action "command") $action $workflowPath)
         $dispatchUrl = Get-GitHubWorkflowDispatchUrl $githubRepositorySlug $workflowName
         foreach ($secret in $secrets) {
@@ -625,6 +641,8 @@ foreach ($action in @($selectedActions)) {
             workflow = $workflowName
             path = $workflowPath
             exists = $workflowExists
+            defaultBranchRef = $DefaultBranchRef
+            existsOnDefaultBranch = $workflowExistsOnDefaultBranch
             dispatchUrl = $dispatchUrl
             requiredSecrets = $secrets
         }) | Out-Null
@@ -853,6 +871,17 @@ else {
     Add-Check $checks "WORKFLOW_FILES_PRESENT" "fail" "$($missingWorkflowFiles.Count) selected workflow file(s) are missing."
 }
 
+$missingDefaultBranchWorkflowFiles = @($workflowFiles | Where-Object { -not $_.existsOnDefaultBranch })
+if ([string]::IsNullOrWhiteSpace($DefaultBranchRef)) {
+    Add-Check $checks "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "warn" "Default branch ref check skipped because DefaultBranchRef is blank."
+}
+elseif ($missingDefaultBranchWorkflowFiles.Count -eq 0) {
+    Add-Check $checks "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "pass" "All selected workflow files exist on default branch ref $DefaultBranchRef."
+}
+else {
+    Add-Check $checks "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "fail" "$($missingDefaultBranchWorkflowFiles.Count) selected workflow file(s) are missing from default branch ref $DefaultBranchRef; workflow_dispatch requires the workflow file to exist on the default branch before dispatch."
+}
+
 if ($CheckGitHubCli -or $hasExplicitGitHubCliPath) {
     if ($hasExplicitGitHubCliPath) {
         if (Test-Path -LiteralPath $resolvedGitHubCliPath) {
@@ -949,6 +978,7 @@ $report = [ordered]@{
     githubCliAvailableForDispatch = $githubCliAvailableForDispatch
     githubRepository = $githubRepositorySlug
     githubRef = $GitHubRef
+    defaultBranchRef = $DefaultBranchRef
     githubApiTokenPresent = [bool] $githubApiTokenPresent
     githubApiDispatchAvailable = [bool] $githubApiDispatchAvailable
     githubApiDispatchUnavailableReasons = @($githubApiDispatchUnavailableReasons | ForEach-Object { [string] $_ })
@@ -992,6 +1022,7 @@ $markdownLines = @(
     "- GitHub CLI available for dispatch: $githubCliAvailableForDispatch",
     "- GitHub repository: $(if ([string]::IsNullOrWhiteSpace($githubRepositorySlug)) { 'unknown' } else { $githubRepositorySlug })",
     "- GitHub ref: $GitHubRef",
+    "- Default branch ref: $(if ([string]::IsNullOrWhiteSpace($DefaultBranchRef)) { 'not checked' } else { $DefaultBranchRef })",
     "- GitHub API token present: $githubApiTokenPresent",
     "- GitHub API dispatch available: $githubApiDispatchAvailable",
     ""
@@ -1085,7 +1116,8 @@ if ($dispatchWorkflows.Count -eq 0) {
 }
 else {
     foreach ($workflow in $dispatchWorkflows) {
-        $markdownLines += "- action $($workflow.actionOrder) - $($workflow.workflow): $($workflow.dispatchUrl)"
+        $defaultBranchLabel = if ([bool] $workflow.existsOnDefaultBranch) { "present" } else { "missing" }
+        $markdownLines += "- action $($workflow.actionOrder) - $($workflow.workflow): $($workflow.dispatchUrl) (defaultBranch=$($workflow.defaultBranchRef), defaultBranchFile=$defaultBranchLabel)"
     }
 }
 

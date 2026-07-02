@@ -2137,6 +2137,8 @@ public class AdminController {
                         jsonText(workflow, "workflow"),
                         jsonText(workflow, "path"),
                         jsonBoolean(workflow, "exists"),
+                        jsonText(workflow, "defaultBranchRef"),
+                        jsonBoolean(workflow, "existsOnDefaultBranch"),
                         jsonText(workflow, "dispatchUrl"),
                         jsonTextList(workflow, "requiredSecrets")
                 ));
@@ -2271,6 +2273,7 @@ public class AdminController {
                 jsonBoolean(preflightReport, "githubCliAvailableForDispatch"),
                 jsonText(preflightReport, "githubRepository"),
                 jsonText(preflightReport, "githubRef"),
+                jsonText(preflightReport, "defaultBranchRef"),
                 jsonBoolean(preflightReport, "githubApiTokenPresent"),
                 jsonBoolean(preflightReport, "githubApiDispatchAvailable"),
                 jsonTextList(preflightReport, "githubApiDispatchUnavailableReasons"),
