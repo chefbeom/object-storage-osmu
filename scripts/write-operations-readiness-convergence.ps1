@@ -367,6 +367,9 @@ $handoffInputFreeBlockedActionCount = Get-Int $handoff.json "inputFreeBlockedAct
 $handoffInputFreeBlockedActionOrders = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedActionOrders") | ForEach-Object { try { [int] $_ } catch { 0 } } | Where-Object { $_ -gt 0 })
 $handoffInputFreeBlockedActionOrdersText = if ($handoffInputFreeBlockedActionOrders.Count -gt 0) { $handoffInputFreeBlockedActionOrders -join "," } else { "none" }
 $handoffInputFreeBlockedReviewCommand = Get-Text $handoff.json "inputFreeBlockedReviewCommand"
+$handoffInputFreeBlockedReviewReportCommand = Get-Text $handoff.json "inputFreeBlockedReviewReportCommand"
+$handoffInputFreeBlockedReviewReportJsonPath = Get-Text $handoff.json "inputFreeBlockedReviewReportJsonPath"
+$handoffInputFreeBlockedReviewReportMarkdownPath = Get-Text $handoff.json "inputFreeBlockedReviewReportMarkdownPath"
 $handoffInputFreeBlockedConfirmedPlanCommand = Get-Text $handoff.json "inputFreeBlockedConfirmedPlanCommand"
 if ([string]::IsNullOrWhiteSpace($handoffInputFreeBlockedConfirmedPlanCommand)) { $handoffInputFreeBlockedConfirmedPlanCommand = Get-Text $handoff.json "inputFreeBlockedPlanCommand" }
 $handoffInputFreeBlockedActions = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedActions") | ForEach-Object {
@@ -581,6 +584,9 @@ $report = [ordered]@{
     handoffInputFreeBlockedActionCount = $handoffInputFreeBlockedActionCount
     handoffInputFreeBlockedActionOrders = @($handoffInputFreeBlockedActionOrders)
     handoffInputFreeBlockedReviewCommand = $handoffInputFreeBlockedReviewCommand
+    handoffInputFreeBlockedReviewReportCommand = $handoffInputFreeBlockedReviewReportCommand
+    handoffInputFreeBlockedReviewReportJsonPath = $handoffInputFreeBlockedReviewReportJsonPath
+    handoffInputFreeBlockedReviewReportMarkdownPath = $handoffInputFreeBlockedReviewReportMarkdownPath
     handoffInputFreeBlockedConfirmedPlanCommand = $handoffInputFreeBlockedConfirmedPlanCommand
     handoffInputFreeBlockedActions = @($handoffInputFreeBlockedActions)
     missingWorkflowRunCount = Get-Int $handoff.json "missingWorkflowRunCount"
@@ -634,6 +640,9 @@ $markdownLines = @(
     "- Input-free blocked actions: $($report.handoffInputFreeBlockedActionCount)",
     "- Input-free blocked action orders: $handoffInputFreeBlockedActionOrdersText",
     "- Input-free review command: ``$handoffInputFreeBlockedReviewCommand``",
+    "- Input-free review report command: ``$handoffInputFreeBlockedReviewReportCommand``",
+    "- Input-free review report JSON: $handoffInputFreeBlockedReviewReportJsonPath",
+    "- Input-free review report Markdown: $handoffInputFreeBlockedReviewReportMarkdownPath",
     "- Input-free confirmed plan command: ``$handoffInputFreeBlockedConfirmedPlanCommand``",
     "- Missing workflow runs: $($report.missingWorkflowRunCount)",
     "- Handoff security finalizer run-id hints: $($report.handoffSecurityEvidenceFinalizerRunIdInputHintCount)",
