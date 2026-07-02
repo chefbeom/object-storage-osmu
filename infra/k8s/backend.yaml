@@ -39,6 +39,22 @@ spec:
     spec:
       serviceAccountName: osmu-backend
       automountServiceAccountToken: false
+      initContainers:
+        - name: install-mc-tools
+          image: minio/mc:RELEASE.2025-05-21T01-59-54Z
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - cp "$(command -v mc)" /opt/osmu-tools/mc && chmod 0555 /opt/osmu-tools/mc
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: mc-tools
+              mountPath: /opt/osmu-tools
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -107,6 +123,9 @@ spec:
                   name: osmu-secret
                   key: OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY
           volumeMounts:
+            - name: mc-tools
+              mountPath: /opt/osmu-tools
+              readOnly: true
             - name: operations-reports
               mountPath: /app/.osmu-run
               readOnly: true
@@ -132,6 +151,8 @@ spec:
               cpu: "1"
               memory: 1Gi
       volumes:
+        - name: mc-tools
+          emptyDir: {}
         - name: operations-reports
           configMap:
             name: osmu-operations-reports

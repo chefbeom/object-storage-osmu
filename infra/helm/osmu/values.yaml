@@ -27,7 +27,7 @@ config:
   objectRetentionFixedDelayMs: "3600000"
   objectRetentionBatchSize: "100"
   accessKeyProvisioningMode: minio
-  accessKeyMcPath: mc
+  accessKeyMcPath: /opt/osmu-tools/mc
   accessKeyMinioAlias: osmu-minio
   s3PublicEndpoint: https://osmu.local/api/s3
   s3Region: us-east-1
@@ -176,6 +176,13 @@ backend:
     claimName: ""
     optional: true
     mountPath: /app/.osmu-run
+  mcTools:
+    enabled: true
+    mountPath: /opt/osmu-tools
+    image:
+      repository: minio/mc
+      tag: RELEASE.2025-05-21T01-59-54Z
+      pullPolicy: IfNotPresent
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 10001
@@ -247,4 +254,3 @@ monitoring:
     interval: 30s
     scrapeTimeout: 10s
     releaseLabel: prometheus
-

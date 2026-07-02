@@ -44,6 +44,21 @@ spec:
     spec:
       serviceAccountName: osmu-backend
       automountServiceAccountToken: false
+{{- if .Values.backend.mcTools.enabled }}
+      initContainers:
+        - name: install-mc-tools
+          image: "{{ .Values.backend.mcTools.image.repository }}:{{ .Values.backend.mcTools.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.mcTools.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - cp "$(command -v mc)" "{{ .Values.backend.mcTools.mountPath }}/mc" && chmod 0555 "{{ .Values.backend.mcTools.mountPath }}/mc"
+          securityContext:
+{{ toYaml .Values.backend.containerSecurityContext | indent 12 }}
+          volumeMounts:
+            - name: mc-tools
+              mountPath: {{ .Values.backend.mcTools.mountPath | quote }}
+{{- end }}
 {{- if .Values.ha.topologySpread.enabled }}
       topologySpreadConstraints:
         - maxSkew: {{ .Values.ha.topologySpread.maxSkew }}
@@ -106,11 +121,18 @@ spec:
                 secretKeyRef:
                   name: {{ include "osmu.secretName" . }}
                   key: OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY
-{{- if .Values.backend.operationsReports.enabled }}
+{{- if or .Values.backend.mcTools.enabled .Values.backend.operationsReports.enabled }}
           volumeMounts:
+{{- if .Values.backend.mcTools.enabled }}
+            - name: mc-tools
+              mountPath: {{ .Values.backend.mcTools.mountPath | quote }}
+              readOnly: true
+{{- end }}
+{{- if .Values.backend.operationsReports.enabled }}
             - name: operations-reports
               mountPath: {{ .Values.backend.operationsReports.mountPath | quote }}
               readOnly: true
+{{- end }}
 {{- end }}
           readinessProbe:
             httpGet:
@@ -128,8 +150,13 @@ spec:
             timeoutSeconds: 5
           resources:
 {{ toYaml .Values.backend.resources | indent 12 }}
-{{- if .Values.backend.operationsReports.enabled }}
+{{- if or .Values.backend.mcTools.enabled .Values.backend.operationsReports.enabled }}
       volumes:
+{{- if .Values.backend.mcTools.enabled }}
+        - name: mc-tools
+          emptyDir: {}
+{{- end }}
+{{- if .Values.backend.operationsReports.enabled }}
         - name: operations-reports
 {{- if eq .Values.backend.operationsReports.type "persistentVolumeClaim" }}
           persistentVolumeClaim:
@@ -138,5 +165,6 @@ spec:
           configMap:
             name: {{ .Values.backend.operationsReports.configMapName | quote }}
             optional: {{ .Values.backend.operationsReports.optional }}
+{{- end }}
 {{- end }}
 {{- end }}

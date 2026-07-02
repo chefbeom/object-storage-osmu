@@ -23,12 +23,13 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:stable-alpine
 
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY --chown=nginx:nginx --from=build /workspace/dist /usr/share/nginx/html
 
-RUN mkdir -p /tmp/nginx/client_temp /tmp/nginx/proxy_temp /tmp/nginx/fastcgi_temp /tmp/nginx/uwsgi_temp /tmp/nginx/scgi_temp \
+RUN apk upgrade --no-cache \
+    && mkdir -p /tmp/nginx/client_temp /tmp/nginx/proxy_temp /tmp/nginx/fastcgi_temp /tmp/nginx/uwsgi_temp /tmp/nginx/scgi_temp \
     && chown -R nginx:nginx /tmp/nginx /var/cache/nginx /var/run /var/log/nginx
 
 USER 101:101
