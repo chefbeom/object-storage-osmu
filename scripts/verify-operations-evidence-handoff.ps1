@@ -84,7 +84,7 @@ Assert-Equal $missingReport.formatVersion "osmu.operations-evidence-handoff.v1" 
 Assert-Equal $missingReport.result "action-required" "missing result"
 Assert-Equal $missingReport.nextStep.code "write-readiness" "missing next step"
 Assert-Equal $missingReport.currentBottleneck.code "write-readiness" "missing current bottleneck"
-Assert-Equal $missingReport.stageCount 9 "missing stage count"
+Assert-Equal $missingReport.stageCount 10 "missing stage count"
 Assert-Contains $missingMarkdown "## Current Bottleneck" "missing markdown current bottleneck"
 Assert-Contains $missingMarkdown "Generate operations readiness report" "missing markdown next step"
 
@@ -1191,7 +1191,7 @@ $operationsFinalizeReport = Read-Utf8Text $operationsFinalizeJsonPath | ConvertF
 $operationsFinalizeMarkdown = Read-Utf8Text $operationsFinalizeMarkdownPath
 Assert-Equal $operationsFinalizeReport.result "action-required" "operations finalizer result"
 Assert-Equal $operationsFinalizeReport.nextStep.code "run-operations-finalizer" "operations finalizer next step"
-Assert-Equal $operationsFinalizeReport.stageCount 9 "operations finalizer stage count"
+Assert-Equal $operationsFinalizeReport.stageCount 10 "operations finalizer stage count"
 Assert-Contains $operationsFinalizeReport.nextStep.command "finalize-operations-readiness.ps1" "operations finalizer command"
 Assert-Contains $operationsFinalizeMarkdown "Run operations readiness finalizer" "operations finalizer markdown next step"
 
@@ -1365,6 +1365,120 @@ Assert-Equal $readyReport.nextStep.code "none" "ready handoff next step"
 Assert-Equal $readyReport.readyStageCount 2 "ready handoff stage count"
 Assert-Contains $readyReport.nextStep.reason "operations finalizer reports are ready" "ready handoff reason"
 
+$valuesStageReadinessPath = Join-Path $resolvedOutputDirectory "values-stage-readiness.json"
+$valuesStagePlanPath = Join-Path $resolvedOutputDirectory "values-stage-plan.json"
+$valuesStageInvocationPath = Join-Path $resolvedOutputDirectory "values-stage-invocation.json"
+$valuesStageDispatchPreflightPath = Join-Path $resolvedOutputDirectory "values-stage-dispatch-preflight.json"
+$valuesStageWorksheetPath = Join-Path $resolvedOutputDirectory "values-stage-operator-worksheet.json"
+$valuesStageTemplatePath = Join-Path $resolvedOutputDirectory "values-stage-operator-values-template.json"
+$valuesStageCheckPath = Join-Path $resolvedOutputDirectory "values-stage-operator-values-check.json"
+$valuesStageRunIdPath = Join-Path $resolvedOutputDirectory "values-stage-run-ids.json"
+$valuesStageCollectionPath = Join-Path $resolvedOutputDirectory "values-stage-collection.json"
+$valuesStageImportPath = Join-Path $resolvedOutputDirectory "values-stage-import.json"
+$valuesStageFinalizePath = Join-Path $resolvedOutputDirectory "values-stage-finalize.json"
+$valuesStageHandoffPath = Join-Path $resolvedOutputDirectory "values-stage-handoff.json"
+$valuesStageMarkdownPath = Join-Path $resolvedOutputDirectory "values-stage-handoff.md"
+
+Write-JsonFixture $valuesStageReadinessPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness.v1"
+    result = "pending"
+    summary = "passed=36 pending=1"
+})
+Write-JsonFixture $valuesStagePlanPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan.v1"
+    result = "action-required"
+    pendingCount = 1
+    actionCount = 1
+    unplannedCount = 0
+})
+Write-JsonFixture $valuesStageInvocationPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    result = "planned"
+    selectedActionOrders = @(2)
+    selectedActionCount = 1
+    plannedCount = 1
+    blockedCount = 0
+    executedCount = 1
+    failedCount = 0
+})
+Write-JsonFixture $valuesStageDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    generatedAt = "2026-06-27T10:10:00+09:00"
+    result = "ready"
+    selectedActionOrders = @(2)
+    selectedActionCount = 1
+    missingInputCount = 0
+    inputTemplates = @()
+})
+Write-JsonFixture $valuesStageWorksheetPath ([ordered]@{
+    formatVersion = "osmu.operations-operator-input-worksheet.v1"
+    generatedAt = "2026-06-27T10:15:00+09:00"
+    result = "action-required"
+    sourceDispatchPreflightReport = $valuesStageDispatchPreflightPath
+    inputValuesTemplatePath = $valuesStageTemplatePath
+    inputRowCount = 2
+    ambiguousInputRowCount = 0
+    inputFreeActionCount = 0
+    requiredSecretCount = 0
+})
+Write-JsonFixture $valuesStageCheckPath ([ordered]@{
+    formatVersion = "osmu.operations-operator-input-values-check.v1"
+    generatedAt = "2026-06-27T10:20:00+09:00"
+    result = "ready"
+    sourceValuesTemplate = $valuesStageTemplatePath
+    valueCount = 2
+    readyValueCount = 2
+    missingValueCount = 0
+    unsafeValueCount = 0
+    invalidValueCount = 0
+})
+Write-JsonFixture $valuesStageRunIdPath ([ordered]@{
+    formatVersion = "osmu.operations-workflow-run-id-plan.v1"
+    result = "ready"
+    workflowCount = 1
+    readyWorkflowCount = 1
+    missingWorkflowCount = 0
+    staleWorkflowCount = 0
+    sourceActionOrders = @(2)
+})
+Write-JsonFixture $valuesStageCollectionPath ([ordered]@{
+    formatVersion = "osmu.operations-artifact-collection-plan.v1"
+    result = "ready"
+    artifactCount = 1
+    readyArtifactCount = 1
+    missingRequiredArtifactCount = 0
+    sourceActionOrders = @(2)
+})
+Write-JsonFixture $valuesStageImportPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness-artifact-import.v1"
+    result = "passed"
+    failedCount = 0
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $valuesStageReadinessPath `
+    -EvidencePlanPath $valuesStagePlanPath `
+    -InvocationReportPath $valuesStageInvocationPath `
+    -DispatchPreflightReportPath $valuesStageDispatchPreflightPath `
+    -OperatorInputWorksheetReportPath $valuesStageWorksheetPath `
+    -OperatorInputValuesCheckReportPath $valuesStageCheckPath `
+    -WorkflowRunIdPlanPath $valuesStageRunIdPath `
+    -ArtifactCollectionPlanPath $valuesStageCollectionPath `
+    -ArtifactImportReportPath $valuesStageImportPath `
+    -OperationsReadinessFinalizeReportPath $valuesStageFinalizePath `
+    -JsonOutputPath $valuesStageHandoffPath `
+    -MarkdownOutputPath $valuesStageMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 values-stage check failed with exit code $LASTEXITCODE."
+}
+
+$valuesStageReport = Read-Utf8Text $valuesStageHandoffPath | ConvertFrom-Json
+$valuesStage = @($valuesStageReport.stages | Where-Object { $_.name -eq "operator-input-values-check" } | Select-Object -First 1)
+Assert-Equal $valuesStageReport.stageCount 10 "values stage count"
+Assert-Equal $valuesStageReport.operatorInputValuesCheckResult "ready" "values stage result"
+Assert-Equal $valuesStageReport.operatorInputValuesCheckValueCount 2 "values stage value count"
+Assert-Equal $valuesStage.ready $true "values stage ready flag"
+Assert-Contains $valuesStage.summary "values=2 ready=2 missing=0 unsafe=0 invalid=0" "values stage summary"
 Write-Host "Operations evidence handoff verified."
 Write-Host "Missing report: $missingJsonPath"
 Write-Host "Blocked report: $blockedJsonPath"

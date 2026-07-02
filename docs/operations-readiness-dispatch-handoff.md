@@ -65,6 +65,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-o
 
 The worksheet writes JSON, Markdown, and CSV to `.osmu-run/latest-operations-operator-input-worksheet.*` and a fillable values template to `.osmu-run/latest-operations-operator-input-values-template.*`. It expands repeated placeholders such as `<iso-time>`, `<ref>`, `<ms>`, and `<n>` into workflow-input-level rows with stable value keys such as `action-08.review_started_at`, so operators can provide distinct start/end timestamps, evidence refs, p95/p99 values, and per-metric counts without reusing one placeholder value accidentally. It is collection guidance only; it does not mark readiness evidence as passed.
 
+After filling the non-secret values template, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1` to catch missing, unsafe, or known invalid values before dispatch planning.
+
 ## Execution Order
 
 1. Confirm operator approval and GitHub secret readiness for the selected action subset.

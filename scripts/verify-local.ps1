@@ -224,19 +224,21 @@ function Assert-OperationsLatestEvidenceFreshness([int[]] $expectedActionOrders)
     $dispatchPreflight = Get-JsonFile ".osmu-run\latest-operations-dispatch-preflight.json"
     $operatorWorksheet = Get-JsonFile ".osmu-run\latest-operations-operator-input-worksheet.json"
     $operatorValuesTemplate = Get-JsonFile ".osmu-run\latest-operations-operator-input-values-template.json"
+    $operatorValuesCheck = Get-JsonFile ".osmu-run\latest-operations-operator-input-values-check.json"
     $workflowRunIds = Get-JsonFile ".osmu-run\latest-operations-workflow-run-ids.json"
     $artifactCollection = Get-JsonFile ".osmu-run\latest-operations-artifact-collection-plan.json"
     $handoff = Get-JsonFile ".osmu-run\latest-operations-evidence-handoff.json"
     $convergence = Get-JsonFile ".osmu-run\latest-operations-readiness-convergence.json"
 
-    if ($null -eq $readiness -or $null -eq $operatorWorksheet -or $null -eq $operatorValuesTemplate -or $null -eq $handoff -or $null -eq $convergence) {
-        throw "Operations latest evidence refresh did not write readiness, operator input worksheet, operator input values template, handoff, and convergence reports."
+    if ($null -eq $readiness -or $null -eq $operatorWorksheet -or $null -eq $operatorValuesTemplate -or $null -eq $operatorValuesCheck -or $null -eq $handoff -or $null -eq $convergence) {
+        throw "Operations latest evidence refresh did not write readiness, operator input worksheet, operator input values template, operator input values check, handoff, and convergence reports."
     }
 
     $readinessTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $readiness "generatedAt")) "readiness"
     $dispatchPreflightTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $dispatchPreflight "generatedAt")) "dispatch preflight"
     $operatorWorksheetTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $operatorWorksheet "generatedAt")) "operator input worksheet"
     $operatorValuesTemplateTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $operatorValuesTemplate "generatedAt")) "operator input values template"
+    $operatorValuesCheckTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $operatorValuesCheck "generatedAt")) "operator input values check"
     $handoffTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $handoff "generatedAt")) "handoff"
     $convergenceTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $convergence "generatedAt")) "convergence"
 
@@ -245,6 +247,9 @@ function Assert-OperationsLatestEvidenceFreshness([int[]] $expectedActionOrders)
     }
     if ($operatorValuesTemplateTime -lt $operatorWorksheetTime) {
         throw "Operations latest evidence operator input values template is older than worksheet after refresh: valuesTemplate=$operatorValuesTemplateTime worksheet=$operatorWorksheetTime"
+    }
+    if ($operatorValuesCheckTime -lt $operatorValuesTemplateTime) {
+        throw "Operations latest evidence operator input values check is older than values template after refresh: valuesCheck=$operatorValuesCheckTime valuesTemplate=$operatorValuesTemplateTime"
     }
     if ($handoffTime -lt $readinessTime) {
         throw "Operations latest evidence handoff is older than readiness after refresh: handoff=$handoffTime readiness=$readinessTime"
@@ -284,8 +289,9 @@ function Assert-OperationsLatestEvidenceFreshness([int[]] $expectedActionOrders)
     $worksheetInputRowCount = Get-OperationsIntProperty $operatorWorksheet "inputRowCount"
     $worksheetInputValueTemplateCount = Get-OperationsIntProperty $operatorWorksheet "inputValueTemplateCount"
     $operatorValuesTemplateCount = Get-OperationsIntProperty $operatorValuesTemplate "valueCount"
-    if ($worksheetInputRowCount -ne $worksheetInputValueTemplateCount -or $worksheetInputRowCount -ne $operatorValuesTemplateCount) {
-        throw "Operations latest evidence operator input values template count mismatch: inputRows=$worksheetInputRowCount worksheetTemplate=$worksheetInputValueTemplateCount valuesTemplate=$operatorValuesTemplateCount"
+    $operatorValuesCheckCount = Get-OperationsIntProperty $operatorValuesCheck "valueCount"
+    if ($worksheetInputRowCount -ne $worksheetInputValueTemplateCount -or $worksheetInputRowCount -ne $operatorValuesTemplateCount -or $worksheetInputRowCount -ne $operatorValuesCheckCount) {
+        throw "Operations latest evidence operator input values template/check count mismatch: inputRows=$worksheetInputRowCount worksheetTemplate=$worksheetInputValueTemplateCount valuesTemplate=$operatorValuesTemplateCount valuesCheck=$operatorValuesCheckCount"
     }
     if (@($expectedActionOrders).Count -gt 0) {
         $worksheetSelectedActionCount = Get-OperationsIntProperty $operatorWorksheet "selectedActionCount"
@@ -535,6 +541,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-dispat
 Step "Operations operator input worksheet check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-operator-input-worksheet.ps1"
 
+Step "Operations operator input values check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-operator-input-values-check.ps1"
+
 Step "Operations workflow run id plan check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-workflow-run-id-plan.ps1"
 
@@ -617,6 +626,7 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\invoke-operations-eviden
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1$operationsActionOrderArgument -CheckGitHubCli$operationsGitHubRepositoryArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-worksheet.ps1"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1$operationsBranchArgument$operationsGitHubRepositoryArgument$operationsImageSigningVersionArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1$operationsImageSigningVersionArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1"

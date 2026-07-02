@@ -4,6 +4,7 @@ param(
     [string] $InvocationReportPath = ".\.osmu-run\latest-operations-evidence-plan-invocation.json",
     [string] $DispatchPreflightReportPath = ".\.osmu-run\latest-operations-dispatch-preflight.json",
     [string] $OperatorInputWorksheetReportPath = ".\.osmu-run\latest-operations-operator-input-worksheet.json",
+    [string] $OperatorInputValuesCheckReportPath = ".\.osmu-run\latest-operations-operator-input-values-check.json",
     [string] $WorkflowRunIdPlanPath = ".\.osmu-run\latest-operations-workflow-run-ids.json",
     [string] $ArtifactCollectionPlanPath = ".\.osmu-run\latest-operations-artifact-collection-plan.json",
     [string] $ArtifactImportReportPath = ".\.osmu-run\latest-operations-readiness-artifact-import.json",
@@ -399,6 +400,7 @@ $evidencePlan = Read-OptionalJson $EvidencePlanPath
 $invocation = Read-OptionalJson $InvocationReportPath
 $dispatchPreflight = Read-OptionalJson $DispatchPreflightReportPath
 $operatorWorksheet = Read-OptionalJson $OperatorInputWorksheetReportPath
+$operatorValuesCheck = Read-OptionalJson $OperatorInputValuesCheckReportPath
 $runIds = Read-OptionalJson $WorkflowRunIdPlanPath
 $collection = Read-OptionalJson $ArtifactCollectionPlanPath
 $import = Read-OptionalJson $ArtifactImportReportPath
@@ -418,6 +420,22 @@ if ($operatorWorksheet.exists) {
     }
 }
 
+if ($operatorValuesCheck.exists) {
+    $valuesCheckMatchesWorksheet = $false
+    if ($operatorWorksheet.exists) {
+        $sourceValuesTemplate = Get-Text $operatorValuesCheck.json "sourceValuesTemplate"
+        $worksheetValuesTemplate = Get-Text $operatorWorksheet.json "inputValuesTemplatePath"
+        if (-not [string]::IsNullOrWhiteSpace($sourceValuesTemplate) -and -not [string]::IsNullOrWhiteSpace($worksheetValuesTemplate)) {
+            $resolvedSourceValuesTemplate = Resolve-ProjectPath $sourceValuesTemplate
+            $resolvedWorksheetValuesTemplate = Resolve-ProjectPath $worksheetValuesTemplate
+            $valuesCheckMatchesWorksheet = $resolvedSourceValuesTemplate.Equals($resolvedWorksheetValuesTemplate, [System.StringComparison]::OrdinalIgnoreCase)
+        }
+    }
+    if (-not $valuesCheckMatchesWorksheet) {
+        $operatorValuesCheck = [ordered]@{ path = $operatorValuesCheck.path; exists = $false; json = $null }
+    }
+}
+
 $readinessResult = Get-Text $readiness.json "result"
 $readinessSummary = Get-Text $readiness.json "summary"
 $readinessPassedCount = Get-Int $readiness.json "passedCount"
@@ -432,6 +450,12 @@ $operatorWorksheetInputRowCount = Get-Int $operatorWorksheet.json "inputRowCount
 $operatorWorksheetAmbiguousInputRowCount = Get-Int $operatorWorksheet.json "ambiguousInputRowCount"
 $operatorWorksheetInputFreeActionCount = Get-Int $operatorWorksheet.json "inputFreeActionCount"
 $operatorWorksheetRequiredSecretCount = Get-Int $operatorWorksheet.json "requiredSecretCount"
+$operatorValuesCheckResult = Get-Text $operatorValuesCheck.json "result"
+$operatorValuesCheckValueCount = Get-Int $operatorValuesCheck.json "valueCount"
+$operatorValuesCheckReadyValueCount = Get-Int $operatorValuesCheck.json "readyValueCount"
+$operatorValuesCheckMissingValueCount = Get-Int $operatorValuesCheck.json "missingValueCount"
+$operatorValuesCheckUnsafeValueCount = Get-Int $operatorValuesCheck.json "unsafeValueCount"
+$operatorValuesCheckInvalidValueCount = Get-Int $operatorValuesCheck.json "invalidValueCount"
 $dispatchGithubRepository = Get-Text $dispatchPreflight.json "githubRepository"
 $runIdResult = Get-Text $runIds.json "result"
 $collectionResult = Get-Text $collection.json "result"
@@ -535,13 +559,17 @@ if (-not [string]::IsNullOrWhiteSpace($githubApiRunListCommand)) {
 $invocationStale = $invocation.exists -and $evidencePlan.exists -and (Test-GeneratedBefore $invocation.json $evidencePlan.json)
 $dispatchPreflightStale = $dispatchPreflight.exists -and $invocation.exists -and (Test-GeneratedBefore $dispatchPreflight.json $invocation.json)
 $operatorWorksheetStale = $operatorWorksheet.exists -and $dispatchPreflight.exists -and (Test-GeneratedBefore $operatorWorksheet.json $dispatchPreflight.json)
+$operatorValuesCheckStale = $operatorValuesCheck.exists -and $operatorWorksheet.exists -and (Test-GeneratedBefore $operatorValuesCheck.json $operatorWorksheet.json)
+$operatorValuesCheckCountMismatch = $operatorValuesCheck.exists -and $operatorWorksheet.exists -and $operatorWorksheetInputRowCount -ne $operatorValuesCheckValueCount
 $workflowRunIdPlanStale = $runIds.exists -and $invocation.exists -and (Test-GeneratedBefore $runIds.json $invocation.json)
 $artifactCollectionStale = $collection.exists -and (($invocation.exists -and (Test-GeneratedBefore $collection.json $invocation.json)) -or ($runIds.exists -and (Test-GeneratedBefore $collection.json $runIds.json)))
-$staleReportCount = @(($invocationStale, $dispatchPreflightStale, $dispatchPreflightScopeMismatch, $operatorWorksheetStale, $workflowRunIdPlanStale, $workflowRunIdPlanScopeMismatch, $artifactCollectionStale, $artifactCollectionScopeMismatch) | Where-Object { $_ }).Count
+$staleReportCount = @(($invocationStale, $dispatchPreflightStale, $dispatchPreflightScopeMismatch, $operatorWorksheetStale, $operatorValuesCheckStale, $operatorValuesCheckCountMismatch, $workflowRunIdPlanStale, $workflowRunIdPlanScopeMismatch, $artifactCollectionStale, $artifactCollectionScopeMismatch) | Where-Object { $_ }).Count
 $invocationStaleText = if ($invocationStale) { " stale=true" } else { "" }
 $dispatchPreflightStaleText = if ($dispatchPreflightStale) { " stale=true" } else { "" }
 $dispatchPreflightScopeMismatchText = if ($dispatchPreflightScopeMismatch) { " scopeMismatch=true" } else { "" }
 $operatorWorksheetStaleText = if ($operatorWorksheetStale) { " stale=true" } else { "" }
+$operatorValuesCheckStaleText = if ($operatorValuesCheckStale) { " stale=true" } else { "" }
+$operatorValuesCheckCountMismatchText = if ($operatorValuesCheckCountMismatch) { " countMismatch=true" } else { "" }
 $workflowRunIdPlanStaleText = if ($workflowRunIdPlanStale) { " stale=true" } else { "" }
 $workflowRunIdPlanScopeMismatchText = if ($workflowRunIdPlanScopeMismatch) { " scopeMismatch=true" } else { "" }
 $artifactCollectionStaleText = if ($artifactCollectionStale) { " stale=true" } else { "" }
@@ -553,6 +581,7 @@ $stages = @(
     (New-Stage "evidence-invocation" $invocation.path $invocation.exists $invocationResult "selected=$((Get-Int $invocation.json "selectedActionCount")) planned=$((Get-Int $invocation.json "plannedCount")) blocked=$((Get-Int $invocation.json "blockedCount")) failed=$((Get-Int $invocation.json "failedCount"))$invocationStaleText" ($invocation.exists -and -not $invocationStale -and (Get-Int $invocation.json "blockedCount") -eq 0 -and (Get-Int $invocation.json "failedCount") -eq 0 -and (Get-Int $invocation.json "selectedActionCount") -gt 0) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1" "Guarded workflow/local command invocation report."),
     (New-Stage "dispatch-preflight" $dispatchPreflight.path $dispatchPreflight.exists $dispatchPreflightResult "selected=$((Get-Int $dispatchPreflight.json "selectedActionCount")) readyTemplates=$readyDispatchTemplateCount blockedTemplates=$blockedDispatchTemplateCount missingInputs=$((Get-Int $dispatchPreflight.json "missingInputCount")) readyOrders=$(Join-IntList $readyDispatchActionOrders)$dispatchPreflightStaleText$dispatchPreflightScopeMismatchText" ($dispatchPreflight.exists -and -not $dispatchPreflightStale -and -not $dispatchPreflightScopeMismatch -and (Is-ReadyResult $dispatchPreflightResult)) $dispatchPreflightFixCommand "No-execute workflow dispatch preflight and input template readiness."),
     (New-Stage "operator-input-worksheet" $operatorWorksheet.path $operatorWorksheet.exists $operatorWorksheetResult "inputs=$operatorWorksheetInputRowCount ambiguous=$operatorWorksheetAmbiguousInputRowCount inputFree=$operatorWorksheetInputFreeActionCount secrets=$operatorWorksheetRequiredSecretCount$operatorWorksheetStaleText" ($operatorWorksheet.exists -and -not $operatorWorksheetStale) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-worksheet.ps1" "Expanded operator workflow-input worksheet for confirmations, secrets, and placeholder collection."),
+    (New-Stage "operator-input-values-check" $operatorValuesCheck.path $operatorValuesCheck.exists $operatorValuesCheckResult "values=$operatorValuesCheckValueCount ready=$operatorValuesCheckReadyValueCount missing=$operatorValuesCheckMissingValueCount unsafe=$operatorValuesCheckUnsafeValueCount invalid=$operatorValuesCheckInvalidValueCount$operatorValuesCheckStaleText$operatorValuesCheckCountMismatchText" ($operatorValuesCheck.exists -and -not $operatorValuesCheckStale -and -not $operatorValuesCheckCountMismatch -and (Is-ReadyResult $operatorValuesCheckResult)) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1" "Validates filled non-secret operator input values before dispatch planning without executing workflows."),
     (New-Stage "workflow-run-ids" $runIds.path $runIds.exists $runIdResult "workflows=$((Get-Int $runIds.json "workflowCount")) ready=$((Get-Int $runIds.json "readyWorkflowCount")) missing=$((Get-Int $runIds.json "missingWorkflowCount")) stale=$((Get-Int $runIds.json "staleWorkflowCount")) actionOrders=$(Join-IntList $workflowRunIdPlanActionOrders)$workflowRunIdPlanStaleText$workflowRunIdPlanScopeMismatchText" ($runIds.exists -and -not $workflowRunIdPlanStale -and -not $workflowRunIdPlanScopeMismatch -and (Is-ReadyResult $runIdResult)) $workflowRunIdStageCommand $workflowRunIdStageNote),
     (New-Stage "artifact-collection" $collection.path $collection.exists $collectionResult "artifacts=$((Get-Int $collection.json "artifactCount")) ready=$((Get-Int $collection.json "readyArtifactCount")) missingRequired=$((Get-Int $collection.json "missingRequiredArtifactCount")) securitySources=$((Get-Int $collection.json "readySecuritySourceArtifactCount"))/$((Get-Int $collection.json "securitySourceArtifactCount")) missingSecuritySources=$((Get-Int $collection.json "missingSecuritySourceArtifactCount")) actionOrders=$(Join-IntList $artifactCollectionActionOrders)$artifactCollectionStaleText$artifactCollectionScopeMismatchText" ($collection.exists -and -not $artifactCollectionStale -and -not $artifactCollectionScopeMismatch -and (Is-ReadyResult $collectionResult)) (Get-ArtifactCollectionStageCommand $collection.json) "Artifact download/import or finalizer plan."),
     (New-Stage "artifact-import" $import.path $import.exists $importResult "failed=$((Get-Int $import.json "failedCount"))" ($import.exists -and (Is-ReadyResult $importResult)) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\import-operations-readiness-artifacts.ps1" "Promotion of downloaded evidence artifacts into latest readiness paths."),
@@ -589,7 +618,7 @@ elseif ((Get-Int $invocation.json "blockedCount") -gt 0 -or "blocked".Equals($in
         $apiExecuteHint = if (-not [string]::IsNullOrWhiteSpace($readySubsetApiExecuteCommand)) { " API dispatch is also available after setting GH_TOKEN or GITHUB_TOKEN: $readySubsetApiExecuteCommand." } else { "" }
         $nextStep = New-NextStep "dispatch-ready-subset" "Plan ready dispatch subset" $readySubsetPlanCommand "The invocation report still has blocked actions, but $readyDispatchTemplateCount action(s) are ready to dispatch: $readyOrdersText." "Run the ready subset plan command first without -Execute, then dispatch only after review and continue resolving the remaining blocked actions. $executeHint$apiExecuteHint$readyDispatchUrlHint$defaultBranchWorkflowHint" $readyDispatchUrls
     }
-    else { $nextStep = New-NextStep "resolve-invocation-blockers" "Resolve invocation blockers" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1" "The invocation report still has blocked actions." "Generate the unblock plan and operator input worksheet, fill workflow-input-level placeholder rows, confirm operator approvals, confirm kubeconfig-secret readiness, and resolve default-branch workflow blockers before dispatch.$defaultBranchWorkflowHint" }
+    else { $nextStep = New-NextStep "resolve-invocation-blockers" "Resolve invocation blockers" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1" "The invocation report still has blocked actions." "Generate the unblock plan and operator input worksheet, fill workflow-input-level placeholder rows, rerun the operator input values check, confirm operator approvals, confirm kubeconfig-secret readiness, and resolve default-branch workflow blockers before dispatch.$defaultBranchWorkflowHint" }
 }
 elseif ((Get-Int $invocation.json "plannedCount") -gt 0 -and (Get-Int $invocation.json "executedCount") -eq 0 -and "planned".Equals($invocationResult, [System.StringComparison]::OrdinalIgnoreCase)) {
     if ($dispatchPreflight.exists -and -not (Is-ReadyResult $dispatchPreflightResult)) {
@@ -623,7 +652,7 @@ $report = [ordered]@{
     formatVersion = "osmu.operations-evidence-handoff.v1"; generatedAt = $generatedAt; result = $handoffResult; nextStep = $nextStep; currentBottleneck = $nextStep; stageCount = $stages.Count; readyStageCount = @($stages | Where-Object { $_.ready }).Count; readinessSummary = $readinessSummary; readinessPassedCount = $readinessPassedCount; readinessPendingCount = $readinessPendingCount; readinessTotalCount = $readinessTotalCount; readinessCheckCount = $readinessCheckCount; dispatchPreflightResult = $dispatchPreflightResult; dispatchGithubRepository = $dispatchGithubRepository; readyDispatchTemplateCount = $readyDispatchTemplateCount; blockedDispatchTemplateCount = $blockedDispatchTemplateCount
     defaultBranchRef = $defaultBranchRef; defaultBranchMissingWorkflowCount = $defaultBranchMissingWorkflowCount; defaultBranchMissingActionOrders = @($defaultBranchMissingActionOrders); defaultBranchMissingWorkflows = @($defaultBranchMissingWorkflows)
     readyDispatchActionOrders = @($readyDispatchActionOrders); blockedDispatchActionOrders = @($blockedDispatchActionOrders); invocationSelectedActionOrders = @($invocationSelectedActionOrders); dispatchPreflightSelectedActionOrders = @($dispatchPreflightSelectedActionOrders); workflowRunIdPlanActionOrders = @($workflowRunIdPlanActionOrders); artifactCollectionActionOrders = @($artifactCollectionActionOrders); readyDispatchWorkflows = @($readyDispatchWorkflows); blockedDispatchWorkflows = @($blockedDispatchWorkflows)
-    invocationStale = $invocationStale; dispatchPreflightStale = $dispatchPreflightStale; dispatchPreflightScopeMismatch = $dispatchPreflightScopeMismatch; operatorInputWorksheetStale = $operatorWorksheetStale; operatorInputWorksheetResult = $operatorWorksheetResult; operatorInputWorksheetInputRowCount = $operatorWorksheetInputRowCount; operatorInputWorksheetAmbiguousInputRowCount = $operatorWorksheetAmbiguousInputRowCount; workflowRunIdPlanStale = $workflowRunIdPlanStale; workflowRunIdPlanScopeMismatch = $workflowRunIdPlanScopeMismatch; artifactCollectionStale = $artifactCollectionStale; artifactCollectionScopeMismatch = $artifactCollectionScopeMismatch; staleReportCount = $staleReportCount; blockedActionCount = Get-Int $invocation.json "blockedCount"; missingWorkflowRunCount = Get-Int $runIds.json "missingWorkflowCount"; missingRequiredArtifactCount = Get-Int $collection.json "missingRequiredArtifactCount"; failedImportCount = Get-Int $import.json "failedCount"; finalizerFailedCount = $finalizeFailedCount; finalizerGapCount = $finalizeGapCount; browserDispatchChecklistCount = $browserDispatchChecklist.Count; browserDispatchChecklist = @($browserDispatchChecklist); securityEvidenceFinalizerRunIdInputHintCount = $securityEvidenceFinalizerRunIdInputHints.Count; securityEvidenceFinalizerRunIdInputHints = @($securityEvidenceFinalizerRunIdInputHints); postDispatchCommands = @($postDispatchCommands); stages = $stages
+    invocationStale = $invocationStale; dispatchPreflightStale = $dispatchPreflightStale; dispatchPreflightScopeMismatch = $dispatchPreflightScopeMismatch; operatorInputWorksheetStale = $operatorWorksheetStale; operatorInputWorksheetResult = $operatorWorksheetResult; operatorInputWorksheetInputRowCount = $operatorWorksheetInputRowCount; operatorInputWorksheetAmbiguousInputRowCount = $operatorWorksheetAmbiguousInputRowCount; operatorInputValuesCheckStale = $operatorValuesCheckStale; operatorInputValuesCheckCountMismatch = $operatorValuesCheckCountMismatch; operatorInputValuesCheckResult = $operatorValuesCheckResult; operatorInputValuesCheckValueCount = $operatorValuesCheckValueCount; operatorInputValuesCheckReadyValueCount = $operatorValuesCheckReadyValueCount; operatorInputValuesCheckMissingValueCount = $operatorValuesCheckMissingValueCount; operatorInputValuesCheckUnsafeValueCount = $operatorValuesCheckUnsafeValueCount; operatorInputValuesCheckInvalidValueCount = $operatorValuesCheckInvalidValueCount; workflowRunIdPlanStale = $workflowRunIdPlanStale; workflowRunIdPlanScopeMismatch = $workflowRunIdPlanScopeMismatch; artifactCollectionStale = $artifactCollectionStale; artifactCollectionScopeMismatch = $artifactCollectionScopeMismatch; staleReportCount = $staleReportCount; blockedActionCount = Get-Int $invocation.json "blockedCount"; missingWorkflowRunCount = Get-Int $runIds.json "missingWorkflowCount"; missingRequiredArtifactCount = Get-Int $collection.json "missingRequiredArtifactCount"; failedImportCount = Get-Int $import.json "failedCount"; finalizerFailedCount = $finalizeFailedCount; finalizerGapCount = $finalizeGapCount; browserDispatchChecklistCount = $browserDispatchChecklist.Count; browserDispatchChecklist = @($browserDispatchChecklist); securityEvidenceFinalizerRunIdInputHintCount = $securityEvidenceFinalizerRunIdInputHints.Count; securityEvidenceFinalizerRunIdInputHints = @($securityEvidenceFinalizerRunIdInputHints); postDispatchCommands = @($postDispatchCommands); stages = $stages
 }
 
 $dispatchGithubRepositoryLabel = if ([string]::IsNullOrWhiteSpace($dispatchGithubRepository)) { "none" } else { $dispatchGithubRepository }
