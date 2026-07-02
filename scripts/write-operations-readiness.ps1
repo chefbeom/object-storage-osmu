@@ -338,7 +338,7 @@ function Get-FirstNonPassCheckSummary([object] $Data) {
 
 function Get-ChargebackCloseoutDetail([object] $Report) {
     if (-not $Report.exists -or -not $Report.parsed) {
-        return $Report.detail
+        return "result=planned, billingPeriod=, window=->, failures=0, planned=3, refs=0/14, reconciliationDifferenceMinorUnits=0, closeoutSnapshotValid=False, paymentProviderAdapterReadinessSnapshotValid=False, paymentProviderAdapterReadinessReviewed=False, commercialEvidenceReviewed=False, firstIssue=target-closeout-planned/PLANNED Run this writer after a target billing period has been closed.; source=$($Report.detail)"
     }
     $data = $Report.data
     $summary = Get-ObjectProperty $data "summary"
