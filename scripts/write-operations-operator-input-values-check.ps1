@@ -37,6 +37,12 @@ function Get-Int([object] $Object, [string] $Name) {
     try { return [int] $value } catch { return 0 }
 }
 
+function Get-Bool([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) { return $false }
+    try { return [System.Convert]::ToBoolean($value) } catch { return $false }
+}
+
 function Get-ArrayValue([object] $Value) {
     if ($null -eq $Value) { return @() }
     if ($Value -is [System.Array]) { return @($Value) }
@@ -76,6 +82,29 @@ function Get-ValuePreview([string] $Value) {
     if ([string]::IsNullOrWhiteSpace($Value)) { return "" }
     if ($Value.Length -le 120) { return $Value }
     return $Value.Substring(0, 120) + "...<truncated>"
+}
+
+function New-ActionValueSummary([int] $ActionOrder, [string] $ActionName, [string] $Category, [string] $Workflow, [bool] $InputFree, [object[]] $ActionEntries) {
+    $actionEntryArray = @($ActionEntries)
+    $missing = @($actionEntryArray | Where-Object { $_.status -eq "missing" })
+    $unsafe = @($actionEntryArray | Where-Object { $_.status -eq "unsafe" })
+    $invalid = @($actionEntryArray | Where-Object { $_.status -eq "invalid" })
+    $ready = @($actionEntryArray | Where-Object { $_.status -eq "ready" })
+    $status = if ($missing.Count -eq 0 -and $unsafe.Count -eq 0 -and $invalid.Count -eq 0) { "ready" } else { "action-required" }
+    return [pscustomobject][ordered]@{
+        actionOrder = $ActionOrder
+        actionName = $ActionName
+        category = $Category
+        workflow = $Workflow
+        inputFree = $InputFree
+        status = $status
+        valueCount = $actionEntryArray.Count
+        readyValueCount = $ready.Count
+        missingValueCount = $missing.Count
+        unsafeValueCount = $unsafe.Count
+        invalidValueCount = $invalid.Count
+        nonReadyValueKeys = @($actionEntryArray | Where-Object { $_.status -ne "ready" } | ForEach-Object { [string] $_.valueKey })
+    }
 }
 
 $resolvedValuesTemplatePath = Resolve-ProjectPath $ValuesTemplatePath
@@ -120,6 +149,44 @@ $missingCount = @($entryArray | Where-Object { $_.status -eq "missing" }).Count
 $unsafeCount = @($entryArray | Where-Object { $_.status -eq "unsafe" }).Count
 $invalidCount = @($entryArray | Where-Object { $_.status -eq "invalid" }).Count
 $readyCount = @($entryArray | Where-Object { $_.status -eq "ready" }).Count
+
+$worksheetActions = @()
+$sourceWorksheetPath = Get-Text $template "sourceOperatorInputWorksheet"
+if (-not [string]::IsNullOrWhiteSpace($sourceWorksheetPath)) {
+    $resolvedSourceWorksheetPath = Resolve-ProjectPath $sourceWorksheetPath
+    if (Test-Path -LiteralPath $resolvedSourceWorksheetPath) {
+        try {
+            $sourceWorksheet = Read-Utf8Text $resolvedSourceWorksheetPath | ConvertFrom-Json
+            if ($sourceWorksheet.formatVersion -eq "osmu.operations-operator-input-worksheet.v1") {
+                $worksheetActions = @(Get-ArrayValue (Get-JsonProperty $sourceWorksheet "actionWorklist"))
+            }
+        }
+        catch {
+            $worksheetActions = @()
+        }
+    }
+}
+
+$actionSummaries = New-Object System.Collections.Generic.List[object]
+$seenActionOrders = New-Object System.Collections.Generic.List[int]
+foreach ($action in @($worksheetActions)) {
+    $order = Get-Int $action "actionOrder"
+    if ($order -le 0) { continue }
+    $matchingEntries = @($entryArray | Where-Object { $_.actionOrder -eq $order })
+    $actionSummaries.Add((New-ActionValueSummary $order (Get-Text $action "name") (Get-Text $action "category") (Get-Text $action "workflow") (Get-Bool $action "inputFree") $matchingEntries)) | Out-Null
+    if (-not $seenActionOrders.Contains($order)) { $seenActionOrders.Add($order) | Out-Null }
+}
+foreach ($group in @($entryArray | Group-Object actionOrder | Sort-Object { [int] $_.Name })) {
+    $order = 0
+    try { $order = [int] $group.Name } catch { $order = 0 }
+    if ($order -le 0 -or $seenActionOrders.Contains($order)) { continue }
+    $firstEntry = @($group.Group | Select-Object -First 1)[0]
+    $actionSummaries.Add((New-ActionValueSummary $order (Get-Text $firstEntry "actionName") "" "" $false @($group.Group))) | Out-Null
+}
+$actionSummaryArray = @($actionSummaries.ToArray())
+$valueReadyActionCount = @($actionSummaryArray | Where-Object { $_.status -eq "ready" }).Count
+$nonReadyActionCount = @($actionSummaryArray | Where-Object { $_.status -ne "ready" }).Count
+
 $result = if ($missingCount -eq 0 -and $unsafeCount -eq 0 -and $invalidCount -eq 0) { "ready" } else { "action-required" }
 $generatedAt = [DateTimeOffset]::Now.ToString("o")
 
@@ -135,6 +202,10 @@ $report = [ordered]@{
     missingValueCount = $missingCount
     unsafeValueCount = $unsafeCount
     invalidValueCount = $invalidCount
+    actionSummaryCount = $actionSummaryArray.Count
+    valueReadyActionCount = $valueReadyActionCount
+    nonReadyActionCount = $nonReadyActionCount
+    actionSummaries = @($actionSummaryArray)
     entries = @($entryArray)
     decisionRule = "This check validates operator-provided non-secret input values before dispatch planning. It does not execute workflows or mark readiness evidence as passed."
 }
@@ -153,6 +224,19 @@ $markdown.Add("- Ready: $readyCount") | Out-Null
 $markdown.Add("- Missing: $missingCount") | Out-Null
 $markdown.Add("- Unsafe: $unsafeCount") | Out-Null
 $markdown.Add("- Invalid: $invalidCount") | Out-Null
+$markdown.Add("- Actions: $($report.actionSummaryCount)") | Out-Null
+$markdown.Add("- Value-ready actions: $valueReadyActionCount") | Out-Null
+$markdown.Add("- Non-ready actions: $nonReadyActionCount") | Out-Null
+$markdown.Add("") | Out-Null
+$markdown.Add("## Action Summary") | Out-Null
+$markdown.Add("") | Out-Null
+$markdown.Add("| Status | Action | Values | Ready | Missing | Unsafe | Invalid | Workflow |") | Out-Null
+$markdown.Add("| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |") | Out-Null
+foreach ($action in @($actionSummaryArray | Sort-Object actionOrder)) {
+    $workflow = if ([string]::IsNullOrWhiteSpace($action.workflow)) { "n/a" } else { $action.workflow }
+    $markdown.Add("| $($action.status) | $($action.actionOrder) | $($action.valueCount) | $($action.readyValueCount) | $($action.missingValueCount) | $($action.unsafeValueCount) | $($action.invalidValueCount) | $workflow |") | Out-Null
+}
+if ($actionSummaryArray.Count -eq 0) { $markdown.Add("| ready | n/a | 0 | 0 | 0 | 0 | 0 | none |") | Out-Null }
 $markdown.Add("") | Out-Null
 $markdown.Add("## Non-Ready Values") | Out-Null
 $markdown.Add("") | Out-Null

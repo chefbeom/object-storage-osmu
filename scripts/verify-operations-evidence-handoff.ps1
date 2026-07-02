@@ -1431,6 +1431,9 @@ Write-JsonFixture $valuesStageCheckPath ([ordered]@{
     missingValueCount = 0
     unsafeValueCount = 0
     invalidValueCount = 0
+    actionSummaryCount = 1
+    valueReadyActionCount = 1
+    nonReadyActionCount = 0
 })
 Write-JsonFixture $valuesStageRunIdPath ([ordered]@{
     formatVersion = "osmu.operations-workflow-run-id-plan.v1"
@@ -1477,8 +1480,11 @@ $valuesStage = @($valuesStageReport.stages | Where-Object { $_.name -eq "operato
 Assert-Equal $valuesStageReport.stageCount 10 "values stage count"
 Assert-Equal $valuesStageReport.operatorInputValuesCheckResult "ready" "values stage result"
 Assert-Equal $valuesStageReport.operatorInputValuesCheckValueCount 2 "values stage value count"
+Assert-Equal $valuesStageReport.operatorInputValuesCheckValueReadyActionCount 1 "values stage ready action count"
+Assert-Equal $valuesStageReport.operatorInputValuesCheckNonReadyActionCount 0 "values stage non-ready action count"
 Assert-Equal $valuesStage.ready $true "values stage ready flag"
 Assert-Contains $valuesStage.summary "values=2 ready=2 missing=0 unsafe=0 invalid=0" "values stage summary"
+Assert-Contains $valuesStage.summary "readyActions=1 nonReadyActions=0" "values stage action summary"
 Write-Host "Operations evidence handoff verified."
 Write-Host "Missing report: $missingJsonPath"
 Write-Host "Blocked report: $blockedJsonPath"
