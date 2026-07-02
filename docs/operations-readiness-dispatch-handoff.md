@@ -6,10 +6,12 @@ This handoff keeps the remaining operations-readiness work focused on object-sto
 
 - Latest readiness summary: passed=83 / pending=19 / total=102.
 - Latest handoff result: blocked.
-- Current bottleneck: resolve invocation blockers.
-- Main merge commit: 81acaf4e3c44ee3dc2014f3429f585ac7defaedd.
+- Current bottleneck: resolve invocation blockers; no default-branch workflow files are missing.
+- Current main HEAD: 9c9a7a2b2152f6a7ea9546a22306929ab6943fde.
+- PR #1 merge commit: 81acaf4e3c44ee3dc2014f3429f585ac7defaedd.
 - PR #1 is merged into main.
 - Prototype CI #54 passed on 13a3402facf92349e409d91d66961b77622fe7fd before merge.
+- The dispatch preflight, workflow run-id plan, artifact collection plan, evidence handoff, and convergence reports were regenerated after pushing 9c9a7a2 to main.
 
 ## Default-Branch Workflow Gate
 
@@ -25,7 +27,7 @@ The latest dispatch preflight confirmed defaultBranchWorkflowMissingCount=0. Do 
 
 ## Ready Subset After Operator Confirmation
 
-With explicit operator approval, OSMU_KUBECONFIG_BASE64 readiness confirmation, and required GitHub secrets configured, actions 1, 2, and 5 have no remaining workflow input placeholders. A plan-only preflight for this subset produced result=ready.
+With explicit operator approval, OSMU_KUBECONFIG_BASE64 readiness confirmation, and required GitHub secrets configured, actions 1, 2, and 5 have no remaining workflow input placeholders. The current-head preflight for this subset produced readyActionCount=3 and blockedActionCount=0, but its overall result remains action-required on this machine because GitHub CLI is not installed and GH_TOKEN/GITHUB_TOKEN is not set.
 
 Plan-only command:
 
@@ -90,7 +92,12 @@ Run and collect these in order:
 4. operations-readiness-artifact-finalizer-ci.yml or local artifact import.
 5. finalize-operations-readiness.ps1.
 
-Expected artifact names must match the commit used by the workflow run. Recompute them from the latest workflow run-id and artifact collection plans after dispatch; do not reuse stale artifact names from older commits. The current main merge commit is 81acaf4e3c44ee3dc2014f3429f585ac7defaedd.
+Expected artifact names must match the commit used by the workflow run. Recompute them from the latest workflow run-id and artifact collection plans after dispatch; do not reuse stale artifact names from older commits.
+
+Current main-head artifact hints:
+
+- image signing source: `osmu-image-signing-v0.1.0-rc.1-9c9a7a2b2152f6a7ea9546a22306929ab6943fde`
+- container security source: `osmu-container-security-9c9a7a2b2152f6a7ea9546a22306929ab6943fde`
 
 ## Completion Criteria
 

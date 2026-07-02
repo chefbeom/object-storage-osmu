@@ -67,6 +67,8 @@ $apiFallbackMarkdownPath = Join-Path $resolvedOutputDirectory "api-fallback-pref
 $defaultBranchMissingUnblockPlanPath = Join-Path $resolvedOutputDirectory "default-branch-missing-unblock-plan.json"
 $defaultBranchMissingJsonPath = Join-Path $resolvedOutputDirectory "default-branch-missing-preflight.json"
 $defaultBranchMissingMarkdownPath = Join-Path $resolvedOutputDirectory "default-branch-missing-preflight.md"
+$defaultBranchMissingWorkflowName = "osmu-dispatch-preflight-self-test-only.yml"
+$defaultBranchMissingWorkflowPath = Resolve-ProjectPath ".\.github\workflows\$defaultBranchMissingWorkflowName"
 $defaultBranchUnavailableJsonPath = Join-Path $resolvedOutputDirectory "default-branch-unavailable-preflight.json"
 $defaultBranchUnavailableMarkdownPath = Join-Path $resolvedOutputDirectory "default-branch-unavailable-preflight.md"
 $gitRefJsonPath = Join-Path $resolvedOutputDirectory "git-ref-safety-preflight.json"
@@ -313,83 +315,105 @@ Assert-Contains (($apiFallbackReport.checks | ConvertTo-Json -Depth 8)) "GITHUB_
 Assert-Contains (($apiFallbackReport.checks | ConvertTo-Json -Depth 8)) "REST API dispatch is available" "API fallback CLI warning"
 Assert-Contains $apiFallbackMarkdown "GitHub API dispatch available: True" "API fallback markdown"
 
-Write-JsonFixture $defaultBranchMissingUnblockPlanPath ([ordered]@{
-    formatVersion = "osmu.operations-invocation-unblock-plan.v1"
-    generatedAt = "2026-06-16T08:00:00+09:00"
-    result = "ready"
-    sourceInvocationReport = ".osmu-run/latest-operations-evidence-plan-invocation.json"
-    sourceResult = "planned"
-    sourceSummary = "passed=36 pending=6"
-    sourcePassedCount = 36
-    sourcePendingCount = 6
-    sourceTotalCount = 42
-    sourceCheckCount = 42
-    selectedActionCount = 1
-    plannedCount = 1
-    blockedCount = 0
-    failedCount = 0
-    needsKubeconfigSecretConfirmation = $false
-    needsOperatorApprovalConfirmation = $false
-    requiredPlaceholderCount = 0
-    ambiguousRepeatedPlaceholderCount = 0
-    blockedActionOrders = @()
-    plannedActionOrders = @(20)
-    confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 20"
-    blockedOnlyPlanCommand = ""
-    plannedOnlyCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 20"
-    decisionRule = "Resolve placeholders and confirmations before execution."
-    actions = @(
-        [ordered]@{
-            order = 20
-            name = "Branch-only workflow evidence"
-            category = "operations"
-            actionType = "operator-remediation"
-            evidencePath = ".osmu-run/latest-branch-only-evidence.json"
-            status = "planned"
-            commandMode = "Workflow"
-            command = "gh workflow run manual-chargeback-closeout-evidence.yml"
-            blockReasons = @()
-            unresolvedPlaceholders = @()
-            requiresOperatorApproval = $false
-            requiresKubeconfigSecret = $false
-            needsOperatorApprovalConfirmation = $false
-            needsKubeconfigSecretConfirmation = $false
-            requiredInputs = @()
-            ambiguousRepeatedPlaceholders = $false
-            planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 20"
-        }
-    )
-})
-
-& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
-    -UnblockPlanPath $defaultBranchMissingUnblockPlanPath `
-    -JsonOutputPath $defaultBranchMissingJsonPath `
-    -MarkdownOutputPath $defaultBranchMissingMarkdownPath `
-    -GitHubRepository "chefbeom/object-storage-osmu" `
-    -DefaultBranchRef "origin/main" | Out-Host
-if ($LASTEXITCODE -ne 0) {
-    throw "write-operations-dispatch-preflight.ps1 default branch missing fixture failed with exit code $LASTEXITCODE."
+if (Test-Path -LiteralPath $defaultBranchMissingWorkflowPath) {
+    throw "Refusing to overwrite existing self-test workflow: $defaultBranchMissingWorkflowPath"
 }
+$createdDefaultBranchMissingWorkflow = $false
+try {
+    Set-Content -LiteralPath $defaultBranchMissingWorkflowPath -Encoding UTF8 -Value @"
+name: OSMU Dispatch Preflight Self Test Only
+on:
+  workflow_dispatch:
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo self-test
+"@
+    $createdDefaultBranchMissingWorkflow = $true
 
-$defaultBranchMissingReport = Read-Utf8Text $defaultBranchMissingJsonPath | ConvertFrom-Json
-$defaultBranchMissingMarkdown = Read-Utf8Text $defaultBranchMissingMarkdownPath
-Assert-Equal $defaultBranchMissingReport.defaultBranchRef "origin/main" "default branch ref"
-Assert-Equal $defaultBranchMissingReport.workflowFiles[0].workflow "manual-chargeback-closeout-evidence.yml" "default branch missing workflow"
-Assert-True $defaultBranchMissingReport.workflowFiles[0].exists "branch-only workflow should exist locally"
-Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "default branch check code"
-if ($defaultBranchMissingReport.defaultBranchRefAvailable) {
-    Assert-Equal $defaultBranchMissingReport.result "action-required" "default branch missing result"
-    Assert-True (-not $defaultBranchMissingReport.workflowFiles[0].existsOnDefaultBranch) "branch-only workflow should be missing on default branch"
-    Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "workflow_dispatch requires" "default branch check message"
-    Assert-Contains $defaultBranchMissingMarkdown "defaultBranchFile=missing" "default branch markdown"
-}
-else {
-    Assert-Equal $defaultBranchMissingReport.result "ready" "default branch unavailable result"
-    Assert-True $defaultBranchMissingReport.workflowFiles[0].existsOnDefaultBranch "branch-only workflow should use local presence when default branch ref is unavailable"
-    Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "is not available in this checkout" "default branch unavailable check message"
-    Assert-Contains $defaultBranchMissingMarkdown "defaultBranchFile=present" "default branch unavailable markdown"
-}
+    Write-JsonFixture $defaultBranchMissingUnblockPlanPath ([ordered]@{
+        formatVersion = "osmu.operations-invocation-unblock-plan.v1"
+        generatedAt = "2026-06-16T08:00:00+09:00"
+        result = "ready"
+        sourceInvocationReport = ".osmu-run/latest-operations-evidence-plan-invocation.json"
+        sourceResult = "planned"
+        sourceSummary = "passed=36 pending=6"
+        sourcePassedCount = 36
+        sourcePendingCount = 6
+        sourceTotalCount = 42
+        sourceCheckCount = 42
+        selectedActionCount = 1
+        plannedCount = 1
+        blockedCount = 0
+        failedCount = 0
+        needsKubeconfigSecretConfirmation = $false
+        needsOperatorApprovalConfirmation = $false
+        requiredPlaceholderCount = 0
+        ambiguousRepeatedPlaceholderCount = 0
+        blockedActionOrders = @()
+        plannedActionOrders = @(20)
+        confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 20"
+        blockedOnlyPlanCommand = ""
+        plannedOnlyCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 20"
+        decisionRule = "Resolve placeholders and confirmations before execution."
+        actions = @(
+            [ordered]@{
+                order = 20
+                name = "Branch-only workflow evidence"
+                category = "operations"
+                actionType = "operator-remediation"
+                evidencePath = ".osmu-run/latest-branch-only-evidence.json"
+                status = "planned"
+                commandMode = "Workflow"
+                command = "gh workflow run $defaultBranchMissingWorkflowName"
+                blockReasons = @()
+                unresolvedPlaceholders = @()
+                requiresOperatorApproval = $false
+                requiresKubeconfigSecret = $false
+                needsOperatorApprovalConfirmation = $false
+                needsKubeconfigSecretConfirmation = $false
+                requiredInputs = @()
+                ambiguousRepeatedPlaceholders = $false
+                planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 20"
+            }
+        )
+    })
 
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -UnblockPlanPath $defaultBranchMissingUnblockPlanPath `
+        -JsonOutputPath $defaultBranchMissingJsonPath `
+        -MarkdownOutputPath $defaultBranchMissingMarkdownPath `
+        -GitHubRepository "chefbeom/object-storage-osmu" `
+        -DefaultBranchRef "origin/main" | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "write-operations-dispatch-preflight.ps1 default branch missing fixture failed with exit code $LASTEXITCODE."
+    }
+
+    $defaultBranchMissingReport = Read-Utf8Text $defaultBranchMissingJsonPath | ConvertFrom-Json
+    $defaultBranchMissingMarkdown = Read-Utf8Text $defaultBranchMissingMarkdownPath
+    Assert-Equal $defaultBranchMissingReport.defaultBranchRef "origin/main" "default branch ref"
+    Assert-Equal $defaultBranchMissingReport.workflowFiles[0].workflow $defaultBranchMissingWorkflowName "default branch missing workflow"
+    Assert-True $defaultBranchMissingReport.workflowFiles[0].exists "branch-only workflow should exist locally"
+    Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "default branch check code"
+    if ($defaultBranchMissingReport.defaultBranchRefAvailable) {
+        Assert-Equal $defaultBranchMissingReport.result "action-required" "default branch missing result"
+        Assert-True (-not $defaultBranchMissingReport.workflowFiles[0].existsOnDefaultBranch) "branch-only workflow should be missing on default branch"
+        Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "workflow_dispatch requires" "default branch check message"
+        Assert-Contains $defaultBranchMissingMarkdown "defaultBranchFile=missing" "default branch markdown"
+    }
+    else {
+        Assert-Equal $defaultBranchMissingReport.result "ready" "default branch unavailable result"
+        Assert-True $defaultBranchMissingReport.workflowFiles[0].existsOnDefaultBranch "branch-only workflow should use local presence when default branch ref is unavailable"
+        Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "is not available in this checkout" "default branch unavailable check message"
+        Assert-Contains $defaultBranchMissingMarkdown "defaultBranchFile=present" "default branch unavailable markdown"
+    }
+}
+finally {
+    if ($createdDefaultBranchMissingWorkflow -and (Test-Path -LiteralPath $defaultBranchMissingWorkflowPath)) {
+        Remove-Item -LiteralPath $defaultBranchMissingWorkflowPath -Force
+    }
+}
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -UnblockPlanPath $unblockPlanPath `
     -JsonOutputPath $defaultBranchUnavailableJsonPath `
