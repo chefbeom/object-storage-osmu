@@ -494,7 +494,8 @@ function Invoke-GitHubApiRunList([string] $RepositorySlug, [string] $Workflow, [
         $response = Invoke-RestMethod -Uri $queryUrl -Headers $headers -Method Get
     }
     catch {
-        throw "GitHub API run list failed for ${Workflow}: $($_.Exception.Message)"
+        Write-Warning "GitHub API run list failed for ${Workflow}; treating it as no discoverable workflow_dispatch runs: $($_.Exception.Message)"
+        return @()
     }
 
     $runs = Get-JsonProperty $response "workflow_runs"
