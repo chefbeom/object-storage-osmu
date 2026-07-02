@@ -264,6 +264,7 @@ foreach ($action in @(Get-Array (Get-JsonProperty $unblock.json "actions"))) {
     }) | Out-Null
 }
 $actionWorklistArray = @($actionWorklist.ToArray())
+$csvPath = Resolve-ProjectPath $CsvOutputPath
 $valuesTemplateJsonPath = Resolve-ProjectPath $ValuesTemplateOutputPath
 $valuesTemplateMarkdownPath = Resolve-ProjectPath $ValuesTemplateMarkdownOutputPath
 $inputValueTemplateEntries = New-Object System.Collections.Generic.List[object]
@@ -299,6 +300,7 @@ $report = [ordered]@{
     selectedActionCount = Get-Int $unblock.json "selectedActionCount"
     actionWorklistCount = $actionWorklistArray.Count
     inputValueTemplateCount = $inputValueTemplateEntryArray.Count
+    csvPath = $csvPath
     inputValuesTemplatePath = $valuesTemplateJsonPath
     inputValuesTemplateMarkdownPath = $valuesTemplateMarkdownPath
     confirmationCount = $confirmationGroups.Count
@@ -425,7 +427,6 @@ $inputValuesMarkdown.Add($inputValuesTemplate.decisionRule) | Out-Null
 if (-not $NoWrite) {
     $jsonPath = Resolve-ProjectPath $JsonOutputPath
     $markdownPath = Resolve-ProjectPath $MarkdownOutputPath
-    $csvPath = Resolve-ProjectPath $CsvOutputPath
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $jsonPath) | Out-Null
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $valuesTemplateJsonPath) | Out-Null
     $report | ConvertTo-Json -Depth 18 | Set-Content -LiteralPath $jsonPath -Encoding UTF8

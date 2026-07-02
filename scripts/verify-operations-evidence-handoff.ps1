@@ -167,7 +167,9 @@ $blockedInvocationPath = Join-Path $resolvedOutputDirectory "blocked-invocation.
 $blockedUnblockPath = Join-Path $resolvedOutputDirectory "blocked-unblock-plan.json"
 $blockedDispatchPreflightPath = Join-Path $resolvedOutputDirectory "blocked-dispatch-preflight.json"
 $blockedWorksheetPath = Join-Path $resolvedOutputDirectory "blocked-operator-worksheet.json"
+$blockedWorksheetCsvPath = Join-Path $resolvedOutputDirectory "blocked-operator-worksheet.csv"
 $blockedTemplatePath = Join-Path $resolvedOutputDirectory "blocked-operator-values-template.json"
+$blockedTemplateMarkdownPath = Join-Path $resolvedOutputDirectory "blocked-operator-values-template.md"
 $blockedCheckPath = Join-Path $resolvedOutputDirectory "blocked-operator-values-check.json"
 $blockedRunIdPath = Join-Path $resolvedOutputDirectory "blocked-run-ids.json"
 $blockedCollectionPath = Join-Path $resolvedOutputDirectory "blocked-collection.json"
@@ -336,7 +338,9 @@ Write-JsonFixture $blockedWorksheetPath ([ordered]@{
     generatedAt = "2026-06-27T10:12:00+09:00"
     result = "action-required"
     sourceDispatchPreflightReport = $blockedDispatchPreflightPath
+    csvPath = $blockedWorksheetCsvPath
     inputValuesTemplatePath = $blockedTemplatePath
+    inputValuesTemplateMarkdownPath = $blockedTemplateMarkdownPath
     inputRowCount = 4
     ambiguousInputRowCount = 1
     inputFreeActionCount = 1
@@ -431,6 +435,10 @@ Assert-Equal $blockedReport.blockedActionCount 5 "blocked count"
 Assert-Equal $blockedReport.missingWorkflowRunCount 6 "blocked missing workflow run count"
 Assert-Equal $blockedReport.dispatchPreflightRequiredInputCount 2 "blocked dispatch required input count"
 Assert-Equal $blockedReport.dispatchPreflightMissingInputCount 2 "blocked dispatch missing input count"
+Assert-Equal $blockedReport.operatorInputWorksheetReportPath $blockedWorksheetPath "blocked worksheet report path"
+Assert-Equal $blockedReport.operatorInputWorksheetCsvPath $blockedWorksheetCsvPath "blocked worksheet csv path"
+Assert-Equal $blockedReport.operatorInputValuesTemplatePath $blockedTemplatePath "blocked values template path"
+Assert-Equal $blockedReport.operatorInputValuesTemplateMarkdownPath $blockedTemplateMarkdownPath "blocked values template markdown path"
 Assert-Equal $blockedReport.operatorInputWorksheetInputRowCount 4 "blocked worksheet input row count"
 Assert-Equal $blockedReport.operatorInputWorksheetExpandedInputRowDelta 2 "blocked worksheet expanded row delta"
 Assert-Equal $blockedReport.operatorInputValuesCheckValueCount 4 "blocked values check value count"
@@ -459,6 +467,10 @@ Assert-Contains $blockedMarkdown "## Required GitHub Secrets" "blocked markdown 
 Assert-Contains $blockedMarkdown "OSMU_KUBECONFIG_BASE64: actions=1,3 inputFreeBlocked=1" "blocked markdown kubeconfig secret summary"
 Assert-Contains $blockedMarkdown "GITHUB_TOKEN: actions=2 inputFreeBlocked=none" "blocked markdown github token secret summary"
 Assert-Contains $blockedMarkdown "Dispatch required inputs: 2" "blocked markdown dispatch required inputs"
+Assert-Contains $blockedMarkdown "Worksheet report: $blockedWorksheetPath" "blocked markdown worksheet report path"
+Assert-Contains $blockedMarkdown "Worksheet CSV: $blockedWorksheetCsvPath" "blocked markdown worksheet csv path"
+Assert-Contains $blockedMarkdown "Values template JSON: $blockedTemplatePath" "blocked markdown values template path"
+Assert-Contains $blockedMarkdown "Values template Markdown: $blockedTemplateMarkdownPath" "blocked markdown values template markdown path"
 Assert-Contains $blockedMarkdown "Expanded worksheet row delta: 2" "blocked markdown worksheet expansion delta"
 Assert-Contains $blockedMarkdown "Values check rows: 4" "blocked markdown values check rows"
 Assert-Contains $blockedMarkdown "Block reasons: 4" "blocked markdown unblock reason count"
