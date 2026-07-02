@@ -209,11 +209,14 @@ Write-JsonFixture $blockedUnblockPath ([ordered]@{
             name = "Storage expansion finalizer live evidence"
             status = "blocked"
             blockReasonCount = 2
+            blockReasons = @("operator approval not confirmed", "kubeconfig secret not confirmed")
             requiredInputCount = 0
             requiredSecretCount = 1
+            requiredSecrets = @("OSMU_KUBECONFIG_BASE64")
             needsOperatorApprovalConfirmation = $true
             needsKubeconfigSecretConfirmation = $true
             defaultBranchWorkflowMissing = $false
+            planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval"
         },
         [ordered]@{
             order = 2
@@ -231,8 +234,10 @@ Write-JsonFixture $blockedUnblockPath ([ordered]@{
             name = "Kubernetes DR finalizer live evidence"
             status = "blocked"
             blockReasonCount = 2
+            blockReasons = @("unresolved placeholders: <YYYYMMDDTHHMMSSZ>, <restore-api-base>", "operator approval not confirmed")
             requiredInputCount = 2
             requiredSecretCount = 1
+            requiredSecrets = @("OSMU_KUBECONFIG_BASE64")
             needsOperatorApprovalConfirmation = $true
             needsKubeconfigSecretConfirmation = $true
             defaultBranchWorkflowMissing = $true
@@ -399,6 +404,13 @@ Assert-Equal $blockedReport.invocationUnblockPlanKubeconfigSecretActionCount 2 "
 Assert-Equal $blockedReport.invocationUnblockPlanDefaultBranchMissingActionCount 1 "blocked unblock default branch action count"
 Assert-Equal @($blockedReport.invocationUnblockActions).Count 3 "blocked unblock action summary count"
 Assert-Equal @($blockedReport.invocationUnblockActions)[2].requiredInputCount 2 "blocked unblock action required inputs"
+Assert-Equal $blockedReport.inputFreeBlockedActionCount 1 "blocked input-free blocked action count"
+Assert-Equal $blockedReport.inputFreeBlockedRequiredSecretCount 1 "blocked input-free required secret count"
+Assert-Equal $blockedReport.inputFreeBlockedOperatorApprovalActionCount 1 "blocked input-free operator approval count"
+Assert-Equal $blockedReport.inputFreeBlockedKubeconfigSecretActionCount 1 "blocked input-free kubeconfig count"
+Assert-Equal @($blockedReport.inputFreeBlockedActions)[0].actionOrder 1 "blocked input-free action order"
+Assert-True (@(@($blockedReport.inputFreeBlockedActions)[0].requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64") "blocked input-free required secret name"
+Assert-Contains @($blockedReport.inputFreeBlockedActions)[0].planCommand "-KubeconfigSecretConfirmed" "blocked input-free plan command"
 Assert-Equal @($blockedReport.defaultBranchMissingWorkflows)[0].workflow "manual-data-flow-query-retention-budget-evidence.yml" "blocked default branch missing workflow name"
 Assert-Equal $blockedReport.blockedActionCount 5 "blocked count"
 Assert-Equal $blockedReport.missingWorkflowRunCount 6 "blocked missing workflow run count"
@@ -424,6 +436,10 @@ Assert-Contains $blockedMarkdown "Plan ready dispatch subset" "blocked markdown 
 Assert-Contains $blockedMarkdown "GitHub repository: chefbeom/object-storage-osmu" "blocked markdown repository"
 Assert-Contains $blockedMarkdown "## Invocation Unblock Summary" "blocked markdown unblock summary"
 Assert-Contains $blockedMarkdown "## Operator Input Expansion" "blocked markdown input expansion section"
+Assert-Contains $blockedMarkdown "## Input-Free Blocked Actions" "blocked markdown input-free section"
+Assert-Contains $blockedMarkdown "Actions: 1" "blocked markdown input-free action count"
+Assert-Contains $blockedMarkdown "action 1: blockers=2 secrets=OSMU_KUBECONFIG_BASE64" "blocked markdown input-free action summary"
+Assert-Contains $blockedMarkdown "-KubeconfigSecretConfirmed" "blocked markdown input-free plan command"
 Assert-Contains $blockedMarkdown "Dispatch required inputs: 2" "blocked markdown dispatch required inputs"
 Assert-Contains $blockedMarkdown "Expanded worksheet row delta: 2" "blocked markdown worksheet expansion delta"
 Assert-Contains $blockedMarkdown "Values check rows: 4" "blocked markdown values check rows"
