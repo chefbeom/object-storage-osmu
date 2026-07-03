@@ -2550,12 +2550,12 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 ### TC-OPS-008A
 
 - Feature: Operations operator input worksheet and values check.
-- Preconditions: PowerShell is available and the repository contains `scripts/write-operations-operator-input-worksheet.ps1` and `scripts/write-operations-operator-input-values-check.ps1`.
-- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-operator-input-worksheet.ps1`, then `powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-operator-input-values-check.ps1`
-- Steps: Generate blocked invocation and dispatch-preflight fixtures with input-free actions, required secrets, dispatch unavailability, repeated placeholders, workflow input names, and stable value keys. Run the worksheet writer and verify JSON, Markdown, CSV, and values-template outputs include blank `value` collection cells. Run the values checker against missing, unsafe, invalid, ready, and worksheet-style CSV overlay fixtures.
-- Expected: Operators can fill the generated CSV `value` column or values template by stable `valueKey`, then validate non-secret inputs before dispatch planning. The checker reports missing/unsafe/invalid/ready values and per-action summaries without executing workflows or marking readiness evidence as passed.
+- Preconditions: PowerShell is available and the repository contains `scripts/write-operations-operator-input-worksheet.ps1`, `scripts/write-operations-operator-input-values-profile.ps1`, and `scripts/write-operations-operator-input-values-check.ps1`.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-operator-input-worksheet.ps1`, then `powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-operator-input-values-profile.ps1`, then `powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-operator-input-values-check.ps1`
+- Steps: Generate blocked invocation and dispatch-preflight fixtures with input-free actions, required secrets, dispatch unavailability, repeated placeholders, workflow input names, and stable value keys. Run the worksheet writer and verify JSON, Markdown, CSV, and values-template outputs include blank `value` collection cells. Run the profile writer and verify explicit non-secret common values and value-key overrides fill a derived CSV while preserving existing values and leaving unknown values blank. Run the values checker against missing, unsafe, invalid, ready, and worksheet-style CSV overlay fixtures.
+- Expected: Operators can fill the generated CSV `value` column directly, or seed a derived CSV from explicit non-secret profile values by stable `valueKey`, then validate inputs before dispatch planning. The checker reports missing/unsafe/invalid/ready values and per-action summaries without executing workflows or marking readiness evidence as passed.
 - Priority: P1
-- Automated: `scripts/verify-operations-operator-input-worksheet.ps1`, `scripts/verify-operations-operator-input-values-check.ps1`
+- Automated: `scripts/verify-operations-operator-input-worksheet.ps1`, `scripts/verify-operations-operator-input-values-profile.ps1`, `scripts/verify-operations-operator-input-values-check.ps1`
 
 ### TC-OPS-009
 
