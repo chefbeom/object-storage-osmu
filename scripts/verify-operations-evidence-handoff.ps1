@@ -174,6 +174,7 @@ $blockedDispatchPreflightPath = Join-Path $resolvedOutputDirectory "blocked-disp
 $blockedWorksheetPath = Join-Path $resolvedOutputDirectory "blocked-operator-worksheet.json"
 $blockedWorksheetCsvPath = Join-Path $resolvedOutputDirectory "blocked-operator-worksheet.csv"
 $blockedValuesProfileCsvPath = Join-Path $resolvedOutputDirectory "blocked-operator-input-values-profile.csv"
+$blockedValuesProfilePath = Join-Path $resolvedOutputDirectory "blocked-operator-input-values-profile.json"
 $blockedTemplatePath = Join-Path $resolvedOutputDirectory "blocked-operator-values-template.json"
 $blockedTemplateMarkdownPath = Join-Path $resolvedOutputDirectory "blocked-operator-values-template.md"
 $blockedCheckPath = Join-Path $resolvedOutputDirectory "blocked-operator-values-check.json"
@@ -360,6 +361,19 @@ Write-JsonFixture $blockedWorksheetPath ([ordered]@{
     inputFreeActionCount = 1
     requiredSecretCount = 2
 })
+Write-JsonFixture $blockedValuesProfilePath ([ordered]@{
+    formatVersion = "osmu.operations-operator-input-values-profile.v1"
+    generatedAt = "2026-06-27T10:13:00+09:00"
+    result = "action-required"
+    sourceWorksheetCsv = $blockedWorksheetCsvPath
+    valuesCsvPath = $blockedValuesProfileCsvPath
+    handoffPackageDefaultsUsed = $false
+    handoffPackageDefaultsSkipped = $true
+    handoffPackageDefaultsSkipReason = "handoff package identity contains self-test marker"
+    handoffPackageDefaultValueCount = 0
+    filledValueCount = 0
+    blankValueCount = 4
+})
 Write-JsonFixture $blockedCheckPath ([ordered]@{
     formatVersion = "osmu.operations-operator-input-values-check.v1"
     generatedAt = "2026-06-27T10:15:00+09:00"
@@ -391,6 +405,7 @@ Write-JsonFixture $blockedCollectionPath ([ordered]@{
     -InvocationUnblockPlanPath $blockedUnblockPath `
     -DispatchPreflightReportPath $blockedDispatchPreflightPath `
     -OperatorInputWorksheetReportPath $blockedWorksheetPath `
+    -OperatorInputValuesProfileReportPath $blockedValuesProfilePath `
     -OperatorInputValuesCheckReportPath $blockedCheckPath `
     -WorkflowRunIdPlanPath $blockedRunIdPath `
     -ArtifactCollectionPlanPath $blockedCollectionPath `
@@ -435,6 +450,7 @@ Write-JsonFixture $inputFreeOnlyDispatchPreflightPath ([ordered]@{
     -InvocationUnblockPlanPath $blockedUnblockPath `
     -DispatchPreflightReportPath $inputFreeOnlyDispatchPreflightPath `
     -OperatorInputWorksheetReportPath $blockedWorksheetPath `
+    -OperatorInputValuesProfileReportPath $blockedValuesProfilePath `
     -OperatorInputValuesCheckReportPath $blockedCheckPath `
     -WorkflowRunIdPlanPath $blockedRunIdPath `
     -ArtifactCollectionPlanPath $blockedCollectionPath `
@@ -532,6 +548,15 @@ Assert-Equal $blockedReport.operatorInputWorksheetReportPath $blockedWorksheetPa
 Assert-Equal $blockedReport.operatorInputWorksheetCsvPath $blockedWorksheetCsvPath "blocked worksheet csv path"
 Assert-Equal $blockedReport.operatorInputValuesTemplatePath $blockedTemplatePath "blocked values template path"
 Assert-Equal $blockedReport.operatorInputValuesTemplateMarkdownPath $blockedTemplateMarkdownPath "blocked values template markdown path"
+Assert-Equal $blockedReport.operatorInputValuesProfileReportPath $blockedValuesProfilePath "blocked values profile report path"
+Assert-Equal $blockedReport.operatorInputValuesProfileExists $true "blocked values profile exists"
+Assert-Equal $blockedReport.operatorInputValuesProfileResult "action-required" "blocked values profile result"
+Assert-Equal $blockedReport.operatorInputValuesProfileDefaultsUsed $false "blocked values profile defaults used"
+Assert-Equal $blockedReport.operatorInputValuesProfileDefaultsSkipped $true "blocked values profile defaults skipped"
+Assert-Equal $blockedReport.operatorInputValuesProfileDefaultsSkipReason "handoff package identity contains self-test marker" "blocked values profile defaults skip reason"
+Assert-Equal $blockedReport.operatorInputValuesProfileDefaultValueCount 0 "blocked values profile default count"
+Assert-Equal $blockedReport.operatorInputValuesProfileFilledValueCount 0 "blocked values profile filled count"
+Assert-Equal $blockedReport.operatorInputValuesProfileBlankValueCount 4 "blocked values profile blank count"
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand "write-operations-operator-input-values-profile.ps1" "blocked values profile command script"
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-UseHandoffPackageDefaults" "blocked values profile handoff package defaults flag"
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-HandoffPackagePath .\.osmu-run\latest-operations-handoff-package.json" "blocked values profile handoff package path"
@@ -578,6 +603,11 @@ Assert-Contains $blockedMarkdown "Worksheet report: $blockedWorksheetPath" "bloc
 Assert-Contains $blockedMarkdown "Worksheet CSV: $blockedWorksheetCsvPath" "blocked markdown worksheet csv path"
 Assert-Contains $blockedMarkdown "Values template JSON: $blockedTemplatePath" "blocked markdown values template path"
 Assert-Contains $blockedMarkdown "Values template Markdown: $blockedTemplateMarkdownPath" "blocked markdown values template markdown path"
+Assert-Contains $blockedMarkdown "Values profile report: $blockedValuesProfilePath" "blocked markdown values profile path"
+Assert-Contains $blockedMarkdown "Values profile result: action-required" "blocked markdown values profile result"
+Assert-Contains $blockedMarkdown "Values profile defaults used/skipped: False/True" "blocked markdown values profile defaults skipped"
+Assert-Contains $blockedMarkdown "Values profile defaults skip reason: handoff package identity contains self-test marker" "blocked markdown values profile defaults skip reason"
+Assert-Contains $blockedMarkdown "Values profile filled/blank: 0/4" "blocked markdown values profile filled blank"
 Assert-Contains $blockedMarkdown "Values profile command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-profile.ps1 -WorksheetCsvPath $blockedWorksheetCsvPath -HandoffPackagePath .\.osmu-run\latest-operations-handoff-package.json -UseHandoffPackageDefaults``" "blocked markdown values profile command"
 Assert-Contains $blockedMarkdown "Values check command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1 -ValuesCsvPath $blockedValuesProfileCsvPath``" "blocked markdown values check source CSV command"
 Assert-Contains $blockedMarkdown "Expanded worksheet row delta: 2" "blocked markdown worksheet expansion delta"
