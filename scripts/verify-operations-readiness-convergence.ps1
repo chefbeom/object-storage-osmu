@@ -123,6 +123,32 @@ Write-JsonFixture $actionHandoffPath ([ordered]@{
         [ordered]@{ actionOrder = 1; name = "Storage expansion finalizer live evidence"; blockReasonCount = 2; blockReasons = @("operator approval not confirmed", "kubeconfig secret not confirmed"); requiredSecretCount = 1; requiredSecrets = @("OSMU_KUBECONFIG_BASE64"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $true; defaultBranchWorkflowMissing = $false; reviewCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -NoWrite"; confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval"; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval" },
         [ordered]@{ actionOrder = 5; name = "Signed image evidence"; blockReasonCount = 1; blockReasons = @("operator approval not confirmed"); requiredSecretCount = 1; requiredSecrets = @("GITHUB_TOKEN"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $false; defaultBranchWorkflowMissing = $false; reviewCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -NoWrite"; confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -ConfirmOperatorApproval"; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -ConfirmOperatorApproval" }
     )
+    operatorInputValuesCheckResult = "action-required"
+    operatorInputValuesCheckValueCount = 4
+    operatorInputValuesCheckReadyValueCount = 1
+    operatorInputValuesCheckMissingValueCount = 3
+    operatorInputValuesCheckUnsafeValueCount = 0
+    operatorInputValuesCheckInvalidValueCount = 0
+    operatorInputValuesCheckValueReadyActionCount = 1
+    operatorInputValuesCheckNonReadyActionCount = 1
+    operatorInputValuesCheckActionSummaryCount = 2
+    operatorInputValuesCheckNonReadyActionOrders = @(8)
+    operatorInputValuesCheckNonReadyActionSummaries = @(
+        [ordered]@{
+            actionOrder = 8
+            actionName = "Data-flow query/retention budget target evidence"
+            category = "data-flow"
+            workflow = "manual-data-flow-query-retention-budget-evidence.yml"
+            inputFree = $false
+            status = "action-required"
+            valueCount = 4
+            readyValueCount = 1
+            missingValueCount = 3
+            unsafeValueCount = 0
+            invalidValueCount = 0
+            nonReadyValueKeys = @("action-08.review_started_at", "action-08.review_completed_at", "action-08.observed_p95_query_latency_ms")
+        }
+    )
     workflowRunIdPlanQueryMode = "github-api"
     workflowRunIdPlanGithubApiTokenPresent = $false
     workflowRunIdPlanGithubApiUnauthenticated = $true
@@ -188,6 +214,16 @@ Assert-Equal @($actionReport.handoffInputFreeBlockedActions)[0].actionOrder 1 "a
 Assert-True (@(@($actionReport.handoffInputFreeBlockedActions)[0].requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64") "action input-free blocked detail required secret"
 Assert-Contains @($actionReport.handoffInputFreeBlockedActions)[1].reviewCommand "-ActionOrder 5" "action input-free blocked detail review command"
 Assert-Contains @($actionReport.handoffInputFreeBlockedActions)[1].confirmedPlanCommand "-ConfirmOperatorApproval" "action input-free blocked detail confirmed plan command"
+Assert-Equal $actionReport.handoffOperatorInputValuesCheckResult "action-required" "action operator input values result"
+Assert-Equal $actionReport.handoffOperatorInputValuesCheckValueCount 4 "action operator input values count"
+Assert-Equal $actionReport.handoffOperatorInputValuesCheckReadyValueCount 1 "action operator input values ready count"
+Assert-Equal $actionReport.handoffOperatorInputValuesCheckMissingValueCount 3 "action operator input values missing count"
+Assert-Equal $actionReport.handoffOperatorInputValuesCheckNonReadyActionCount 1 "action operator input non-ready action count"
+Assert-Equal (@($actionReport.handoffOperatorInputValuesCheckNonReadyActionOrders) -join ",") "8" "action operator input non-ready action orders"
+Assert-Equal @($actionReport.handoffOperatorInputValuesCheckNonReadyActionSummaries).Count 1 "action operator input non-ready summaries count"
+Assert-Equal @($actionReport.handoffOperatorInputValuesCheckNonReadyActionSummaries)[0].actionOrder 8 "action operator input non-ready summary action order"
+Assert-Equal @($actionReport.handoffOperatorInputValuesCheckNonReadyActionSummaries)[0].missingValueCount 3 "action operator input non-ready summary missing count"
+Assert-Equal (@(@($actionReport.handoffOperatorInputValuesCheckNonReadyActionSummaries)[0].nonReadyValueKeys) -join ",") "action-08.review_started_at,action-08.review_completed_at,action-08.observed_p95_query_latency_ms" "action operator input non-ready summary keys"
 Assert-Equal $actionReport.readinessSummary "passed=36 pending=6" "action readiness summary"
 Assert-Equal $actionReport.readinessPassedCount 36 "action readiness passed count"
 Assert-Equal $actionReport.readinessPendingCount 6 "action readiness pending count"
@@ -202,6 +238,11 @@ Assert-Contains $actionMarkdown "Input-free blocked action orders: 1,5" "action 
 Assert-Contains $actionMarkdown "Input-free review command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -NoWrite``" "action markdown input-free aggregate review command"
 Assert-Contains $actionMarkdown "Input-free review report command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -JsonOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.json -MarkdownOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.md``" "action markdown input-free aggregate review report command"
 Assert-Contains $actionMarkdown "Input-free confirmed plan command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -KubeconfigSecretConfirmed -ConfirmOperatorApproval``" "action markdown input-free aggregate confirmed plan command"
+Assert-Contains $actionMarkdown "Handoff operator input values: result=action-required, values=4, ready=1, missing=3, unsafe=0, invalid=0, valueReadyActions=1, nonReadyActions=1" "action markdown operator input values summary"
+Assert-Contains $actionMarkdown "Handoff operator input non-ready action orders: 8" "action markdown operator input non-ready orders"
+Assert-Contains $actionMarkdown "## Handoff Operator Input Non-Ready Actions" "action markdown operator input non-ready section"
+Assert-Contains $actionMarkdown "Action 8: Data-flow query/retention budget target evidence" "action markdown operator input non-ready detail"
+Assert-Contains $actionMarkdown "missing=3" "action markdown operator input non-ready missing count"
 Assert-Contains $actionMarkdown "## Handoff Input-Free Blocked Actions" "action markdown input-free detail section"
 Assert-Contains $actionMarkdown "Action 1: Storage expansion finalizer live evidence" "action markdown input-free action detail"
 Assert-Contains $actionMarkdown "secrets=OSMU_KUBECONFIG_BASE64" "action markdown input-free required secret"
