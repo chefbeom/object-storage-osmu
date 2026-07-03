@@ -4842,6 +4842,8 @@
           "inputFreeBlockedReviewReportActionOrders": { "type": "array", "items": { "type": "integer" } },
           "inputFreeBlockedReviewReportStale": { "type": "boolean" },
           "inputFreeBlockedReviewReportScopeMismatch": { "type": "boolean" },
+          "operatorInputValuesProfileCommand": { "type": "string" },
+          "operatorInputValuesCheckCommand": { "type": "string" },
           "operatorInputValuesCheckResult": { "type": "string" },
           "operatorInputValuesCheckValueCount": { "type": "integer" },
           "operatorInputValuesCheckReadyValueCount": { "type": "integer" },

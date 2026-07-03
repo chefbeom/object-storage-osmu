@@ -4877,6 +4877,8 @@ public class AdminController {
                 jsonIntList(handoffReport, "inputFreeBlockedReviewReportActionOrders"),
                 jsonBoolean(handoffReport, "inputFreeBlockedReviewReportStale"),
                 jsonBoolean(handoffReport, "inputFreeBlockedReviewReportScopeMismatch"),
+                jsonText(handoffReport, "operatorInputValuesProfileCommand"),
+                jsonText(handoffReport, "operatorInputValuesCheckCommand"),
                 jsonText(handoffReport, "operatorInputValuesCheckResult"),
                 jsonInt(handoffReport, "operatorInputValuesCheckValueCount"),
                 jsonInt(handoffReport, "operatorInputValuesCheckReadyValueCount"),

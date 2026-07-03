@@ -2081,6 +2081,18 @@
           {{ operationsEvidenceHandoffOperatorInputSummary }}
         </small>
         <small
+          v-if="operationsEvidenceHandoff.operatorInputValuesProfileCommand"
+          data-testid="readiness-evidence-handoff-operator-input-profile-command"
+        >
+          Values profile command: {{ operationsEvidenceHandoff.operatorInputValuesProfileCommand }}
+        </small>
+        <small
+          v-if="operationsEvidenceHandoff.operatorInputValuesCheckCommand"
+          data-testid="readiness-evidence-handoff-operator-input-check-command"
+        >
+          Values check command: {{ operationsEvidenceHandoff.operatorInputValuesCheckCommand }}
+        </small>
+        <small
           v-if="operationsEvidenceHandoffNextStep.note"
           data-testid="readiness-evidence-handoff-next-note"
         >
