@@ -7,6 +7,7 @@ param(
     [string[]] $ActionOrder = @(),
     [string[]] $Category = @(),
     [string[]] $Placeholder = @(),
+    [string] $ValuesCsvPath = "",
     [string] $BackupTimestamp = "",
     [string] $RestoreApiBase = "",
     [string] $AdminLoginId = "",
@@ -136,8 +137,73 @@ function Add-Replacement([hashtable] $Map, [string] $Name, [string] $Value) {
     $Map[$Name] = $Value
 }
 
+function Get-ValuesCsvReplacementSummary([string] $PathValue) {
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return [ordered]@{
+            path = ""
+            exists = $false
+            rowCount = 0
+            candidatePlaceholderCount = 0
+            replacementCount = 0
+            skippedPlaceholderCount = 0
+            replacements = @{}
+            skippedPlaceholders = @()
+        }
+    }
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        throw "Operator input values CSV not found: $resolvedPath"
+    }
+    $rows = @(Import-Csv -LiteralPath $resolvedPath -Encoding UTF8)
+    $groups = @($rows | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_.placeholder) } | Group-Object -Property placeholder)
+    $replacements = @{}
+    $skipped = New-Object System.Collections.ArrayList
+    foreach ($group in $groups) {
+        $placeholder = [string] $group.Name
+        $groupRows = @($group.Group)
+        $values = @($groupRows | ForEach-Object { [string] $_.value } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        $uniqueValues = @($values | Sort-Object -Unique)
+        $reason = ""
+        if ($values.Count -eq 0) {
+            $reason = "missing"
+        }
+        elseif ($values.Count -ne $groupRows.Count) {
+            $reason = "partial"
+        }
+        elseif ($uniqueValues.Count -ne 1) {
+            $reason = "conflicting"
+        }
+        if ([string]::IsNullOrWhiteSpace($reason)) {
+            $replacements[$placeholder] = [string] $uniqueValues[0]
+        }
+        else {
+            $skipped.Add([ordered]@{
+                placeholder = $placeholder
+                reason = $reason
+                rowCount = $groupRows.Count
+                suppliedValueCount = $values.Count
+                uniqueValueCount = $uniqueValues.Count
+            }) | Out-Null
+        }
+    }
+    return [ordered]@{
+        path = $resolvedPath
+        exists = $true
+        rowCount = $rows.Count
+        candidatePlaceholderCount = $groups.Count
+        replacementCount = $replacements.Count
+        skippedPlaceholderCount = $skipped.Count
+        replacements = $replacements
+        skippedPlaceholders = @($skipped)
+    }
+}
+
 function New-ReplacementMap {
     $map = @{}
+    $script:ValuesCsvReplacementSummary = Get-ValuesCsvReplacementSummary $ValuesCsvPath
+    foreach ($key in $script:ValuesCsvReplacementSummary.replacements.Keys) {
+        Add-Replacement $map ([string] $key) ([string] $script:ValuesCsvReplacementSummary.replacements[$key])
+    }
     Add-Replacement $map "<YYYYMMDDTHHMMSSZ>" $BackupTimestamp
     Add-Replacement $map "YYYYMMDDTHHMMSSZ" $BackupTimestamp
     Add-Replacement $map "<restore-api-base>" $RestoreApiBase
@@ -643,6 +709,13 @@ $report = [ordered]@{
     githubRepository = $script:ResolvedGitHubRepositorySlug
     githubRef = $GitHubRef
     githubApiBaseUrl = $GitHubApiBaseUrl
+    valuesCsvPath = $script:ValuesCsvReplacementSummary.path
+    valuesCsvExists = [bool] $script:ValuesCsvReplacementSummary.exists
+    valuesCsvRowCount = $script:ValuesCsvReplacementSummary.rowCount
+    valuesCsvCandidatePlaceholderCount = $script:ValuesCsvReplacementSummary.candidatePlaceholderCount
+    valuesCsvReplacementCount = $script:ValuesCsvReplacementSummary.replacementCount
+    valuesCsvSkippedPlaceholderCount = $script:ValuesCsvReplacementSummary.skippedPlaceholderCount
+    valuesCsvSkippedPlaceholders = @($script:ValuesCsvReplacementSummary.skippedPlaceholders)
     selectedActionCount = $selectedCount
     selectedActionOrders = @($selectedActionOrders)
     plannedCount = $plannedCount
@@ -665,6 +738,9 @@ $markdownLines = @(
     "Command mode: $CommandMode",
     "Execution mode: $($report.executionMode)",
     "GitHub CLI path: $(if ([string]::IsNullOrWhiteSpace($script:ResolvedGitHubCliPath)) { 'PATH lookup' } else { $script:ResolvedGitHubCliPath })",
+    "Values CSV: $(if ([string]::IsNullOrWhiteSpace($report.valuesCsvPath)) { 'not supplied' } else { $report.valuesCsvPath })",
+    "Values CSV replacements: $($report.valuesCsvReplacementCount)",
+    "Values CSV skipped placeholders: $($report.valuesCsvSkippedPlaceholderCount)",
     "",
     "## Decision Rule",
     "",

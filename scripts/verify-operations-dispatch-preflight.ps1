@@ -60,6 +60,9 @@ $unsafeJsonPath = Join-Path $resolvedOutputDirectory "unsafe-preflight.json"
 $unsafeMarkdownPath = Join-Path $resolvedOutputDirectory "unsafe-preflight.md"
 $invalidJsonPath = Join-Path $resolvedOutputDirectory "invalid-preflight.json"
 $invalidMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-preflight.md"
+$valuesCsvReadyJsonPath = Join-Path $resolvedOutputDirectory "values-csv-ready-preflight.json"
+$valuesCsvReadyMarkdownPath = Join-Path $resolvedOutputDirectory "values-csv-ready-preflight.md"
+$valuesCsvPath = Join-Path $resolvedOutputDirectory "operator-values.csv"
 $githubCliJsonPath = Join-Path $resolvedOutputDirectory "github-cli-path-preflight.json"
 $githubCliMarkdownPath = Join-Path $resolvedOutputDirectory "github-cli-path-preflight.md"
 $apiFallbackJsonPath = Join-Path $resolvedOutputDirectory "api-fallback-preflight.json"
@@ -78,6 +81,23 @@ $fakeGitHubCliPath = Join-Path $fakeGitHubCliDirectory "gh.cmd"
 New-Item -ItemType Directory -Force -Path $fakeGitHubCliDirectory | Out-Null
 Set-Content -LiteralPath $fakeGitHubCliPath -Value "@echo off`r`necho fake gh %*`r`nexit /b 0`r`n" -Encoding ASCII
 $env:GITHUB_REPOSITORY = "chefbeom/object-storage-osmu"
+
+[pscustomobject]@{
+    actionOrder = "2"
+    actionName = "Kubernetes DR finalizer live evidence"
+    category = "ha-dr"
+    workflow = "kubernetes-dr-finalizer-ci.yml"
+    workflowInput = "backup_timestamp"
+    valueKey = "action-02.backup_timestamp"
+    placeholder = "<YYYYMMDDTHHMMSSZ>"
+    parameter = "BackupTimestamp"
+    valueTemplate = "<YYYYMMDDTHHMMSSZ>"
+    value = "20260616T010203Z"
+    occurrenceCount = "1"
+    ambiguousRepeatedPlaceholder = "False"
+    suggestedSource = "Target backup timestamp in UTC basic format."
+    note = "Fixture value loaded through -ValuesCsvPath."
+} | Export-Csv -LiteralPath $valuesCsvPath -NoTypeInformation -Encoding UTF8
 
 Write-JsonFixture $unblockPlanPath ([ordered]@{
     formatVersion = "osmu.operations-invocation-unblock-plan.v1"
@@ -252,6 +272,29 @@ Assert-Contains $missingMarkdown "https://github.com/chefbeom/object-storage-osm
 Assert-Contains $missingMarkdown "Ready actions: 1 (4)" "missing markdown ready action count"
 Assert-Contains $missingMarkdown "Ready subset plan command" "missing markdown ready subset command"
 Assert-Contains $missingMarkdown "action 2 - Kubernetes DR finalizer live evidence" "missing markdown DR template"
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -UnblockPlanPath $unblockPlanPath `
+    -JsonOutputPath $valuesCsvReadyJsonPath `
+    -MarkdownOutputPath $valuesCsvReadyMarkdownPath `
+    -KubeconfigSecretConfirmed `
+    -ConfirmOperatorApproval `
+    -ValuesCsvPath $valuesCsvPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-dispatch-preflight.ps1 values CSV ready fixture failed with exit code $LASTEXITCODE."
+}
+
+$valuesCsvReadyReport = Read-Utf8Text $valuesCsvReadyJsonPath | ConvertFrom-Json
+$valuesCsvReadyMarkdown = Read-Utf8Text $valuesCsvReadyMarkdownPath
+Assert-Equal $valuesCsvReadyReport.result "ready" "values CSV ready result"
+Assert-Equal $valuesCsvReadyReport.valuesCsvReplacementCount 1 "values CSV replacement count"
+Assert-Equal $valuesCsvReadyReport.valuesCsvSkippedPlaceholderCount 0 "values CSV skipped placeholder count"
+Assert-Equal $valuesCsvReadyReport.missingInputCount 0 "values CSV missing inputs"
+Assert-Contains $valuesCsvReadyReport.readyPlanCommand "-BackupTimestamp 20260616T010203Z" "values CSV ready plan command"
+$valuesCsvDrTemplate = @($valuesCsvReadyReport.inputTemplates | Where-Object { $_.actionOrder -eq 2 })[0]
+Assert-True $valuesCsvDrTemplate.inputs[0].supplied "values CSV DR input should be supplied"
+Assert-Equal $valuesCsvDrTemplate.inputs[0].valuePreview "20260616T010203Z" "values CSV DR input preview"
+Assert-Contains $valuesCsvReadyMarkdown "Values CSV replacements: 1" "values CSV ready markdown"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -UnblockPlanPath $unblockPlanPath `
@@ -570,6 +613,7 @@ Assert-Contains $invalidMarkdown "Invalid inputs: 1" "invalid markdown"
 Write-Host "Operations dispatch preflight verified."
 Write-Host "Missing report: $missingJsonPath"
 Write-Host "Ready report: $readyJsonPath"
+Write-Host "Values CSV ready report: $valuesCsvReadyJsonPath"
 Write-Host "Git ref safety report: $gitRefJsonPath"
 Write-Host "Unsafe report: $unsafeJsonPath"
 Write-Host "Invalid report: $invalidJsonPath"

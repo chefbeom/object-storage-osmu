@@ -4,6 +4,7 @@ param(
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-dispatch-preflight.md",
     [string[]] $ActionOrder = @(),
     [string[]] $Placeholder = @(),
+    [string] $ValuesCsvPath = "",
     [string] $BackupTimestamp = "",
     [string] $RestoreApiBase = "",
     [string] $AdminLoginId = "",
@@ -129,8 +130,73 @@ function Add-Check([System.Collections.ArrayList] $Checks, [string] $Code, [stri
     }) | Out-Null
 }
 
+function Get-ValuesCsvReplacementSummary([string] $PathValue) {
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return [ordered]@{
+            path = ""
+            exists = $false
+            rowCount = 0
+            candidatePlaceholderCount = 0
+            replacementCount = 0
+            skippedPlaceholderCount = 0
+            replacements = @{}
+            skippedPlaceholders = @()
+        }
+    }
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        throw "Operator input values CSV not found: $resolvedPath"
+    }
+    $rows = @(Import-Csv -LiteralPath $resolvedPath -Encoding UTF8)
+    $groups = @($rows | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_.placeholder) } | Group-Object -Property placeholder)
+    $replacements = @{}
+    $skipped = New-Object System.Collections.ArrayList
+    foreach ($group in $groups) {
+        $placeholder = [string] $group.Name
+        $groupRows = @($group.Group)
+        $values = @($groupRows | ForEach-Object { [string] $_.value } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        $uniqueValues = @($values | Sort-Object -Unique)
+        $reason = ""
+        if ($values.Count -eq 0) {
+            $reason = "missing"
+        }
+        elseif ($values.Count -ne $groupRows.Count) {
+            $reason = "partial"
+        }
+        elseif ($uniqueValues.Count -ne 1) {
+            $reason = "conflicting"
+        }
+        if ([string]::IsNullOrWhiteSpace($reason)) {
+            $replacements[$placeholder] = [string] $uniqueValues[0]
+        }
+        else {
+            $skipped.Add([ordered]@{
+                placeholder = $placeholder
+                reason = $reason
+                rowCount = $groupRows.Count
+                suppliedValueCount = $values.Count
+                uniqueValueCount = $uniqueValues.Count
+            }) | Out-Null
+        }
+    }
+    return [ordered]@{
+        path = $resolvedPath
+        exists = $true
+        rowCount = $rows.Count
+        candidatePlaceholderCount = $groups.Count
+        replacementCount = $replacements.Count
+        skippedPlaceholderCount = $skipped.Count
+        replacements = $replacements
+        skippedPlaceholders = @($skipped)
+    }
+}
+
 function New-PlaceholderMap {
     $map = @{}
+    $script:ValuesCsvReplacementSummary = Get-ValuesCsvReplacementSummary $ValuesCsvPath
+    foreach ($key in $script:ValuesCsvReplacementSummary.replacements.Keys) {
+        $map[[string] $key] = [string] $script:ValuesCsvReplacementSummary.replacements[$key]
+    }
     foreach ($entry in $Placeholder) {
         if ([string]::IsNullOrWhiteSpace($entry)) {
             continue
@@ -149,24 +215,17 @@ function New-PlaceholderMap {
 }
 
 function Get-InputValue([string] $Parameter, [string] $PlaceholderName, [hashtable] $PlaceholderMap) {
+    $placeholderValue = ""
+    if ($PlaceholderMap.ContainsKey($PlaceholderName)) {
+        $placeholderValue = [string] $PlaceholderMap[$PlaceholderName]
+    }
     switch ($Parameter) {
-        "BackupTimestamp" { return $BackupTimestamp }
-        "RestoreApiBase" { return $RestoreApiBase }
-        "AdminLoginId" { return $AdminLoginId }
-        "AdminPassword" { return $AdminPassword }
-        "ExpectedObjectCount" { return $ExpectedObjectCount }
-        "Placeholder" {
-            if ($PlaceholderMap.ContainsKey($PlaceholderName)) {
-                return [string] $PlaceholderMap[$PlaceholderName]
-            }
-            return ""
-        }
-        default {
-            if ($PlaceholderMap.ContainsKey($PlaceholderName)) {
-                return [string] $PlaceholderMap[$PlaceholderName]
-            }
-            return ""
-        }
+        "BackupTimestamp" { if (-not [string]::IsNullOrWhiteSpace($BackupTimestamp)) { return $BackupTimestamp }; return $placeholderValue }
+        "RestoreApiBase" { if (-not [string]::IsNullOrWhiteSpace($RestoreApiBase)) { return $RestoreApiBase }; return $placeholderValue }
+        "AdminLoginId" { if (-not [string]::IsNullOrWhiteSpace($AdminLoginId)) { return $AdminLoginId }; return $placeholderValue }
+        "AdminPassword" { if (-not [string]::IsNullOrWhiteSpace($AdminPassword)) { return $AdminPassword }; return $placeholderValue }
+        "ExpectedObjectCount" { if (-not [string]::IsNullOrWhiteSpace($ExpectedObjectCount)) { return $ExpectedObjectCount }; return $placeholderValue }
+        default { return $placeholderValue }
     }
 }
 
@@ -1026,6 +1085,13 @@ $report = [ordered]@{
     githubApiTokenPresent = [bool] $githubApiTokenPresent
     githubApiDispatchAvailable = [bool] $githubApiDispatchAvailable
     githubApiDispatchUnavailableReasons = @($githubApiDispatchUnavailableReasons | ForEach-Object { [string] $_ })
+    valuesCsvPath = $script:ValuesCsvReplacementSummary.path
+    valuesCsvExists = [bool] $script:ValuesCsvReplacementSummary.exists
+    valuesCsvRowCount = $script:ValuesCsvReplacementSummary.rowCount
+    valuesCsvCandidatePlaceholderCount = $script:ValuesCsvReplacementSummary.candidatePlaceholderCount
+    valuesCsvReplacementCount = $script:ValuesCsvReplacementSummary.replacementCount
+    valuesCsvSkippedPlaceholderCount = $script:ValuesCsvReplacementSummary.skippedPlaceholderCount
+    valuesCsvSkippedPlaceholders = @($script:ValuesCsvReplacementSummary.skippedPlaceholders)
     gitRefSafety = $gitRefSafety
     workflowFiles = @($workflowFiles)
     checks = @($checks)
@@ -1069,6 +1135,9 @@ $markdownLines = @(
     "- Default branch ref: $(if ([string]::IsNullOrWhiteSpace($DefaultBranchRef)) { 'not checked' } else { $DefaultBranchRef })",
     "- GitHub API token present: $githubApiTokenPresent",
     "- GitHub API dispatch available: $githubApiDispatchAvailable",
+    "- Values CSV: $(if ([string]::IsNullOrWhiteSpace($report.valuesCsvPath)) { 'not supplied' } else { $report.valuesCsvPath })",
+    "- Values CSV replacements: $($report.valuesCsvReplacementCount)",
+    "- Values CSV skipped placeholders: $($report.valuesCsvSkippedPlaceholderCount)",
     ""
 )
 if ($gitRefSafety.checked) {

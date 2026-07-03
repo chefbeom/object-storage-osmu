@@ -47,6 +47,9 @@ $unsafeJsonOutputPath = Join-Path $resolvedOutputDirectory "unsafe-operations-ev
 $unsafeMarkdownOutputPath = Join-Path $resolvedOutputDirectory "unsafe-operations-evidence-plan-invocation.md"
 $invalidJsonOutputPath = Join-Path $resolvedOutputDirectory "invalid-operations-evidence-plan-invocation.json"
 $invalidMarkdownOutputPath = Join-Path $resolvedOutputDirectory "invalid-operations-evidence-plan-invocation.md"
+$valuesCsvJsonOutputPath = Join-Path $resolvedOutputDirectory "values-csv-operations-evidence-plan-invocation.json"
+$valuesCsvMarkdownOutputPath = Join-Path $resolvedOutputDirectory "values-csv-operations-evidence-plan-invocation.md"
+$valuesCsvPath = Join-Path $resolvedOutputDirectory "operator-values.csv"
 $selectedJsonOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.json"
 $selectedMarkdownOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.md"
 $githubCliJsonOutputPath = Join-Path $resolvedOutputDirectory "github-cli-path-operations-evidence-plan-invocation.json"
@@ -129,6 +132,22 @@ $fixture = [ordered]@{
     unplannedChecks = @()
 }
 $fixture | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $fixturePath -Encoding UTF8
+[pscustomobject]@{
+    actionOrder = "2"
+    actionName = "Kubernetes DR finalizer live evidence"
+    category = "ha-dr"
+    workflow = "kubernetes-dr-finalizer-ci.yml"
+    workflowInput = "backup_timestamp"
+    valueKey = "action-02.backup_timestamp"
+    placeholder = "<YYYYMMDDTHHMMSSZ>"
+    parameter = "BackupTimestamp"
+    valueTemplate = "<YYYYMMDDTHHMMSSZ>"
+    value = "20260615T010203Z"
+    occurrenceCount = "1"
+    ambiguousRepeatedPlaceholder = "False"
+    suggestedSource = "Target backup timestamp in UTC basic format."
+    note = "Fixture value loaded through -ValuesCsvPath."
+} | Export-Csv -LiteralPath $valuesCsvPath -NoTypeInformation -Encoding UTF8
 
 $scriptPath = Resolve-ProjectPath ".\scripts\invoke-operations-evidence-plan.ps1"
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -182,6 +201,27 @@ Assert-True ($plannedActions[1].command -like "*20260615T010203Z*") "Expected ba
 Assert-True ($plannedActions[1].unresolvedPlaceholders.Count -eq 0) "Expected no unresolved placeholders after replacement."
 Assert-Contains $plannedMarkdown "Result: planned" "planned invocation markdown"
 Assert-Contains $plannedMarkdown "gh workflow run kubernetes-dr-finalizer-ci.yml" "planned invocation markdown"
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -PlanPath $fixturePath `
+    -JsonOutputPath $valuesCsvJsonOutputPath `
+    -MarkdownOutputPath $valuesCsvMarkdownOutputPath `
+    -KubeconfigSecretConfirmed `
+    -ConfirmOperatorApproval `
+    -ValuesCsvPath $valuesCsvPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "invoke-operations-evidence-plan.ps1 values CSV plan-only check failed with exit code $LASTEXITCODE."
+}
+
+$valuesCsvReport = Read-Utf8Text $valuesCsvJsonOutputPath | ConvertFrom-Json
+$valuesCsvMarkdown = Read-Utf8Text $valuesCsvMarkdownOutputPath
+$valuesCsvActions = @($valuesCsvReport.actions)
+Assert-True ($valuesCsvReport.result -eq "planned") "Expected values CSV result to be planned."
+Assert-True ($valuesCsvReport.valuesCsvReplacementCount -eq 1) "Expected one values CSV replacement."
+Assert-True ($valuesCsvReport.valuesCsvSkippedPlaceholderCount -eq 0) "Expected no skipped values CSV placeholders."
+Assert-True ($valuesCsvActions[1].command -like "*20260615T010203Z*") "Expected values CSV backup timestamp replacement."
+Assert-True ($valuesCsvActions[1].unresolvedPlaceholders.Count -eq 0) "Expected no unresolved placeholders after values CSV replacement."
+Assert-Contains $valuesCsvMarkdown "Values CSV replacements: 1" "values CSV invocation markdown"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -PlanPath $fixturePath `
@@ -301,3 +341,4 @@ Write-Host "Planned report: $plannedJsonOutputPath"
 Write-Host "Unsafe report: $unsafeJsonOutputPath"
 Write-Host "Invalid report: $invalidJsonOutputPath"
 Write-Host "Selected report: $selectedJsonOutputPath"
+Write-Host "Values CSV report: $valuesCsvJsonOutputPath"
