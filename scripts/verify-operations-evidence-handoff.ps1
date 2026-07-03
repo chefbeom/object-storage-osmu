@@ -525,6 +525,8 @@ Assert-Equal $blockedReport.operatorInputWorksheetReportPath $blockedWorksheetPa
 Assert-Equal $blockedReport.operatorInputWorksheetCsvPath $blockedWorksheetCsvPath "blocked worksheet csv path"
 Assert-Equal $blockedReport.operatorInputValuesTemplatePath $blockedTemplatePath "blocked values template path"
 Assert-Equal $blockedReport.operatorInputValuesTemplateMarkdownPath $blockedTemplateMarkdownPath "blocked values template markdown path"
+Assert-Contains $blockedReport.operatorInputValuesCheckCommand "-ValuesCsvPath" "blocked values check CSV command flag"
+Assert-Contains $blockedReport.operatorInputValuesCheckCommand $blockedWorksheetCsvPath "blocked values check CSV command path"
 Assert-Equal $blockedReport.operatorInputWorksheetInputRowCount 4 "blocked worksheet input row count"
 Assert-Equal $blockedReport.operatorInputWorksheetExpandedInputRowDelta 2 "blocked worksheet expanded row delta"
 Assert-Equal $blockedReport.operatorInputValuesCheckValueCount 4 "blocked values check value count"
@@ -539,8 +541,10 @@ Assert-Equal @($blockedReport.blockedDispatchWorkflows)[1].missingInputCount 2 "
 Assert-Equal @($blockedReport.blockedDispatchWorkflows)[1].dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml" "blocked workflow dispatch url"
 $blockedDispatchStage = @($blockedReport.stages | Where-Object { $_.name -eq "dispatch-preflight" } | Select-Object -First 1)
 $blockedWorksheetStage = @($blockedReport.stages | Where-Object { $_.name -eq "operator-input-worksheet" } | Select-Object -First 1)
+$blockedValuesStage = @($blockedReport.stages | Where-Object { $_.name -eq "operator-input-values-check" } | Select-Object -First 1)
 Assert-Contains $blockedDispatchStage.summary "requiredInputs=2 missingInputs=2" "blocked dispatch stage input summary"
 Assert-Contains $blockedWorksheetStage.summary "inputs=4 expandedDelta=2" "blocked worksheet stage expansion summary"
+Assert-Contains $blockedValuesStage.command $blockedWorksheetCsvPath "blocked values stage CSV command path"
 Assert-Contains $blockedMarkdown "Plan ready dispatch subset" "blocked markdown next step"
 Assert-Contains $blockedMarkdown "GitHub repository: chefbeom/object-storage-osmu" "blocked markdown repository"
 Assert-Contains $blockedMarkdown "## Invocation Unblock Summary" "blocked markdown unblock summary"
@@ -561,6 +565,7 @@ Assert-Contains $blockedMarkdown "Worksheet report: $blockedWorksheetPath" "bloc
 Assert-Contains $blockedMarkdown "Worksheet CSV: $blockedWorksheetCsvPath" "blocked markdown worksheet csv path"
 Assert-Contains $blockedMarkdown "Values template JSON: $blockedTemplatePath" "blocked markdown values template path"
 Assert-Contains $blockedMarkdown "Values template Markdown: $blockedTemplateMarkdownPath" "blocked markdown values template markdown path"
+Assert-Contains $blockedMarkdown "Values check command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1 -ValuesCsvPath $blockedWorksheetCsvPath``" "blocked markdown values check CSV command"
 Assert-Contains $blockedMarkdown "Expanded worksheet row delta: 2" "blocked markdown worksheet expansion delta"
 Assert-Contains $blockedMarkdown "Values check rows: 4" "blocked markdown values check rows"
 Assert-Contains $blockedMarkdown "Block reasons: 4" "blocked markdown unblock reason count"
