@@ -123,6 +123,16 @@ Write-JsonFixture $actionHandoffPath ([ordered]@{
         [ordered]@{ actionOrder = 1; name = "Storage expansion finalizer live evidence"; blockReasonCount = 2; blockReasons = @("operator approval not confirmed", "kubeconfig secret not confirmed"); requiredSecretCount = 1; requiredSecrets = @("OSMU_KUBECONFIG_BASE64"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $true; defaultBranchWorkflowMissing = $false; reviewCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -NoWrite"; confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval"; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval" },
         [ordered]@{ actionOrder = 5; name = "Signed image evidence"; blockReasonCount = 1; blockReasons = @("operator approval not confirmed"); requiredSecretCount = 1; requiredSecrets = @("GITHUB_TOKEN"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $false; defaultBranchWorkflowMissing = $false; reviewCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -NoWrite"; confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -ConfirmOperatorApproval"; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -ConfirmOperatorApproval" }
     )
+    operatorInputValuesProfileReportPath = ".\.osmu-run\latest-operations-operator-input-values-profile.json"
+    operatorInputValuesProfileExists = $true
+    operatorInputValuesProfileResult = "action-required"
+    operatorInputValuesProfileGeneratedAt = "2026-06-30T12:50:00+09:00"
+    operatorInputValuesProfileDefaultsUsed = $false
+    operatorInputValuesProfileDefaultsSkipped = $true
+    operatorInputValuesProfileDefaultsSkipReason = "handoff package identity contains self-test marker"
+    operatorInputValuesProfileDefaultValueCount = 0
+    operatorInputValuesProfileFilledValueCount = 1
+    operatorInputValuesProfileBlankValueCount = 3
     operatorInputValuesCheckResult = "action-required"
     operatorInputValuesCheckValueCount = 4
     operatorInputValuesCheckReadyValueCount = 1
@@ -214,6 +224,15 @@ Assert-Equal @($actionReport.handoffInputFreeBlockedActions)[0].actionOrder 1 "a
 Assert-True (@(@($actionReport.handoffInputFreeBlockedActions)[0].requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64") "action input-free blocked detail required secret"
 Assert-Contains @($actionReport.handoffInputFreeBlockedActions)[1].reviewCommand "-ActionOrder 5" "action input-free blocked detail review command"
 Assert-Contains @($actionReport.handoffInputFreeBlockedActions)[1].confirmedPlanCommand "-ConfirmOperatorApproval" "action input-free blocked detail confirmed plan command"
+Assert-Equal $actionReport.handoffOperatorInputValuesProfileReportPath ".\.osmu-run\latest-operations-operator-input-values-profile.json" "action operator input values profile report path"
+Assert-Equal $actionReport.handoffOperatorInputValuesProfileExists $true "action operator input values profile exists"
+Assert-Equal $actionReport.handoffOperatorInputValuesProfileResult "action-required" "action operator input values profile result"
+Assert-Equal $actionReport.handoffOperatorInputValuesProfileDefaultsUsed $false "action operator input values profile defaults used"
+Assert-Equal $actionReport.handoffOperatorInputValuesProfileDefaultsSkipped $true "action operator input values profile defaults skipped"
+Assert-Equal $actionReport.handoffOperatorInputValuesProfileDefaultsSkipReason "handoff package identity contains self-test marker" "action operator input values profile skip reason"
+Assert-Equal $actionReport.handoffOperatorInputValuesProfileDefaultValueCount 0 "action operator input values profile default count"
+Assert-Equal $actionReport.handoffOperatorInputValuesProfileFilledValueCount 1 "action operator input values profile filled count"
+Assert-Equal $actionReport.handoffOperatorInputValuesProfileBlankValueCount 3 "action operator input values profile blank count"
 Assert-Equal $actionReport.handoffOperatorInputValuesCheckResult "action-required" "action operator input values result"
 Assert-Equal $actionReport.handoffOperatorInputValuesCheckValueCount 4 "action operator input values count"
 Assert-Equal $actionReport.handoffOperatorInputValuesCheckReadyValueCount 1 "action operator input values ready count"
@@ -238,6 +257,8 @@ Assert-Contains $actionMarkdown "Input-free blocked action orders: 1,5" "action 
 Assert-Contains $actionMarkdown "Input-free review command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -NoWrite``" "action markdown input-free aggregate review command"
 Assert-Contains $actionMarkdown "Input-free review report command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -JsonOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.json -MarkdownOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.md``" "action markdown input-free aggregate review report command"
 Assert-Contains $actionMarkdown "Input-free confirmed plan command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -KubeconfigSecretConfirmed -ConfirmOperatorApproval``" "action markdown input-free aggregate confirmed plan command"
+Assert-Contains $actionMarkdown "Handoff operator input values profile: exists=True, result=action-required, defaultsUsed=False, defaultsSkipped=True, defaultValues=0, filled=1, blank=3" "action markdown operator input values profile"
+Assert-Contains $actionMarkdown "Handoff operator input values profile skip reason: handoff package identity contains self-test marker" "action markdown operator input values profile skip reason"
 Assert-Contains $actionMarkdown "Handoff operator input values: result=action-required, values=4, ready=1, missing=3, unsafe=0, invalid=0, valueReadyActions=1, nonReadyActions=1" "action markdown operator input values summary"
 Assert-Contains $actionMarkdown "Handoff operator input non-ready action orders: 8" "action markdown operator input non-ready orders"
 Assert-Contains $actionMarkdown "## Handoff Operator Input Non-Ready Actions" "action markdown operator input non-ready section"

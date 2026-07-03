@@ -3483,6 +3483,16 @@ class AdminDashboardSummaryControllerTest {
                                                                               ],
                             "handoffInputFreeBlockedReviewReportStale":  false,
                             "handoffInputFreeBlockedReviewReportScopeMismatch":  false,
+                            "handoffOperatorInputValuesProfileReportPath":  ".\\\\.osmu-run\\\\latest-operations-operator-input-values-profile.json",
+                            "handoffOperatorInputValuesProfileExists":  true,
+                            "handoffOperatorInputValuesProfileResult":  "action-required",
+                            "handoffOperatorInputValuesProfileGeneratedAt":  "2026-06-30T12:50:00+09:00",
+                            "handoffOperatorInputValuesProfileDefaultsUsed":  false,
+                            "handoffOperatorInputValuesProfileDefaultsSkipped":  true,
+                            "handoffOperatorInputValuesProfileDefaultsSkipReason":  "handoff package identity contains self-test marker",
+                            "handoffOperatorInputValuesProfileDefaultValueCount":  0,
+                            "handoffOperatorInputValuesProfileFilledValueCount":  0,
+                            "handoffOperatorInputValuesProfileBlankValueCount":  4,
                             "missingWorkflowRunCount":  1,
                             "missingRequiredArtifactCount":  0,
                             "failedImportCount":  0,
@@ -4512,6 +4522,15 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportActionOrders[0]").value(6));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportStale").value(false));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffInputFreeBlockedReviewReportScopeMismatch").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffOperatorInputValuesProfileReportPath").value(".\\.osmu-run\\latest-operations-operator-input-values-profile.json"));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffOperatorInputValuesProfileExists").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffOperatorInputValuesProfileResult").value("action-required"));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffOperatorInputValuesProfileDefaultsUsed").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffOperatorInputValuesProfileDefaultsSkipped").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffOperatorInputValuesProfileDefaultsSkipReason").value("handoff package identity contains self-test marker"));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffOperatorInputValuesProfileDefaultValueCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffOperatorInputValuesProfileFilledValueCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffOperatorInputValuesProfileBlankValueCount").value(4));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.currentBottleneck.dispatchUrls[0]").value("https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.recommendedCommands[0].name").value("Open browser or API dispatch for ready subset"));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.recommendedCommands[0].note").value(containsString("container-security-ci.yml")));

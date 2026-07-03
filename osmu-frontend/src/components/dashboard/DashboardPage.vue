@@ -2349,6 +2349,12 @@
         >
           {{ operationsReadinessConvergenceOperatorInputSummary }}
         </small>
+        <small
+          v-if="operationsReadinessConvergenceOperatorInputProfileSummary"
+          data-testid="readiness-convergence-operator-input-profile"
+        >
+          {{ operationsReadinessConvergenceOperatorInputProfileSummary }}
+        </small>
         <small v-if="operationsReadinessConvergence.kubernetesReportSyncConfigMapName">
           report sync {{ operationsReadinessConvergence.kubernetesReportSyncConfigMapName }} /
           {{ operationsReadinessConvergence.kubernetesReportSyncReady ? 'sync ready' : 'sync not-ready' }} /
@@ -5824,6 +5830,21 @@ const operationsReadinessConvergenceOperatorInputNonReadyActions = computed(() =
   return Array.isArray(actions) ? actions : []
 })
 
+const operationsReadinessConvergenceOperatorInputProfileSummary = computed(() => {
+  const convergence = operationsReadinessConvergence.value || {}
+  const exists = Boolean(convergence.handoffOperatorInputValuesProfileExists)
+  const result = convergence.handoffOperatorInputValuesProfileResult || ''
+  const defaultsUsed = Boolean(convergence.handoffOperatorInputValuesProfileDefaultsUsed)
+  const defaultsSkipped = Boolean(convergence.handoffOperatorInputValuesProfileDefaultsSkipped)
+  const skipReason = convergence.handoffOperatorInputValuesProfileDefaultsSkipReason || ''
+  const defaultValueCount = Number(convergence.handoffOperatorInputValuesProfileDefaultValueCount || 0)
+  const filledValueCount = Number(convergence.handoffOperatorInputValuesProfileFilledValueCount || 0)
+  const blankValueCount = Number(convergence.handoffOperatorInputValuesProfileBlankValueCount || 0)
+  if (!exists && !result && !defaultsUsed && !defaultsSkipped && !skipReason && defaultValueCount === 0 && filledValueCount === 0 && blankValueCount === 0) return ''
+  const state = exists ? (result || 'available') : (result || 'missing')
+  const reasonText = skipReason ? ` / reason ${skipReason}` : ''
+  return `Values profile ${state} / defaults used ${defaultsUsed ? 'yes' : 'no'} / defaults skipped ${defaultsSkipped ? 'yes' : 'no'} / default values ${defaultValueCount} / filled ${filledValueCount} / blank ${blankValueCount}${reasonText}`
+})
 const operationsReadinessConvergenceOperatorInputSummary = computed(() => {
   const convergence = operationsReadinessConvergence.value || {}
   const result = convergence.handoffOperatorInputValuesCheckResult || ''

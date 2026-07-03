@@ -4420,6 +4420,16 @@ function readinessSummary() {
       handoffInputFreeBlockedReviewReportActionOrders: [6],
       handoffInputFreeBlockedReviewReportStale: false,
       handoffInputFreeBlockedReviewReportScopeMismatch: false,
+      handoffOperatorInputValuesProfileReportPath: '.\\.osmu-run\\latest-operations-operator-input-values-profile.json',
+      handoffOperatorInputValuesProfileExists: true,
+      handoffOperatorInputValuesProfileResult: 'action-required',
+      handoffOperatorInputValuesProfileGeneratedAt: '2026-06-30T12:50:00+09:00',
+      handoffOperatorInputValuesProfileDefaultsUsed: false,
+      handoffOperatorInputValuesProfileDefaultsSkipped: true,
+      handoffOperatorInputValuesProfileDefaultsSkipReason: 'handoff package identity contains self-test marker',
+      handoffOperatorInputValuesProfileDefaultValueCount: 0,
+      handoffOperatorInputValuesProfileFilledValueCount: 0,
+      handoffOperatorInputValuesProfileBlankValueCount: 4,
       handoffOperatorInputValuesCheckResult: 'action-required',
       handoffOperatorInputValuesCheckValueCount: 4,
       handoffOperatorInputValuesCheckReadyValueCount: 0,
@@ -5090,6 +5100,9 @@ async function runSelfTest() {
     }
     if (readiness.data.operationsReadinessConvergence?.handoffPostDispatchCommands?.length !== 5 || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[0].command.includes('-RunListJsonDirectory') || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[1].command.includes('-UseGitHubApi') || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[3].command.includes('-ContainerSecurityRunId <ContainerSecurityRunId>') || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[4].command.includes('write-operations-artifact-collection-plan.ps1')) {
       throw new Error('readiness convergence post-dispatch command self-test failed')
+    }
+    if (readiness.data.operationsReadinessConvergence?.handoffOperatorInputValuesProfileDefaultsSkipped !== true || !readiness.data.operationsReadinessConvergence?.handoffOperatorInputValuesProfileDefaultsSkipReason?.includes('self-test marker') || readiness.data.operationsReadinessConvergence?.handoffOperatorInputValuesProfileBlankValueCount !== 4) {
+      throw new Error('readiness convergence operator input values profile self-test failed')
     }
     if (readiness.data.operationsReadinessConvergence?.handoffOperatorInputValuesCheckMissingValueCount !== 4 || readiness.data.operationsReadinessConvergence?.handoffOperatorInputValuesCheckNonReadyActionOrders?.[0] !== 7 || readiness.data.operationsReadinessConvergence?.handoffOperatorInputValuesCheckNonReadyActionSummaries?.[0]?.workflow !== 'data-flow-storage-transition-ci.yml') {
       throw new Error('readiness convergence operator input values self-test failed')

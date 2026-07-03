@@ -460,6 +460,16 @@ $handoffInputFreeBlockedActions = @(Get-Array (Get-JsonProperty $handoff.json "i
         planCommand = Get-Text $_ "planCommand"
     }
 })
+$handoffOperatorInputValuesProfileReportPath = Get-Text $handoff.json "operatorInputValuesProfileReportPath"
+$handoffOperatorInputValuesProfileExists = Get-Bool $handoff.json "operatorInputValuesProfileExists"
+$handoffOperatorInputValuesProfileResult = Get-Text $handoff.json "operatorInputValuesProfileResult"
+$handoffOperatorInputValuesProfileGeneratedAt = Get-Text $handoff.json "operatorInputValuesProfileGeneratedAt"
+$handoffOperatorInputValuesProfileDefaultsUsed = Get-Bool $handoff.json "operatorInputValuesProfileDefaultsUsed"
+$handoffOperatorInputValuesProfileDefaultsSkipped = Get-Bool $handoff.json "operatorInputValuesProfileDefaultsSkipped"
+$handoffOperatorInputValuesProfileDefaultsSkipReason = Get-Text $handoff.json "operatorInputValuesProfileDefaultsSkipReason"
+$handoffOperatorInputValuesProfileDefaultValueCount = Get-Int $handoff.json "operatorInputValuesProfileDefaultValueCount"
+$handoffOperatorInputValuesProfileFilledValueCount = Get-Int $handoff.json "operatorInputValuesProfileFilledValueCount"
+$handoffOperatorInputValuesProfileBlankValueCount = Get-Int $handoff.json "operatorInputValuesProfileBlankValueCount"
 $handoffOperatorInputValuesCheckResult = Get-Text $handoff.json "operatorInputValuesCheckResult"
 $handoffOperatorInputValuesCheckValueCount = Get-Int $handoff.json "operatorInputValuesCheckValueCount"
 $handoffOperatorInputValuesCheckReadyValueCount = Get-Int $handoff.json "operatorInputValuesCheckReadyValueCount"
@@ -696,6 +706,16 @@ $report = [ordered]@{
     handoffInputFreeBlockedReviewReportScopeMismatch = $handoffInputFreeBlockedReviewReportScopeMismatch
     handoffInputFreeBlockedConfirmedPlanCommand = $handoffInputFreeBlockedConfirmedPlanCommand
     handoffInputFreeBlockedActions = @($handoffInputFreeBlockedActions)
+    handoffOperatorInputValuesProfileReportPath = $handoffOperatorInputValuesProfileReportPath
+    handoffOperatorInputValuesProfileExists = $handoffOperatorInputValuesProfileExists
+    handoffOperatorInputValuesProfileResult = $handoffOperatorInputValuesProfileResult
+    handoffOperatorInputValuesProfileGeneratedAt = $handoffOperatorInputValuesProfileGeneratedAt
+    handoffOperatorInputValuesProfileDefaultsUsed = $handoffOperatorInputValuesProfileDefaultsUsed
+    handoffOperatorInputValuesProfileDefaultsSkipped = $handoffOperatorInputValuesProfileDefaultsSkipped
+    handoffOperatorInputValuesProfileDefaultsSkipReason = $handoffOperatorInputValuesProfileDefaultsSkipReason
+    handoffOperatorInputValuesProfileDefaultValueCount = $handoffOperatorInputValuesProfileDefaultValueCount
+    handoffOperatorInputValuesProfileFilledValueCount = $handoffOperatorInputValuesProfileFilledValueCount
+    handoffOperatorInputValuesProfileBlankValueCount = $handoffOperatorInputValuesProfileBlankValueCount
     handoffOperatorInputValuesCheckResult = $handoffOperatorInputValuesCheckResult
     handoffOperatorInputValuesCheckValueCount = $handoffOperatorInputValuesCheckValueCount
     handoffOperatorInputValuesCheckReadyValueCount = $handoffOperatorInputValuesCheckReadyValueCount
@@ -779,6 +799,8 @@ $markdownLines = @(
     "- Input-free review report stale: $handoffInputFreeBlockedReviewReportStale",
     "- Input-free review report scope mismatch: $handoffInputFreeBlockedReviewReportScopeMismatch",
     "- Input-free confirmed plan command: ``$handoffInputFreeBlockedConfirmedPlanCommand``",
+    "- Handoff operator input values profile: exists=$handoffOperatorInputValuesProfileExists, result=$handoffOperatorInputValuesProfileResult, defaultsUsed=$handoffOperatorInputValuesProfileDefaultsUsed, defaultsSkipped=$handoffOperatorInputValuesProfileDefaultsSkipped, defaultValues=$handoffOperatorInputValuesProfileDefaultValueCount, filled=$handoffOperatorInputValuesProfileFilledValueCount, blank=$handoffOperatorInputValuesProfileBlankValueCount",
+    "- Handoff operator input values profile skip reason: $handoffOperatorInputValuesProfileDefaultsSkipReason",
     "- Handoff operator input values: result=$handoffOperatorInputValuesCheckResult, values=$handoffOperatorInputValuesCheckValueCount, ready=$handoffOperatorInputValuesCheckReadyValueCount, missing=$handoffOperatorInputValuesCheckMissingValueCount, unsafe=$handoffOperatorInputValuesCheckUnsafeValueCount, invalid=$handoffOperatorInputValuesCheckInvalidValueCount, valueReadyActions=$handoffOperatorInputValuesCheckValueReadyActionCount, nonReadyActions=$handoffOperatorInputValuesCheckNonReadyActionCount",
     "- Handoff operator input non-ready action orders: $handoffOperatorInputValuesCheckNonReadyActionOrdersText",
     "- Workflow run-id query mode: $($report.handoffWorkflowRunIdPlanQueryMode)",
