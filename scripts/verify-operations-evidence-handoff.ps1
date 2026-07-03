@@ -527,6 +527,7 @@ Assert-Equal $blockedReport.operatorInputValuesTemplatePath $blockedTemplatePath
 Assert-Equal $blockedReport.operatorInputValuesTemplateMarkdownPath $blockedTemplateMarkdownPath "blocked values template markdown path"
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand "write-operations-operator-input-values-profile.ps1" "blocked values profile command script"
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-EnvironmentName '<env>'" "blocked values profile environment placeholder"
+Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-ApprovedAt '<iso-approved>'" "blocked values profile approved-at placeholder"
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand $blockedWorksheetCsvPath "blocked values profile worksheet path"
 Assert-Contains $blockedReport.operatorInputValuesCheckCommand "-ValuesCsvPath" "blocked values check CSV command flag"
 Assert-Contains $blockedReport.operatorInputValuesCheckCommand $blockedWorksheetCsvPath "blocked values check CSV command path"

@@ -668,7 +668,7 @@ $operatorValuesProfileCommand = "powershell -NoProfile -ExecutionPolicy Bypass -
 if (-not [string]::IsNullOrWhiteSpace($operatorWorksheetCsvPath)) {
     $operatorValuesProfileCommand = "$operatorValuesProfileCommand -WorksheetCsvPath $(Quote-PowerShellArgument $operatorWorksheetCsvPath)"
 }
-$operatorValuesProfileCommand = "$operatorValuesProfileCommand -EnvironmentName $(Quote-PowerShellArgument '<env>') -TargetCluster $(Quote-PowerShellArgument '<cluster>') -Operator $(Quote-PowerShellArgument '<operator>') -RunRef $(Quote-PowerShellArgument '<run-ref>') -ChangeApprovalRef $(Quote-PowerShellArgument '<change-id>') -StartTime $(Quote-PowerShellArgument '<iso-start>') -CompletedTime $(Quote-PowerShellArgument '<iso-complete>')"
+$operatorValuesProfileCommand = "$operatorValuesProfileCommand -EnvironmentName $(Quote-PowerShellArgument '<env>') -TargetCluster $(Quote-PowerShellArgument '<cluster>') -Operator $(Quote-PowerShellArgument '<operator>') -RunRef $(Quote-PowerShellArgument '<run-ref>') -ChangeApprovalRef $(Quote-PowerShellArgument '<change-id>') -StartTime $(Quote-PowerShellArgument '<iso-start>') -CompletedTime $(Quote-PowerShellArgument '<iso-complete>') -ApprovedAt $(Quote-PowerShellArgument '<iso-approved>')"
 $dispatchGithubRepository = Get-Text $dispatchPreflight.json "githubRepository"
 $runIdResult = Get-Text $runIds.json "result"
 $collectionResult = Get-Text $collection.json "result"

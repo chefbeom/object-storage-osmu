@@ -6,12 +6,12 @@ This handoff keeps the remaining operations-readiness work focused on object-sto
 
 - Latest readiness summary: passed=83 / pending=19 / total=102.
 - Latest handoff result: blocked.
-- Current bottleneck: resolve invocation blockers; no default-branch workflow files are missing.
-- Current main HEAD: 9c9a7a2b2152f6a7ea9546a22306929ab6943fde.
+- Current bottleneck: confirm input-free blockers for actions 1, 2, and 5, then fill workflow-input values for the remaining blocked actions; no default-branch workflow files are missing.
+- Current local main HEAD: fd043cb724d9830885cf9abe1afc65025a77e918.
 - PR #1 merge commit: 81acaf4e3c44ee3dc2014f3429f585ac7defaedd.
 - PR #1 is merged into main.
 - Prototype CI #54 passed on 13a3402facf92349e409d91d66961b77622fe7fd before merge.
-- The dispatch preflight, workflow run-id plan, artifact collection plan, evidence handoff, and convergence reports were regenerated after pushing 9c9a7a2 to main.
+- The dispatch preflight, workflow run-id plan, artifact collection plan, operator-input worksheet/value-check, evidence handoff, and convergence reports were regenerated locally after the operator input CSV/profile helper work. Local main is ahead of origin/main.
 
 ## Default-Branch Workflow Gate
 
@@ -65,7 +65,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-o
 
 The worksheet writes JSON, Markdown, and CSV to `.osmu-run/latest-operations-operator-input-worksheet.*` and a fillable values template to `.osmu-run/latest-operations-operator-input-values-template.*`. It expands repeated placeholders such as `<iso-time>`, `<ref>`, `<ms>`, and `<n>` into workflow-input-level rows with stable value keys such as `action-08.review_started_at`, so operators can provide distinct start/end timestamps, evidence refs, p95/p99 values, and per-metric counts without reusing one placeholder value accidentally. It is collection guidance only; it does not mark readiness evidence as passed.
 
-After filling the non-secret values template, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1` to catch missing, unsafe, or known invalid values before dispatch planning.
+Operators can either fill `.osmu-run/latest-operations-operator-input-worksheet.csv` directly, or seed a derived CSV from shared non-secret profile values and then fill the remaining value-specific blanks:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-profile.ps1 -WorksheetCsvPath .\.osmu-run\latest-operations-operator-input-worksheet.csv -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RunRef <run-ref> -ChangeApprovalRef <change-id> -StartTime <iso-start> -CompletedTime <iso-complete> -ApprovedAt <iso-approved>
+```
+
+The profile writer outputs `.osmu-run/latest-operations-operator-input-values-profile.csv` plus JSON/Markdown summaries, preserves any existing `value` cells, and can accept value-key-specific overrides with `-ValueOverridesJsonPath`. It does not invent evidence references, timestamps, run ids, artifact names, or base64 payloads.
+
+After filling non-secret values, run one of these checks before dispatch planning:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1 -ValuesCsvPath .\.osmu-run\latest-operations-operator-input-worksheet.csv
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1 -ValuesCsvPath .\.osmu-run\latest-operations-operator-input-values-profile.csv
+```
 
 ## Execution Order
 
