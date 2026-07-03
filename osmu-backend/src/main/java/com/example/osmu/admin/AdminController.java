@@ -4757,6 +4757,32 @@ public class AdminController {
         return operationsPostDispatchCommands(handoffReport, "postDispatchCommands");
     }
 
+    private List<DashboardOperationsHandoffInputFreeBlockedActionResponse> operationsHandoffInputFreeBlockedActions(JsonNode handoffReport) {
+        java.util.ArrayList<DashboardOperationsHandoffInputFreeBlockedActionResponse> actions = new java.util.ArrayList<>();
+        JsonNode actionNodes = handoffReport.path("inputFreeBlockedActions");
+        if (actionNodes.isArray()) {
+            for (JsonNode action : actionNodes) {
+                actions.add(new DashboardOperationsHandoffInputFreeBlockedActionResponse(
+                        jsonInt(action, "actionOrder"),
+                        jsonText(action, "name"),
+                        jsonText(action, "status"),
+                        jsonInt(action, "blockReasonCount"),
+                        jsonTextList(action, "blockReasons"),
+                        jsonInt(action, "requiredInputCount"),
+                        jsonInt(action, "requiredSecretCount"),
+                        jsonTextList(action, "requiredSecrets"),
+                        jsonBoolean(action, "needsOperatorApprovalConfirmation"),
+                        jsonBoolean(action, "needsKubeconfigSecretConfirmation"),
+                        jsonBoolean(action, "defaultBranchWorkflowMissing"),
+                        jsonText(action, "reviewCommand"),
+                        jsonText(action, "confirmedPlanCommand"),
+                        jsonText(action, "planCommand")
+                ));
+            }
+        }
+        return List.copyOf(actions);
+    }
+
     private List<DashboardOperationsInputValueActionSummaryResponse> operationsInputValueActionSummaries(JsonNode report, String fieldName) {
         java.util.ArrayList<DashboardOperationsInputValueActionSummaryResponse> summaries = new java.util.ArrayList<>();
         JsonNode summaryNodes = report.path(fieldName);
@@ -4812,6 +4838,7 @@ public class AdminController {
             }
         }
         List<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> postDispatchCommands = operationsEvidenceHandoffPostDispatchCommands(handoffReport);
+        List<DashboardOperationsHandoffInputFreeBlockedActionResponse> inputFreeBlockedActions = operationsHandoffInputFreeBlockedActions(handoffReport);
         List<DashboardOperationsInputValueActionSummaryResponse> operatorInputValuesCheckNonReadyActionSummaries = operationsInputValueActionSummaries(handoffReport, "operatorInputValuesCheckNonReadyActionSummaries");
         JsonNode nextStep = handoffReport.path("nextStep");
         JsonNode currentBottleneck = handoffReport.path("currentBottleneck");
@@ -4877,6 +4904,7 @@ public class AdminController {
                 jsonIntList(handoffReport, "inputFreeBlockedReviewReportActionOrders"),
                 jsonBoolean(handoffReport, "inputFreeBlockedReviewReportStale"),
                 jsonBoolean(handoffReport, "inputFreeBlockedReviewReportScopeMismatch"),
+                inputFreeBlockedActions,
                 jsonText(handoffReport, "operatorInputValuesProfileCommand"),
                 jsonText(handoffReport, "operatorInputValuesCheckCommand"),
                 jsonText(handoffReport, "operatorInputValuesCheckResult"),

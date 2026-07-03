@@ -3187,6 +3187,29 @@ class AdminDashboardSummaryControllerTest {
                                                                        ],
                             "inputFreeBlockedReviewReportStale":  false,
                             "inputFreeBlockedReviewReportScopeMismatch":  false,
+                            "inputFreeBlockedActions":  [
+                                                        {
+                                                            "actionOrder":  1,
+                                                            "name":  "Storage expansion finalizer live evidence",
+                                                            "status":  "blocked",
+                                                            "blockReasonCount":  2,
+                                                            "blockReasons":  [
+                                                                                 "operator approval not confirmed",
+                                                                                 "kubeconfig secret not confirmed"
+                                                                             ],
+                                                            "requiredInputCount":  0,
+                                                            "requiredSecretCount":  1,
+                                                            "requiredSecrets":  [
+                                                                                  "KUBECONFIG_B64"
+                                                                              ],
+                                                            "needsOperatorApprovalConfirmation":  true,
+                                                            "needsKubeconfigSecretConfirmation":  true,
+                                                            "defaultBranchWorkflowMissing":  false,
+                                                            "reviewCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -NoWrite",
+                                                            "confirmedPlanCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 1",
+                                                            "planCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 1"
+                                                        }
+                                                    ],
                             "operatorInputValuesProfileCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-operator-input-values-profile.ps1 -WorksheetCsvPath .\\\\.osmu-run\\\\latest-operations-operator-input-worksheet.csv -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RunRef <run-ref> -ChangeApprovalRef <change-id> -StartTime <iso-start> -CompletedTime <iso-complete> -ApprovedAt <iso-approved>",
                             "operatorInputValuesCheckCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-operator-input-values-check.ps1 -ValuesCsvPath .\\\\.osmu-run\\\\latest-operations-operator-input-values-profile.csv",
                             "artifactCollectionStale":  false,
@@ -4386,6 +4409,12 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportActionOrders[0]").value(6));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportStale").value(false));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedReviewReportScopeMismatch").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedActions[0].actionOrder").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedActions[0].name").value("Storage expansion finalizer live evidence"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedActions[0].blockReasons[0]").value("operator approval not confirmed"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedActions[0].requiredSecrets[0]").value("KUBECONFIG_B64"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedActions[0].needsOperatorApprovalConfirmation").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedActions[0].needsKubeconfigSecretConfirmation").value(true));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-operator-input-values-profile.ps1 -WorksheetCsvPath .\\.osmu-run\\latest-operations-operator-input-worksheet.csv -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RunRef <run-ref> -ChangeApprovalRef <change-id> -StartTime <iso-start> -CompletedTime <iso-complete> -ApprovedAt <iso-approved>"));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesCheckCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-operator-input-values-check.ps1 -ValuesCsvPath .\\.osmu-run\\latest-operations-operator-input-values-profile.csv"));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.artifactCollectionStale").value(false));

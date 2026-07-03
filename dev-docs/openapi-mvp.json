@@ -4796,6 +4796,26 @@
           "note": { "type": "string" }
         }
       },
+      "DashboardOperationsInputFreeBlockedAction": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "actionOrder": { "type": "integer" },
+          "name": { "type": "string" },
+          "status": { "type": "string" },
+          "blockReasonCount": { "type": "integer" },
+          "blockReasons": { "type": "array", "items": { "type": "string" } },
+          "requiredInputCount": { "type": "integer" },
+          "requiredSecretCount": { "type": "integer" },
+          "requiredSecrets": { "type": "array", "items": { "type": "string" } },
+          "needsOperatorApprovalConfirmation": { "type": "boolean" },
+          "needsKubeconfigSecretConfirmation": { "type": "boolean" },
+          "defaultBranchWorkflowMissing": { "type": "boolean" },
+          "reviewCommand": { "type": "string" },
+          "confirmedPlanCommand": { "type": "string" },
+          "planCommand": { "type": "string" }
+        }
+      },
       "DashboardOperationsInputValueActionSummary": {
         "type": "object",
         "additionalProperties": true,
@@ -4842,6 +4862,7 @@
           "inputFreeBlockedReviewReportActionOrders": { "type": "array", "items": { "type": "integer" } },
           "inputFreeBlockedReviewReportStale": { "type": "boolean" },
           "inputFreeBlockedReviewReportScopeMismatch": { "type": "boolean" },
+          "inputFreeBlockedActions": { "type": "array", "items": { "$ref": "#/components/schemas/DashboardOperationsInputFreeBlockedAction" } },
           "operatorInputValuesProfileCommand": { "type": "string" },
           "operatorInputValuesCheckCommand": { "type": "string" },
           "operatorInputValuesCheckResult": { "type": "string" },

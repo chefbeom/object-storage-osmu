@@ -2132,6 +2132,32 @@
         </div>
       </div>
       <ol
+        v-if="operationsEvidenceHandoffInputFreeBlockedActions.length > 0"
+        class="readiness-evidence-plan-actions readiness-evidence-handoff-input-free-actions"
+        data-testid="readiness-evidence-handoff-input-free-actions"
+      >
+        <li
+          v-for="action in operationsEvidenceHandoffInputFreeBlockedActions"
+          :key="`handoff-input-free-${action.actionOrder}-${action.name || action.status}`"
+        >
+          <span>
+            <strong>Input-free action {{ action.actionOrder || '?' }} - {{ action.name || 'blocked action' }}</strong>
+            <small>{{ formatEvidenceHandoffInputFreeBlockedActionMeta(action) }}</small>
+            <code v-if="action.reviewCommand">{{ action.reviewCommand }}</code>
+          </span>
+          <button
+            v-if="action.reviewCommand"
+            data-testid="readiness-evidence-handoff-input-free-review-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy input-free review command"
+            @click="copyReadinessRemediationCommand(action.reviewCommand)"
+          >
+            Copy
+          </button>
+        </li>
+      </ol>
+      <ol
         v-if="operationsEvidenceHandoffOperatorInputNonReadyActions.length > 0"
         class="readiness-evidence-plan-actions readiness-evidence-handoff-operator-input-actions"
         data-testid="readiness-evidence-handoff-operator-input-actions"
@@ -4875,6 +4901,21 @@ const operationsEvidenceHandoffInputFreeReviewSummary = computed(() => {
   const orderText = orders.length > 0 ? orders.join(', ') : 'none'
   return `Input-free review ${exists ? result || 'available' : 'missing'} / actions ${selected} (${orderText}) / blocked ${blocked} / failed ${failed} / executed ${executed} / ${freshness} / ${scope}`
 })
+const operationsEvidenceHandoffInputFreeBlockedActions = computed(() => {
+  const actions = operationsEvidenceHandoff.value?.inputFreeBlockedActions
+  return Array.isArray(actions) ? actions : []
+})
+
+function formatEvidenceHandoffInputFreeBlockedActionMeta(action) {
+  const reasons = Array.isArray(action?.blockReasons) ? action.blockReasons : []
+  const secrets = Array.isArray(action?.requiredSecrets) ? action.requiredSecrets : []
+  const reasonText = reasons.length > 0 ? reasons.join('; ') : 'none'
+  const secretText = secrets.length > 0 ? secrets.join(', ') : 'none'
+  const approval = action?.needsOperatorApprovalConfirmation ? 'approval required' : 'approval not flagged'
+  const kube = action?.needsKubeconfigSecretConfirmation ? 'kubeconfig required' : 'kubeconfig not flagged'
+  return `status ${action?.status || 'unknown'} / blockers ${Number(action?.blockReasonCount || reasons.length || 0)} (${reasonText}) / inputs ${Number(action?.requiredInputCount || 0)} / secrets ${Number(action?.requiredSecretCount || secrets.length || 0)} (${secretText}) / ${approval} / ${kube}`
+}
+
 const operationsEvidenceHandoffDispatchSummary = computed(() => {
   const handoff = operationsEvidenceHandoff.value || {}
   const readyOrders = Array.isArray(handoff.readyDispatchActionOrders) ? handoff.readyDispatchActionOrders : []
