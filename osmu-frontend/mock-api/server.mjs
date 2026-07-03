@@ -4189,6 +4189,16 @@ function readinessSummary() {
       inputFreeBlockedReviewReportActionOrders: [6],
       inputFreeBlockedReviewReportStale: false,
       inputFreeBlockedReviewReportScopeMismatch: false,
+      operatorInputValuesProfileReportPath: '.\\.osmu-run\\latest-operations-operator-input-values-profile.json',
+      operatorInputValuesProfileExists: true,
+      operatorInputValuesProfileResult: 'action-required',
+      operatorInputValuesProfileGeneratedAt: '2026-06-30T12:50:00+09:00',
+      operatorInputValuesProfileDefaultsUsed: false,
+      operatorInputValuesProfileDefaultsSkipped: true,
+      operatorInputValuesProfileDefaultsSkipReason: 'handoff package identity contains self-test marker',
+      operatorInputValuesProfileDefaultValueCount: 0,
+      operatorInputValuesProfileFilledValueCount: 0,
+      operatorInputValuesProfileBlankValueCount: 4,
       operatorInputValuesCheckResult: 'action-required',
       operatorInputValuesCheckValueCount: 4,
       operatorInputValuesCheckReadyValueCount: 0,
@@ -5050,6 +5060,9 @@ async function runSelfTest() {
     }
     if (readiness.data.operationsEvidenceHandoff?.postDispatchCommands?.length !== 5 || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[0].command.includes('-RunListJsonDirectory') || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[1].command.includes('-UseGitHubApi') || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[3].command.includes('-ContainerSecurityRunId <ContainerSecurityRunId>') || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[4].command.includes('write-operations-artifact-collection-plan.ps1')) {
       throw new Error('readiness handoff post-dispatch command self-test failed')
+    }
+    if (readiness.data.operationsEvidenceHandoff?.operatorInputValuesProfileDefaultsSkipped !== true || !readiness.data.operationsEvidenceHandoff?.operatorInputValuesProfileDefaultsSkipReason?.includes('self-test marker') || readiness.data.operationsEvidenceHandoff?.operatorInputValuesProfileBlankValueCount !== 4) {
+      throw new Error('readiness handoff operator input values profile self-test failed')
     }
     if (readiness.data.operationsEvidenceHandoff?.operatorInputValuesCheckMissingValueCount !== 4 || readiness.data.operationsEvidenceHandoff?.operatorInputValuesCheckNonReadyActionOrders?.[0] !== 7 || readiness.data.operationsEvidenceHandoff?.operatorInputValuesCheckNonReadyActionSummaries?.[0]?.nonReadyValueKeys?.length !== 4) {
       throw new Error('readiness handoff operator input values self-test failed')

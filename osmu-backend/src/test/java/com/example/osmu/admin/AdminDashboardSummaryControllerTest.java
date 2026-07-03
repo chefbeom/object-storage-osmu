@@ -3210,6 +3210,16 @@ class AdminDashboardSummaryControllerTest {
                                                             "planCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 1"
                                                         }
                                                     ],
+                            "operatorInputValuesProfileReportPath":  ".\\\\.osmu-run\\\\latest-operations-operator-input-values-profile.json",
+                            "operatorInputValuesProfileExists":  true,
+                            "operatorInputValuesProfileResult":  "action-required",
+                            "operatorInputValuesProfileGeneratedAt":  "2026-06-30T12:50:00+09:00",
+                            "operatorInputValuesProfileDefaultsUsed":  false,
+                            "operatorInputValuesProfileDefaultsSkipped":  true,
+                            "operatorInputValuesProfileDefaultsSkipReason":  "handoff package identity contains self-test marker",
+                            "operatorInputValuesProfileDefaultValueCount":  0,
+                            "operatorInputValuesProfileFilledValueCount":  0,
+                            "operatorInputValuesProfileBlankValueCount":  4,
                             "operatorInputValuesProfileCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-operator-input-values-profile.ps1 -WorksheetCsvPath .\\\\.osmu-run\\\\latest-operations-operator-input-worksheet.csv -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RunRef <run-ref> -ChangeApprovalRef <change-id> -StartTime <iso-start> -CompletedTime <iso-complete> -ApprovedAt <iso-approved>",
                             "operatorInputValuesCheckCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-operator-input-values-check.ps1 -ValuesCsvPath .\\\\.osmu-run\\\\latest-operations-operator-input-values-profile.csv",
                             "artifactCollectionStale":  false,
@@ -4415,6 +4425,15 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedActions[0].requiredSecrets[0]").value("KUBECONFIG_B64"));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedActions[0].needsOperatorApprovalConfirmation").value(true));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.inputFreeBlockedActions[0].needsKubeconfigSecretConfirmation").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileReportPath").value(".\\.osmu-run\\latest-operations-operator-input-values-profile.json"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileExists").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileResult").value("action-required"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileDefaultsUsed").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileDefaultsSkipped").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileDefaultsSkipReason").value("handoff package identity contains self-test marker"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileDefaultValueCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileFilledValueCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileBlankValueCount").value(4));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesProfileCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-operator-input-values-profile.ps1 -WorksheetCsvPath .\\.osmu-run\\latest-operations-operator-input-worksheet.csv -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RunRef <run-ref> -ChangeApprovalRef <change-id> -StartTime <iso-start> -CompletedTime <iso-complete> -ApprovedAt <iso-approved>"));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.operatorInputValuesCheckCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-operator-input-values-check.ps1 -ValuesCsvPath .\\.osmu-run\\latest-operations-operator-input-values-profile.csv"));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.artifactCollectionStale").value(false));

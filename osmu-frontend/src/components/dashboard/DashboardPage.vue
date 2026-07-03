@@ -2081,6 +2081,12 @@
           {{ operationsEvidenceHandoffOperatorInputSummary }}
         </small>
         <small
+          v-if="operationsEvidenceHandoffOperatorInputProfileSummary"
+          data-testid="readiness-evidence-handoff-operator-input-profile"
+        >
+          {{ operationsEvidenceHandoffOperatorInputProfileSummary }}
+        </small>
+        <small
           v-if="operationsEvidenceHandoff.operatorInputValuesProfileCommand"
           data-testid="readiness-evidence-handoff-operator-input-profile-command"
         >
@@ -4871,6 +4877,21 @@ const operationsEvidenceHandoffOperatorInputNonReadyActions = computed(() => {
   return Array.isArray(actions) ? actions : []
 })
 
+const operationsEvidenceHandoffOperatorInputProfileSummary = computed(() => {
+  const handoff = operationsEvidenceHandoff.value || {}
+  const exists = Boolean(handoff.operatorInputValuesProfileExists)
+  const result = handoff.operatorInputValuesProfileResult || ''
+  const defaultsUsed = Boolean(handoff.operatorInputValuesProfileDefaultsUsed)
+  const defaultsSkipped = Boolean(handoff.operatorInputValuesProfileDefaultsSkipped)
+  const skipReason = handoff.operatorInputValuesProfileDefaultsSkipReason || ''
+  const defaultValueCount = Number(handoff.operatorInputValuesProfileDefaultValueCount || 0)
+  const filledValueCount = Number(handoff.operatorInputValuesProfileFilledValueCount || 0)
+  const blankValueCount = Number(handoff.operatorInputValuesProfileBlankValueCount || 0)
+  if (!exists && !result && !defaultsUsed && !defaultsSkipped && !skipReason && defaultValueCount === 0 && filledValueCount === 0 && blankValueCount === 0) return ''
+  const state = exists ? (result || 'available') : (result || 'missing')
+  const reasonText = skipReason ? ` / reason ${skipReason}` : ''
+  return `Values profile ${state} / defaults used ${defaultsUsed ? 'yes' : 'no'} / defaults skipped ${defaultsSkipped ? 'yes' : 'no'} / default values ${defaultValueCount} / filled ${filledValueCount} / blank ${blankValueCount}${reasonText}`
+})
 const operationsEvidenceHandoffOperatorInputSummary = computed(() => {
   const handoff = operationsEvidenceHandoff.value || {}
   const result = handoff.operatorInputValuesCheckResult || ''
