@@ -168,6 +168,7 @@ $blockedUnblockPath = Join-Path $resolvedOutputDirectory "blocked-unblock-plan.j
 $blockedDispatchPreflightPath = Join-Path $resolvedOutputDirectory "blocked-dispatch-preflight.json"
 $blockedWorksheetPath = Join-Path $resolvedOutputDirectory "blocked-operator-worksheet.json"
 $blockedWorksheetCsvPath = Join-Path $resolvedOutputDirectory "blocked-operator-worksheet.csv"
+$blockedValuesProfileCsvPath = Join-Path $resolvedOutputDirectory "blocked-operator-input-values-profile.csv"
 $blockedTemplatePath = Join-Path $resolvedOutputDirectory "blocked-operator-values-template.json"
 $blockedTemplateMarkdownPath = Join-Path $resolvedOutputDirectory "blocked-operator-values-template.md"
 $blockedCheckPath = Join-Path $resolvedOutputDirectory "blocked-operator-values-check.json"
@@ -359,6 +360,7 @@ Write-JsonFixture $blockedCheckPath ([ordered]@{
     generatedAt = "2026-06-27T10:15:00+09:00"
     result = "action-required"
     sourceValuesTemplate = $blockedTemplatePath
+    sourceValuesCsv = $blockedValuesProfileCsvPath
     valueCount = 4
     readyValueCount = 0
     missingValueCount = 4
@@ -530,7 +532,7 @@ Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-EnvironmentNa
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-ApprovedAt '<iso-approved>'" "blocked values profile approved-at placeholder"
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand $blockedWorksheetCsvPath "blocked values profile worksheet path"
 Assert-Contains $blockedReport.operatorInputValuesCheckCommand "-ValuesCsvPath" "blocked values check CSV command flag"
-Assert-Contains $blockedReport.operatorInputValuesCheckCommand $blockedWorksheetCsvPath "blocked values check CSV command path"
+Assert-Contains $blockedReport.operatorInputValuesCheckCommand $blockedValuesProfileCsvPath "blocked values check source CSV command path"
 Assert-Equal $blockedReport.operatorInputWorksheetInputRowCount 4 "blocked worksheet input row count"
 Assert-Equal $blockedReport.operatorInputWorksheetExpandedInputRowDelta 2 "blocked worksheet expanded row delta"
 Assert-Equal $blockedReport.operatorInputValuesCheckValueCount 4 "blocked values check value count"
@@ -548,7 +550,7 @@ $blockedWorksheetStage = @($blockedReport.stages | Where-Object { $_.name -eq "o
 $blockedValuesStage = @($blockedReport.stages | Where-Object { $_.name -eq "operator-input-values-check" } | Select-Object -First 1)
 Assert-Contains $blockedDispatchStage.summary "requiredInputs=2 missingInputs=2" "blocked dispatch stage input summary"
 Assert-Contains $blockedWorksheetStage.summary "inputs=4 expandedDelta=2" "blocked worksheet stage expansion summary"
-Assert-Contains $blockedValuesStage.command $blockedWorksheetCsvPath "blocked values stage CSV command path"
+Assert-Contains $blockedValuesStage.command $blockedValuesProfileCsvPath "blocked values stage source CSV command path"
 Assert-Contains $blockedMarkdown "Plan ready dispatch subset" "blocked markdown next step"
 Assert-Contains $blockedMarkdown "GitHub repository: chefbeom/object-storage-osmu" "blocked markdown repository"
 Assert-Contains $blockedMarkdown "## Invocation Unblock Summary" "blocked markdown unblock summary"
@@ -570,7 +572,7 @@ Assert-Contains $blockedMarkdown "Worksheet CSV: $blockedWorksheetCsvPath" "bloc
 Assert-Contains $blockedMarkdown "Values template JSON: $blockedTemplatePath" "blocked markdown values template path"
 Assert-Contains $blockedMarkdown "Values template Markdown: $blockedTemplateMarkdownPath" "blocked markdown values template markdown path"
 Assert-Contains $blockedMarkdown "Values profile command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-profile.ps1 -WorksheetCsvPath $blockedWorksheetCsvPath" "blocked markdown values profile command"
-Assert-Contains $blockedMarkdown "Values check command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1 -ValuesCsvPath $blockedWorksheetCsvPath``" "blocked markdown values check CSV command"
+Assert-Contains $blockedMarkdown "Values check command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1 -ValuesCsvPath $blockedValuesProfileCsvPath``" "blocked markdown values check source CSV command"
 Assert-Contains $blockedMarkdown "Expanded worksheet row delta: 2" "blocked markdown worksheet expansion delta"
 Assert-Contains $blockedMarkdown "Values check rows: 4" "blocked markdown values check rows"
 Assert-Contains $blockedMarkdown "Block reasons: 4" "blocked markdown unblock reason count"

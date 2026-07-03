@@ -660,9 +660,11 @@ if ($operatorValuesCheck.exists) {
 }
 $operatorValuesCheckNonReadyActionSummaries = @($operatorValuesCheckActionSummaries | Where-Object { -not "ready".Equals((Get-Text $_ "status"), [System.StringComparison]::OrdinalIgnoreCase) })
 $operatorValuesCheckNonReadyActionOrders = @($operatorValuesCheckNonReadyActionSummaries | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
+$operatorValuesCheckSourceCsvPath = Get-Text $operatorValuesCheck.json "sourceValuesCsv"
+$operatorValuesCheckCommandCsvPath = if (-not [string]::IsNullOrWhiteSpace($operatorValuesCheckSourceCsvPath)) { $operatorValuesCheckSourceCsvPath } else { $operatorWorksheetCsvPath }
 $operatorValuesCheckCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1"
-if (-not [string]::IsNullOrWhiteSpace($operatorWorksheetCsvPath)) {
-    $operatorValuesCheckCommand = "$operatorValuesCheckCommand -ValuesCsvPath $(Quote-PowerShellArgument $operatorWorksheetCsvPath)"
+if (-not [string]::IsNullOrWhiteSpace($operatorValuesCheckCommandCsvPath)) {
+    $operatorValuesCheckCommand = "$operatorValuesCheckCommand -ValuesCsvPath $(Quote-PowerShellArgument $operatorValuesCheckCommandCsvPath)"
 }
 $operatorValuesProfileCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-profile.ps1"
 if (-not [string]::IsNullOrWhiteSpace($operatorWorksheetCsvPath)) {
