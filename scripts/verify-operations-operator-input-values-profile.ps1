@@ -140,6 +140,42 @@ Assert-True (@($packageRows | Where-Object { $_.valueKey -eq "action-08.evidence
 Assert-Contains $packageMarkdown "Handoff package defaults used: True" "package markdown defaults used"
 Assert-Contains $packageMarkdown "Handoff package default values: 3" "package markdown default count"
 
+$selfTestHandoffPackagePath = Join-Path $resolvedOutputDirectory "self-test-handoff-package.json"
+$selfTestProfileCsvPath = Join-Path $resolvedOutputDirectory "self-test-package-profile.csv"
+$selfTestJsonOutputPath = Join-Path $resolvedOutputDirectory "self-test-package-profile.json"
+$selfTestMarkdownOutputPath = Join-Path $resolvedOutputDirectory "self-test-package-profile.md"
+[ordered]@{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
+} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $selfTestHandoffPackagePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -WorksheetCsvPath $worksheetCsvPath `
+    -CsvOutputPath $selfTestProfileCsvPath `
+    -JsonOutputPath $selfTestJsonOutputPath `
+    -MarkdownOutputPath $selfTestMarkdownOutputPath `
+    -HandoffPackagePath $selfTestHandoffPackagePath `
+    -UseHandoffPackageDefaults | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-operator-input-values-profile.ps1 self-test package defaults fixture failed with exit code $LASTEXITCODE."
+}
+
+$selfTestReport = Read-Utf8Text $selfTestJsonOutputPath | ConvertFrom-Json
+$selfTestMarkdown = Read-Utf8Text $selfTestMarkdownOutputPath
+$selfTestRows = @(Import-Csv -LiteralPath $selfTestProfileCsvPath -Encoding UTF8)
+Assert-Equal $selfTestReport.handoffPackageDefaultsUsed $false "self-test package defaults not used"
+Assert-Equal $selfTestReport.handoffPackageDefaultsSkipped $true "self-test package defaults skipped"
+Assert-Equal $selfTestReport.handoffPackageDefaultsSkipReason "handoff package identity contains self-test marker" "self-test package defaults skip reason"
+Assert-Equal $selfTestReport.handoffPackageDefaultValueCount 0 "self-test package default value count"
+Assert-Equal $selfTestReport.profileFillCount 0 "self-test package profile fill count"
+Assert-Equal $selfTestReport.filledValueCount 1 "self-test package filled count"
+Assert-Equal $selfTestReport.blankValueCount 10 "self-test package blank count"
+Assert-True (@($selfTestRows | Where-Object { $_.valueKey -eq "action-08.environment_name" -and $_.value -eq "" }).Count -eq 1) "expected self-test package environment to remain blank"
+Assert-Contains $selfTestMarkdown "Handoff package defaults skipped: True" "self-test package markdown defaults skipped"
+Assert-Contains $selfTestMarkdown "Handoff package defaults skip reason: handoff package identity contains self-test marker" "self-test package markdown skip reason"
+
 Write-Host "Operations operator input values profile package defaults verified."
 
 Write-Host "Operations operator input values profile verified."

@@ -110,23 +110,35 @@ function Get-ProfileValue([object] $Row, [hashtable] $Overrides) {
 }
 
 $handoffPackageDefaultsUsed = $false
+$handoffPackageDefaultsSkipped = $false
+$handoffPackageDefaultsSkipReason = ""
 $handoffPackageDefaultValueCount = 0
 $resolvedHandoffPackagePath = if ([string]::IsNullOrWhiteSpace($HandoffPackagePath)) { "" } else { Resolve-ProjectPath $HandoffPackagePath }
 if ($UseHandoffPackageDefaults -and -not [string]::IsNullOrWhiteSpace($resolvedHandoffPackagePath) -and (Test-Path -LiteralPath $resolvedHandoffPackagePath)) {
     $handoffPackage = Read-Utf8Text $resolvedHandoffPackagePath | ConvertFrom-Json
-    if ([string]::IsNullOrWhiteSpace($EnvironmentName)) {
-        $EnvironmentName = Get-Text $handoffPackage "environmentName"
-        if (-not [string]::IsNullOrWhiteSpace($EnvironmentName)) { $handoffPackageDefaultValueCount++ }
+    $packageEnvironmentName = Get-Text $handoffPackage "environmentName"
+    $packageTargetCluster = Get-Text $handoffPackage "targetCluster"
+    $packageOperatorName = Get-Text $handoffPackage "operatorName"
+    $selfTestValues = @($packageEnvironmentName, $packageTargetCluster, $packageOperatorName) | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_) -and ([string] $_).IndexOf("self-test", [System.StringComparison]::OrdinalIgnoreCase) -ge 0 }
+    if (@($selfTestValues).Count -gt 0) {
+        $handoffPackageDefaultsSkipped = $true
+        $handoffPackageDefaultsSkipReason = "handoff package identity contains self-test marker"
     }
-    if ([string]::IsNullOrWhiteSpace($TargetCluster)) {
-        $TargetCluster = Get-Text $handoffPackage "targetCluster"
-        if (-not [string]::IsNullOrWhiteSpace($TargetCluster)) { $handoffPackageDefaultValueCount++ }
+    else {
+        if ([string]::IsNullOrWhiteSpace($EnvironmentName)) {
+            $EnvironmentName = $packageEnvironmentName
+            if (-not [string]::IsNullOrWhiteSpace($EnvironmentName)) { $handoffPackageDefaultValueCount++ }
+        }
+        if ([string]::IsNullOrWhiteSpace($TargetCluster)) {
+            $TargetCluster = $packageTargetCluster
+            if (-not [string]::IsNullOrWhiteSpace($TargetCluster)) { $handoffPackageDefaultValueCount++ }
+        }
+        if ([string]::IsNullOrWhiteSpace($Operator)) {
+            $Operator = $packageOperatorName
+            if (-not [string]::IsNullOrWhiteSpace($Operator)) { $handoffPackageDefaultValueCount++ }
+        }
+        $handoffPackageDefaultsUsed = $handoffPackageDefaultValueCount -gt 0
     }
-    if ([string]::IsNullOrWhiteSpace($Operator)) {
-        $Operator = Get-Text $handoffPackage "operatorName"
-        if (-not [string]::IsNullOrWhiteSpace($Operator)) { $handoffPackageDefaultValueCount++ }
-    }
-    $handoffPackageDefaultsUsed = $handoffPackageDefaultValueCount -gt 0
 }
 $resolvedWorksheetCsvPath = Resolve-ProjectPath $WorksheetCsvPath
 if (-not (Test-Path -LiteralPath $resolvedWorksheetCsvPath)) {
@@ -221,6 +233,8 @@ $report = [ordered]@{
     valueOverridesJsonPath = if ([string]::IsNullOrWhiteSpace($ValueOverridesJsonPath)) { "" } else { Resolve-ProjectPath $ValueOverridesJsonPath }
     handoffPackagePath = if ($UseHandoffPackageDefaults) { $resolvedHandoffPackagePath } else { "" }
     handoffPackageDefaultsUsed = [bool] $handoffPackageDefaultsUsed
+    handoffPackageDefaultsSkipped = [bool] $handoffPackageDefaultsSkipped
+    handoffPackageDefaultsSkipReason = $handoffPackageDefaultsSkipReason
     handoffPackageDefaultValueCount = $handoffPackageDefaultValueCount
     rowCount = $rows.Count
     filledValueCount = $filledCount
@@ -231,7 +245,7 @@ $report = [ordered]@{
     overwrite = [bool] $Overwrite
     valuesCheckCommand = $valuesCheckCommand
     rows = @($summaryRows.ToArray())
-    decisionRule = "This profile writer only fills non-secret operator worksheet values supplied by the operator, an explicit override map, or environment/cluster/operator labels from the operations handoff package when -UseHandoffPackageDefaults is supplied and the package exists. It does not execute workflows or mark readiness evidence as passed."
+    decisionRule = "This profile writer only fills non-secret operator worksheet values supplied by the operator, an explicit override map, or environment/cluster/operator labels from the operations handoff package when -UseHandoffPackageDefaults is supplied, the package exists, and the package identity is not a self-test target. It does not execute workflows or mark readiness evidence as passed."
 }
 
 $markdown = New-Object System.Collections.Generic.List[string]
@@ -243,6 +257,8 @@ $markdown.Add("Source worksheet CSV: $resolvedWorksheetCsvPath") | Out-Null
 $markdown.Add("Output CSV: $csvOutputPathResolved") | Out-Null
 $markdown.Add("Values check command: ``$valuesCheckCommand``") | Out-Null
 $markdown.Add("Handoff package defaults used: $handoffPackageDefaultsUsed") | Out-Null
+$markdown.Add("Handoff package defaults skipped: $handoffPackageDefaultsSkipped") | Out-Null
+$markdown.Add("Handoff package defaults skip reason: $handoffPackageDefaultsSkipReason") | Out-Null
 $markdown.Add("Handoff package default values: $handoffPackageDefaultValueCount") | Out-Null
 $markdown.Add("Handoff package path: $($report.handoffPackagePath)") | Out-Null
 $markdown.Add("") | Out-Null
