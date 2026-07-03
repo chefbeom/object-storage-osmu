@@ -103,6 +103,45 @@ Assert-Contains $markdown "Profile-filled values: 8" "markdown profile count"
 Assert-Contains $markdown "Override-filled values: 1" "markdown override count"
 Assert-Contains $markdown "Values check command:" "markdown values check command"
 
+$handoffPackagePath = Join-Path $resolvedOutputDirectory "handoff-package.json"
+$packageProfileCsvPath = Join-Path $resolvedOutputDirectory "package-profile.csv"
+$packageJsonOutputPath = Join-Path $resolvedOutputDirectory "package-profile.json"
+$packageMarkdownOutputPath = Join-Path $resolvedOutputDirectory "package-profile.md"
+[ordered]@{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    environmentName = "package-prod"
+    targetCluster = "package-cluster"
+    operatorName = "package-operator"
+} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $handoffPackagePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -WorksheetCsvPath $worksheetCsvPath `
+    -CsvOutputPath $packageProfileCsvPath `
+    -JsonOutputPath $packageJsonOutputPath `
+    -MarkdownOutputPath $packageMarkdownOutputPath `
+    -HandoffPackagePath $handoffPackagePath `
+    -UseHandoffPackageDefaults | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-operator-input-values-profile.ps1 package defaults fixture failed with exit code $LASTEXITCODE."
+}
+
+$packageReport = Read-Utf8Text $packageJsonOutputPath | ConvertFrom-Json
+$packageMarkdown = Read-Utf8Text $packageMarkdownOutputPath
+$packageRows = @(Import-Csv -LiteralPath $packageProfileCsvPath -Encoding UTF8)
+Assert-Equal $packageReport.handoffPackageDefaultsUsed $true "package defaults used"
+Assert-Equal $packageReport.handoffPackageDefaultValueCount 3 "package default value count"
+Assert-Equal $packageReport.profileFillCount 3 "package profile fill count"
+Assert-Equal $packageReport.filledValueCount 4 "package filled count"
+Assert-Equal $packageReport.blankValueCount 7 "package blank count"
+Assert-True (@($packageRows | Where-Object { $_.valueKey -eq "action-08.environment_name" -and $_.value -eq "package-prod" }).Count -eq 1) "expected package environment fill"
+Assert-True (@($packageRows | Where-Object { $_.valueKey -eq "action-08.target_cluster" -and $_.value -eq "package-cluster" }).Count -eq 1) "expected package cluster fill"
+Assert-True (@($packageRows | Where-Object { $_.valueKey -eq "action-08.operator" -and $_.value -eq "package-operator" }).Count -eq 1) "expected package operator fill"
+Assert-True (@($packageRows | Where-Object { $_.valueKey -eq "action-08.evidence_ref" -and $_.value -eq "" }).Count -eq 1) "expected package defaults not to fill evidence ref"
+Assert-Contains $packageMarkdown "Handoff package defaults used: True" "package markdown defaults used"
+Assert-Contains $packageMarkdown "Handoff package default values: 3" "package markdown default count"
+
+Write-Host "Operations operator input values profile package defaults verified."
+
 Write-Host "Operations operator input values profile verified."
 Write-Host "Profile report: $jsonOutputPath"
 Write-Host "Profile CSV: $profileCsvPath"

@@ -34,6 +34,11 @@ function Assert-Contains([string] $Text, [string] $Expected, [string] $Message) 
     }
 }
 
+function Assert-NotContains([string] $Text, [string] $Expected, [string] $Message) {
+    if ($Text.Contains($Expected)) {
+        throw "$Message. Unexpected '$Expected'."
+    }
+}
 function Write-JsonFixture([string] $PathValue, [object] $Value) {
     $directory = Split-Path -Parent $PathValue
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
@@ -528,9 +533,11 @@ Assert-Equal $blockedReport.operatorInputWorksheetCsvPath $blockedWorksheetCsvPa
 Assert-Equal $blockedReport.operatorInputValuesTemplatePath $blockedTemplatePath "blocked values template path"
 Assert-Equal $blockedReport.operatorInputValuesTemplateMarkdownPath $blockedTemplateMarkdownPath "blocked values template markdown path"
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand "write-operations-operator-input-values-profile.ps1" "blocked values profile command script"
-Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-EnvironmentName '<env>'" "blocked values profile environment placeholder"
-Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-ApprovedAt '<iso-approved>'" "blocked values profile approved-at placeholder"
+Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-UseHandoffPackageDefaults" "blocked values profile handoff package defaults flag"
+Assert-Contains $blockedReport.operatorInputValuesProfileCommand "-HandoffPackagePath .\.osmu-run\latest-operations-handoff-package.json" "blocked values profile handoff package path"
 Assert-Contains $blockedReport.operatorInputValuesProfileCommand $blockedWorksheetCsvPath "blocked values profile worksheet path"
+Assert-NotContains $blockedReport.operatorInputValuesProfileCommand "<env>" "blocked values profile no placeholder environment"
+Assert-NotContains $blockedReport.operatorInputValuesProfileCommand "<iso-approved>" "blocked values profile no placeholder approved-at"
 Assert-Contains $blockedReport.operatorInputValuesCheckCommand "-ValuesCsvPath" "blocked values check CSV command flag"
 Assert-Contains $blockedReport.operatorInputValuesCheckCommand $blockedValuesProfileCsvPath "blocked values check source CSV command path"
 Assert-Equal $blockedReport.operatorInputWorksheetInputRowCount 4 "blocked worksheet input row count"
@@ -571,7 +578,7 @@ Assert-Contains $blockedMarkdown "Worksheet report: $blockedWorksheetPath" "bloc
 Assert-Contains $blockedMarkdown "Worksheet CSV: $blockedWorksheetCsvPath" "blocked markdown worksheet csv path"
 Assert-Contains $blockedMarkdown "Values template JSON: $blockedTemplatePath" "blocked markdown values template path"
 Assert-Contains $blockedMarkdown "Values template Markdown: $blockedTemplateMarkdownPath" "blocked markdown values template markdown path"
-Assert-Contains $blockedMarkdown "Values profile command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-profile.ps1 -WorksheetCsvPath $blockedWorksheetCsvPath" "blocked markdown values profile command"
+Assert-Contains $blockedMarkdown "Values profile command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-profile.ps1 -WorksheetCsvPath $blockedWorksheetCsvPath -HandoffPackagePath .\.osmu-run\latest-operations-handoff-package.json -UseHandoffPackageDefaults``" "blocked markdown values profile command"
 Assert-Contains $blockedMarkdown "Values check command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1 -ValuesCsvPath $blockedValuesProfileCsvPath``" "blocked markdown values check source CSV command"
 Assert-Contains $blockedMarkdown "Expanded worksheet row delta: 2" "blocked markdown worksheet expansion delta"
 Assert-Contains $blockedMarkdown "Values check rows: 4" "blocked markdown values check rows"

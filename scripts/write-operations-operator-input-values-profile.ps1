@@ -4,6 +4,8 @@ param(
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-operator-input-values-profile.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-operator-input-values-profile.md",
     [string] $ValueOverridesJsonPath = "",
+    [string] $HandoffPackagePath = ".\.osmu-run\latest-operations-handoff-package.json",
+    [switch] $UseHandoffPackageDefaults,
     [string] $EnvironmentName = "",
     [string] $TargetCluster = "",
     [string] $Operator = "",
@@ -107,6 +109,25 @@ function Get-ProfileValue([object] $Row, [hashtable] $Overrides) {
     return [ordered]@{ value = ""; source = "" }
 }
 
+$handoffPackageDefaultsUsed = $false
+$handoffPackageDefaultValueCount = 0
+$resolvedHandoffPackagePath = if ([string]::IsNullOrWhiteSpace($HandoffPackagePath)) { "" } else { Resolve-ProjectPath $HandoffPackagePath }
+if ($UseHandoffPackageDefaults -and -not [string]::IsNullOrWhiteSpace($resolvedHandoffPackagePath) -and (Test-Path -LiteralPath $resolvedHandoffPackagePath)) {
+    $handoffPackage = Read-Utf8Text $resolvedHandoffPackagePath | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace($EnvironmentName)) {
+        $EnvironmentName = Get-Text $handoffPackage "environmentName"
+        if (-not [string]::IsNullOrWhiteSpace($EnvironmentName)) { $handoffPackageDefaultValueCount++ }
+    }
+    if ([string]::IsNullOrWhiteSpace($TargetCluster)) {
+        $TargetCluster = Get-Text $handoffPackage "targetCluster"
+        if (-not [string]::IsNullOrWhiteSpace($TargetCluster)) { $handoffPackageDefaultValueCount++ }
+    }
+    if ([string]::IsNullOrWhiteSpace($Operator)) {
+        $Operator = Get-Text $handoffPackage "operatorName"
+        if (-not [string]::IsNullOrWhiteSpace($Operator)) { $handoffPackageDefaultValueCount++ }
+    }
+    $handoffPackageDefaultsUsed = $handoffPackageDefaultValueCount -gt 0
+}
 $resolvedWorksheetCsvPath = Resolve-ProjectPath $WorksheetCsvPath
 if (-not (Test-Path -LiteralPath $resolvedWorksheetCsvPath)) {
     throw "Operator input worksheet CSV not found: $resolvedWorksheetCsvPath"
@@ -198,6 +219,9 @@ $report = [ordered]@{
     sourceWorksheetCsv = $resolvedWorksheetCsvPath
     outputCsvPath = $csvOutputPathResolved
     valueOverridesJsonPath = if ([string]::IsNullOrWhiteSpace($ValueOverridesJsonPath)) { "" } else { Resolve-ProjectPath $ValueOverridesJsonPath }
+    handoffPackagePath = if ($UseHandoffPackageDefaults) { $resolvedHandoffPackagePath } else { "" }
+    handoffPackageDefaultsUsed = [bool] $handoffPackageDefaultsUsed
+    handoffPackageDefaultValueCount = $handoffPackageDefaultValueCount
     rowCount = $rows.Count
     filledValueCount = $filledCount
     blankValueCount = $blankCount
@@ -207,7 +231,7 @@ $report = [ordered]@{
     overwrite = [bool] $Overwrite
     valuesCheckCommand = $valuesCheckCommand
     rows = @($summaryRows.ToArray())
-    decisionRule = "This profile writer only fills non-secret operator worksheet values supplied by the operator or an explicit override map. It does not execute workflows or mark readiness evidence as passed."
+    decisionRule = "This profile writer only fills non-secret operator worksheet values supplied by the operator, an explicit override map, or environment/cluster/operator labels from the operations handoff package when -UseHandoffPackageDefaults is supplied and the package exists. It does not execute workflows or mark readiness evidence as passed."
 }
 
 $markdown = New-Object System.Collections.Generic.List[string]
@@ -218,6 +242,9 @@ $markdown.Add("Result: $($report.result)") | Out-Null
 $markdown.Add("Source worksheet CSV: $resolvedWorksheetCsvPath") | Out-Null
 $markdown.Add("Output CSV: $csvOutputPathResolved") | Out-Null
 $markdown.Add("Values check command: ``$valuesCheckCommand``") | Out-Null
+$markdown.Add("Handoff package defaults used: $handoffPackageDefaultsUsed") | Out-Null
+$markdown.Add("Handoff package default values: $handoffPackageDefaultValueCount") | Out-Null
+$markdown.Add("Handoff package path: $($report.handoffPackagePath)") | Out-Null
 $markdown.Add("") | Out-Null
 $markdown.Add("## Summary") | Out-Null
 $markdown.Add("") | Out-Null
