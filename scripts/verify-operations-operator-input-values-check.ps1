@@ -50,6 +50,9 @@ $markdownOutputPath = Join-Path $resolvedOutputDirectory "input-values-check.md"
 $readyValuesTemplatePath = Join-Path $resolvedOutputDirectory "ready-input-values-template.json"
 $readyJsonOutputPath = Join-Path $resolvedOutputDirectory "ready-input-values-check.json"
 $readyMarkdownOutputPath = Join-Path $resolvedOutputDirectory "ready-input-values-check.md"
+$csvValuesPath = Join-Path $resolvedOutputDirectory "operator-values.csv"
+$csvJsonOutputPath = Join-Path $resolvedOutputDirectory "csv-input-values-check.json"
+$csvMarkdownOutputPath = Join-Path $resolvedOutputDirectory "csv-input-values-check.md"
 
 $baseEntries = @(
     [ordered]@{ valueKey = "action-02.backup_timestamp"; value = ""; actionOrder = 2; actionName = "Kubernetes DR finalizer live evidence"; workflowInput = "backup_timestamp"; placeholder = "<YYYYMMDDTHHMMSSZ>"; suggestedSource = "Target backup timestamp in UTC basic format." },
@@ -138,6 +141,32 @@ Assert-Equal $readyReport.actionSummaryCount 2 "ready action summary count"
 Assert-Equal $readyReport.valueReadyActionCount 2 "ready value-ready action count"
 Assert-Equal $readyReport.nonReadyActionCount 0 "ready non-ready action count"
 Assert-Contains $readyMarkdown "| ready | n/a | n/a | n/a | n/a | none |" "ready markdown non-ready empty row"
+@(
+    [pscustomobject][ordered]@{ valueKey = "action-02.backup_timestamp"; value = "20260702T010203Z" }
+    [pscustomobject][ordered]@{ valueKey = "action-02.api_base"; value = "https://restore.example.test" }
+    [pscustomobject][ordered]@{ valueKey = "action-08.observed_p95_query_latency_ms"; value = "42" }
+    [pscustomobject][ordered]@{ valueKey = "action-08.review_started_at"; value = "2026-07-02T01:02:03Z" }
+) | Export-Csv -LiteralPath $csvValuesPath -NoTypeInformation -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ValuesTemplatePath $valuesTemplatePath `
+    -ValuesCsvPath $csvValuesPath `
+    -JsonOutputPath $csvJsonOutputPath `
+    -MarkdownOutputPath $csvMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-operator-input-values-check.ps1 CSV overlay fixture failed with exit code $LASTEXITCODE."
+}
+
+$csvReport = Read-Utf8Text $csvJsonOutputPath | ConvertFrom-Json
+$csvMarkdown = Read-Utf8Text $csvMarkdownOutputPath
+Assert-Equal $csvReport.result "ready" "CSV overlay ready result"
+Assert-Equal $csvReport.csvValueCount 4 "CSV overlay value count"
+Assert-Equal $csvReport.readyValueCount 4 "CSV overlay ready value count"
+Assert-Equal $csvReport.missingValueCount 0 "CSV overlay missing value count"
+Assert-Equal $csvReport.unsafeValueCount 0 "CSV overlay unsafe value count"
+Assert-Equal $csvReport.invalidValueCount 0 "CSV overlay invalid value count"
+Assert-Contains $csvReport.sourceValuesCsv $csvValuesPath "CSV overlay source path"
+Assert-Contains $csvMarkdown "CSV values: 4" "CSV overlay markdown value count"
 
 Write-Host "Operations operator input values check verified."
 Write-Host "Action-required report: $jsonOutputPath"

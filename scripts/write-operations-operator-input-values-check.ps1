@@ -2,6 +2,7 @@ param(
     [string] $ValuesTemplatePath = ".\.osmu-run\latest-operations-operator-input-values-template.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-operator-input-values-check.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-operator-input-values-check.md",
+    [string] $ValuesCsvPath = "",
     [switch] $NoWrite
 )
 
@@ -48,6 +49,23 @@ function Get-ArrayValue([object] $Value) {
     if ($Value -is [System.Array]) { return @($Value) }
     if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) { return @($Value) }
     return @($Value)
+}
+function Read-ValuesCsv([string] $PathValue) {
+    if ([string]::IsNullOrWhiteSpace($PathValue)) { return [ordered]@{} }
+    $resolvedPath = Resolve-ProjectPath $PathValue
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        throw "Operator input values CSV not found: $resolvedPath"
+    }
+    $values = [ordered]@{}
+    foreach ($row in @(Import-Csv -LiteralPath $resolvedPath -Encoding UTF8)) {
+        $valueKey = Get-Text $row "valueKey"
+        if ([string]::IsNullOrWhiteSpace($valueKey)) { $valueKey = Get-Text $row "key" }
+        if ([string]::IsNullOrWhiteSpace($valueKey)) { continue }
+        $value = Get-Text $row "value"
+        if ([string]::IsNullOrWhiteSpace($value)) { continue }
+        $values[$valueKey] = $value
+    }
+    return $values
 }
 
 function Test-SafeInputValue([string] $Value) {
@@ -118,12 +136,16 @@ if ($template.formatVersion -ne "osmu.operations-operator-input-values-template.
 }
 
 $valueObject = Get-JsonProperty $template "values"
+$csvValues = Read-ValuesCsv $ValuesCsvPath
 $entries = New-Object System.Collections.Generic.List[object]
 foreach ($entry in @(Get-ArrayValue (Get-JsonProperty $template "entries"))) {
     $valueKey = Get-Text $entry "valueKey"
     $value = ""
     if (-not [string]::IsNullOrWhiteSpace($valueKey)) {
-        $value = Get-Text $valueObject $valueKey
+        $value = Get-Text $csvValues $valueKey
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            $value = Get-Text $valueObject $valueKey
+        }
         if ([string]::IsNullOrWhiteSpace($value)) {
             $value = Get-Text $entry "value"
         }
@@ -195,6 +217,8 @@ $report = [ordered]@{
     generatedAt = $generatedAt
     result = $result
     sourceValuesTemplate = $resolvedValuesTemplatePath
+    sourceValuesCsv = if ([string]::IsNullOrWhiteSpace($ValuesCsvPath)) { "" } else { Resolve-ProjectPath $ValuesCsvPath }
+    csvValueCount = $csvValues.Count
     sourceSummary = Get-Text $template "sourceSummary"
     selectedActionCount = Get-Int $template "selectedActionCount"
     valueCount = $entryArray.Count
@@ -216,6 +240,7 @@ $markdown.Add("") | Out-Null
 $markdown.Add("Generated at: $generatedAt") | Out-Null
 $markdown.Add("Result: $result") | Out-Null
 $markdown.Add("Source summary: $($report.sourceSummary)") | Out-Null
+$markdown.Add("CSV values: $($report.csvValueCount)") | Out-Null
 $markdown.Add("") | Out-Null
 $markdown.Add("## Summary") | Out-Null
 $markdown.Add("") | Out-Null

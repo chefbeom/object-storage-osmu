@@ -194,6 +194,7 @@ foreach ($action in @(Get-Array (Get-JsonProperty $unblock.json "actions"))) {
                 placeholder = $placeholder
                 parameter = Get-Text $input "parameter"
                 valueTemplate = Get-Text $input "valueTemplate"
+                value = ""
                 occurrenceCount = Get-Int $input "occurrenceCount"
                 ambiguousRepeatedPlaceholder = Get-Bool $input "ambiguousRepeatedPlaceholder"
                 suggestedSource = Get-SourceHint $placeholder $workflowInput
@@ -372,13 +373,13 @@ if ($requiredSecretArray.Count -eq 0) { $markdown.Add("- none") | Out-Null }
 $markdown.Add("") | Out-Null
 $markdown.Add("## Inputs") | Out-Null
 $markdown.Add("") | Out-Null
-$markdown.Add("| Action | Value key | Category | Workflow | Workflow input | Placeholder | Ambiguous | Suggested source |") | Out-Null
-$markdown.Add("| --- | --- | --- | --- | --- | --- | --- | --- |") | Out-Null
+$markdown.Add("| Action | Value key | Category | Workflow | Workflow input | Placeholder | Value | Ambiguous | Suggested source |") | Out-Null
+$markdown.Add("| --- | --- | --- | --- | --- | --- | --- | --- | --- |") | Out-Null
 foreach ($row in $rowArray) {
     $workflowInput = if ([string]::IsNullOrWhiteSpace($row.workflowInput)) { "n/a" } else { $row.workflowInput }
-    $markdown.Add("| $($row.actionOrder) | ``$($row.valueKey)`` | $($row.category) | $($row.workflow) | $workflowInput | ``$($row.placeholder)`` | $($row.ambiguousRepeatedPlaceholder) | $($row.suggestedSource) |") | Out-Null
+    $markdown.Add("| $($row.actionOrder) | ``$($row.valueKey)`` | $($row.category) | $($row.workflow) | $workflowInput | ``$($row.placeholder)`` |  | $($row.ambiguousRepeatedPlaceholder) | $($row.suggestedSource) |") | Out-Null
 }
-if ($rowArray.Count -eq 0) { $markdown.Add("| n/a | n/a | n/a | n/a | n/a | n/a | n/a | none |") | Out-Null }
+if ($rowArray.Count -eq 0) { $markdown.Add("| n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | none |") | Out-Null }
 $markdown.Add("") | Out-Null
 $markdown.Add("## Dispatch Availability") | Out-Null
 $markdown.Add("") | Out-Null
