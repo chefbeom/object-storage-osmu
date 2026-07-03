@@ -44,7 +44,7 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 - Operations evidence handoff latest verification: result=blocked, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19.
 - Operations evidence handoff input-free review: exists=true, result=blocked, actionOrders=1,2,5, selected=3, blocked=3, stale=false, scopeMismatch=false.
 - Operations evidence handoff browser dispatch checklist: count=0, actionOrders=none, workflows=none, runIdParameters=none.
-- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=false.
+- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
 - Operations readiness convergence input-free review: exists=true, result=blocked, actionOrders=1,2,5, selected=3, blocked=3, stale=false, scopeMismatch=false.
 - S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
 - 로컬 durable MVP demo는 Docker/MariaDB/MinIO/backend/frontend/Browser E2E/Dockerized MinIO Client 기준 `docker-durable-demo-verified` 상태다. 단, 현재 `.osmu-run/latest-durable-mvp-finalize.json`은 plan-only 실행으로 `result=planned`라서 최신 MVP completion report는 Docker-ready finalize 재실행 전까지 `pending`으로 남긴다.

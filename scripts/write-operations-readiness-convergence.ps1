@@ -183,6 +183,35 @@ function Get-Array([object] $Value) {
     }
     return @($Value)
 }
+
+function Get-TextListFromJsonArray([object] $Value) {
+    return @(Get-Array $Value | ForEach-Object { [string] $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Join-TextListPreview([string[]] $Values, [int] $Limit = 8) {
+    $items = @($Values | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($items.Count -eq 0) { return "none" }
+    $preview = @($items | Select-Object -First $Limit)
+    $suffix = if ($items.Count -gt $Limit) { ",..." } else { "" }
+    return ($preview -join ",") + $suffix
+}
+
+function New-OperatorInputValueActionSummary([object] $Action) {
+    return [ordered]@{
+        actionOrder = Get-Int $Action "actionOrder"
+        actionName = Get-Text $Action "actionName"
+        category = Get-Text $Action "category"
+        workflow = Get-Text $Action "workflow"
+        inputFree = Get-Bool $Action "inputFree"
+        status = Get-Text $Action "status"
+        valueCount = Get-Int $Action "valueCount"
+        readyValueCount = Get-Int $Action "readyValueCount"
+        missingValueCount = Get-Int $Action "missingValueCount"
+        unsafeValueCount = Get-Int $Action "unsafeValueCount"
+        invalidValueCount = Get-Int $Action "invalidValueCount"
+        nonReadyValueKeys = @(Get-TextListFromJsonArray (Get-JsonProperty $Action "nonReadyValueKeys"))
+    }
+}
 function Get-ReadyDispatchUrls([object] $HandoffReport) {
     $urls = New-Object System.Collections.Generic.List[string]
     $seen = @{}
@@ -428,6 +457,21 @@ $handoffInputFreeBlockedActions = @(Get-Array (Get-JsonProperty $handoff.json "i
         planCommand = Get-Text $_ "planCommand"
     }
 })
+$handoffOperatorInputValuesCheckResult = Get-Text $handoff.json "operatorInputValuesCheckResult"
+$handoffOperatorInputValuesCheckValueCount = Get-Int $handoff.json "operatorInputValuesCheckValueCount"
+$handoffOperatorInputValuesCheckReadyValueCount = Get-Int $handoff.json "operatorInputValuesCheckReadyValueCount"
+$handoffOperatorInputValuesCheckMissingValueCount = Get-Int $handoff.json "operatorInputValuesCheckMissingValueCount"
+$handoffOperatorInputValuesCheckUnsafeValueCount = Get-Int $handoff.json "operatorInputValuesCheckUnsafeValueCount"
+$handoffOperatorInputValuesCheckInvalidValueCount = Get-Int $handoff.json "operatorInputValuesCheckInvalidValueCount"
+$handoffOperatorInputValuesCheckValueReadyActionCount = Get-Int $handoff.json "operatorInputValuesCheckValueReadyActionCount"
+$handoffOperatorInputValuesCheckNonReadyActionCount = Get-Int $handoff.json "operatorInputValuesCheckNonReadyActionCount"
+$handoffOperatorInputValuesCheckActionSummaryCount = Get-Int $handoff.json "operatorInputValuesCheckActionSummaryCount"
+$handoffOperatorInputValuesCheckNonReadyActionOrders = @(Get-Array (Get-JsonProperty $handoff.json "operatorInputValuesCheckNonReadyActionOrders") | ForEach-Object { try { [int] $_ } catch { 0 } } | Where-Object { $_ -gt 0 })
+$handoffOperatorInputValuesCheckNonReadyActionOrdersText = if ($handoffOperatorInputValuesCheckNonReadyActionOrders.Count -gt 0) { $handoffOperatorInputValuesCheckNonReadyActionOrders -join "," } else { "none" }
+$handoffOperatorInputValuesCheckNonReadyActionSummaries = @(Get-Array (Get-JsonProperty $handoff.json "operatorInputValuesCheckNonReadyActionSummaries") | ForEach-Object { New-OperatorInputValueActionSummary $_ } | Where-Object { (Get-Int $_ "actionOrder") -gt 0 })
+if ($handoffOperatorInputValuesCheckActionSummaryCount -eq 0) {
+    $handoffOperatorInputValuesCheckActionSummaryCount = @(Get-Array (Get-JsonProperty $handoff.json "operatorInputValuesCheckActionSummaries")).Count
+}
 $handoffBrowserDispatchDependencyNote = Join-NoteParts $handoffBrowserDispatchDependencyNotes
 $nextStepNote = Join-NoteParts @((Get-Text $nextStep "note"), $handoffBrowserDispatchDependencyNote)
 $handoffWorkflowRunIdPlanQueryMode = Get-Text $handoff.json "workflowRunIdPlanQueryMode"
@@ -649,6 +693,17 @@ $report = [ordered]@{
     handoffInputFreeBlockedReviewReportScopeMismatch = $handoffInputFreeBlockedReviewReportScopeMismatch
     handoffInputFreeBlockedConfirmedPlanCommand = $handoffInputFreeBlockedConfirmedPlanCommand
     handoffInputFreeBlockedActions = @($handoffInputFreeBlockedActions)
+    handoffOperatorInputValuesCheckResult = $handoffOperatorInputValuesCheckResult
+    handoffOperatorInputValuesCheckValueCount = $handoffOperatorInputValuesCheckValueCount
+    handoffOperatorInputValuesCheckReadyValueCount = $handoffOperatorInputValuesCheckReadyValueCount
+    handoffOperatorInputValuesCheckMissingValueCount = $handoffOperatorInputValuesCheckMissingValueCount
+    handoffOperatorInputValuesCheckUnsafeValueCount = $handoffOperatorInputValuesCheckUnsafeValueCount
+    handoffOperatorInputValuesCheckInvalidValueCount = $handoffOperatorInputValuesCheckInvalidValueCount
+    handoffOperatorInputValuesCheckValueReadyActionCount = $handoffOperatorInputValuesCheckValueReadyActionCount
+    handoffOperatorInputValuesCheckNonReadyActionCount = $handoffOperatorInputValuesCheckNonReadyActionCount
+    handoffOperatorInputValuesCheckActionSummaryCount = $handoffOperatorInputValuesCheckActionSummaryCount
+    handoffOperatorInputValuesCheckNonReadyActionOrders = @($handoffOperatorInputValuesCheckNonReadyActionOrders)
+    handoffOperatorInputValuesCheckNonReadyActionSummaries = @($handoffOperatorInputValuesCheckNonReadyActionSummaries)
     handoffWorkflowRunIdPlanQueryMode = $handoffWorkflowRunIdPlanQueryMode
     handoffWorkflowRunIdPlanGithubApiTokenPresent = $handoffWorkflowRunIdPlanGithubApiTokenPresent
     handoffWorkflowRunIdPlanGithubApiUnauthenticated = $handoffWorkflowRunIdPlanGithubApiUnauthenticated
@@ -721,6 +776,8 @@ $markdownLines = @(
     "- Input-free review report stale: $handoffInputFreeBlockedReviewReportStale",
     "- Input-free review report scope mismatch: $handoffInputFreeBlockedReviewReportScopeMismatch",
     "- Input-free confirmed plan command: ``$handoffInputFreeBlockedConfirmedPlanCommand``",
+    "- Handoff operator input values: result=$handoffOperatorInputValuesCheckResult, values=$handoffOperatorInputValuesCheckValueCount, ready=$handoffOperatorInputValuesCheckReadyValueCount, missing=$handoffOperatorInputValuesCheckMissingValueCount, unsafe=$handoffOperatorInputValuesCheckUnsafeValueCount, invalid=$handoffOperatorInputValuesCheckInvalidValueCount, valueReadyActions=$handoffOperatorInputValuesCheckValueReadyActionCount, nonReadyActions=$handoffOperatorInputValuesCheckNonReadyActionCount",
+    "- Handoff operator input non-ready action orders: $handoffOperatorInputValuesCheckNonReadyActionOrdersText",
     "- Workflow run-id query mode: $($report.handoffWorkflowRunIdPlanQueryMode)",
     "- Workflow run-id GitHub API token present: $($report.handoffWorkflowRunIdPlanGithubApiTokenPresent)",
     "- Workflow run-id GitHub API unauthenticated: $($report.handoffWorkflowRunIdPlanGithubApiUnauthenticated)",
@@ -759,6 +816,13 @@ if ($handoffInputFreeBlockedActions.Count -gt 0) {
         $secretText = if (@($action.requiredSecrets).Count -gt 0) { @($action.requiredSecrets) -join "," } else { "none" }
         $reasonText = if (@($action.blockReasons).Count -gt 0) { @($action.blockReasons) -join "; " } else { "none" }
         $markdownLines += "- Action $($action.actionOrder): $($action.name); secrets=$secretText; operatorApproval=$($action.needsOperatorApprovalConfirmation); kubeconfig=$($action.needsKubeconfigSecretConfirmation); blockers=$reasonText; review=``$($action.reviewCommand)``; confirmedPlan=``$($action.confirmedPlanCommand)``"
+    }
+}
+if ($handoffOperatorInputValuesCheckNonReadyActionSummaries.Count -gt 0) {
+    $markdownLines += @("", "## Handoff Operator Input Non-Ready Actions", "")
+    foreach ($action in @($handoffOperatorInputValuesCheckNonReadyActionSummaries | Sort-Object { [int] $_.actionOrder })) {
+        $keyText = Join-TextListPreview @($action.nonReadyValueKeys)
+        $markdownLines += "- Action $($action.actionOrder): $($action.actionName); status=$($action.status); values=$($action.valueCount); ready=$($action.readyValueCount); missing=$($action.missingValueCount); unsafe=$($action.unsafeValueCount); invalid=$($action.invalidValueCount); inputFree=$($action.inputFree); workflow=$($action.workflow); nonReadyValueKeys=$keyText"
     }
 }
 if ($recommendedCommands.Count -eq 0) {

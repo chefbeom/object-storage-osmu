@@ -2075,6 +2075,12 @@
           {{ operationsEvidenceHandoffInputFreeReviewSummary }}
         </small>
         <small
+          v-if="operationsEvidenceHandoffOperatorInputSummary"
+          data-testid="readiness-evidence-handoff-operator-input-values"
+        >
+          {{ operationsEvidenceHandoffOperatorInputSummary }}
+        </small>
+        <small
           v-if="operationsEvidenceHandoffNextStep.note"
           data-testid="readiness-evidence-handoff-next-note"
         >
@@ -2113,6 +2119,21 @@
           </a>
         </div>
       </div>
+      <ol
+        v-if="operationsEvidenceHandoffOperatorInputNonReadyActions.length > 0"
+        class="readiness-evidence-plan-actions readiness-evidence-handoff-operator-input-actions"
+        data-testid="readiness-evidence-handoff-operator-input-actions"
+      >
+        <li
+          v-for="action in operationsEvidenceHandoffOperatorInputNonReadyActions"
+          :key="`handoff-operator-input-${action.actionOrder}-${action.workflow || action.actionName}`"
+        >
+          <span>
+            <strong>Input action {{ action.actionOrder || '?' }} - {{ action.actionName || action.workflow || 'operator input' }}</strong>
+            <small>{{ formatOperatorInputValueActionMeta(action) }}</small>
+          </span>
+        </li>
+      </ol>
       <ol
         v-if="operationsEvidenceHandoffBrowserDispatchChecklist.length > 0"
         class="readiness-evidence-plan-actions readiness-evidence-handoff-browser-checklist"
@@ -2278,6 +2299,12 @@
         >
           {{ operationsReadinessConvergenceInputFreeReviewSummary }}
         </small>
+        <small
+          v-if="operationsReadinessConvergenceOperatorInputSummary"
+          data-testid="readiness-convergence-operator-input-values"
+        >
+          {{ operationsReadinessConvergenceOperatorInputSummary }}
+        </small>
         <small v-if="operationsReadinessConvergence.kubernetesReportSyncConfigMapName">
           report sync {{ operationsReadinessConvergence.kubernetesReportSyncConfigMapName }} /
           {{ operationsReadinessConvergence.kubernetesReportSyncReady ? 'sync ready' : 'sync not-ready' }} /
@@ -2351,6 +2378,21 @@
           </button>
         </div>
       </div>
+      <ol
+        v-if="operationsReadinessConvergenceOperatorInputNonReadyActions.length > 0"
+        class="readiness-evidence-plan-actions readiness-convergence-operator-input-actions"
+        data-testid="readiness-convergence-operator-input-actions"
+      >
+        <li
+          v-for="action in operationsReadinessConvergenceOperatorInputNonReadyActions"
+          :key="`convergence-operator-input-${action.actionOrder}-${action.workflow || action.actionName}`"
+        >
+          <span>
+            <strong>Input action {{ action.actionOrder || '?' }} - {{ action.actionName || action.workflow || 'operator input' }}</strong>
+            <small>{{ formatOperatorInputValueActionMeta(action) }}</small>
+          </span>
+        </li>
+      </ol>
       <ol
         v-if="operationsReadinessConvergenceCommands.length > 0"
         class="readiness-evidence-plan-actions readiness-convergence-commands"
@@ -4786,6 +4828,26 @@ const operationsEvidenceHandoffRunIdQuerySummary = computed(() => {
   return `Run-id query ${mode || 'unknown'} / ${execution} / ${succeeded} of ${queried} rows OK / errors ${errors} / candidates ${candidates} / ${auth}`
 })
 
+const operationsEvidenceHandoffOperatorInputNonReadyActions = computed(() => {
+  const actions = operationsEvidenceHandoff.value?.operatorInputValuesCheckNonReadyActionSummaries
+  return Array.isArray(actions) ? actions : []
+})
+
+const operationsEvidenceHandoffOperatorInputSummary = computed(() => {
+  const handoff = operationsEvidenceHandoff.value || {}
+  const result = handoff.operatorInputValuesCheckResult || ''
+  const valueCount = Number(handoff.operatorInputValuesCheckValueCount || 0)
+  const readyValueCount = Number(handoff.operatorInputValuesCheckReadyValueCount || 0)
+  const missingValueCount = Number(handoff.operatorInputValuesCheckMissingValueCount || 0)
+  const unsafeValueCount = Number(handoff.operatorInputValuesCheckUnsafeValueCount || 0)
+  const invalidValueCount = Number(handoff.operatorInputValuesCheckInvalidValueCount || 0)
+  const valueReadyActionCount = Number(handoff.operatorInputValuesCheckValueReadyActionCount || 0)
+  const nonReadyActionCount = Number(handoff.operatorInputValuesCheckNonReadyActionCount || 0)
+  const orders = Array.isArray(handoff.operatorInputValuesCheckNonReadyActionOrders) ? handoff.operatorInputValuesCheckNonReadyActionOrders : []
+  if (!result && valueCount === 0 && readyValueCount === 0 && missingValueCount === 0 && unsafeValueCount === 0 && invalidValueCount === 0 && valueReadyActionCount === 0 && nonReadyActionCount === 0 && orders.length === 0) return ''
+  const orderText = orders.length > 0 ? orders.join(', ') : 'none'
+  return `Operator inputs ${result || 'unknown'} / values ${readyValueCount}/${valueCount} ready / missing ${missingValueCount} / unsafe ${unsafeValueCount} / invalid ${invalidValueCount} / value-ready actions ${valueReadyActionCount} / non-ready actions ${nonReadyActionCount} (${orderText})`
+})
 const operationsEvidenceHandoffInputFreeReviewSummary = computed(() => {
   const handoff = operationsEvidenceHandoff.value || {}
   const exists = Boolean(handoff.inputFreeBlockedReviewReportExists)
@@ -5683,6 +5745,26 @@ const operationsReadinessConvergenceRunIdQuerySummary = computed(() => {
   return `Run-id query ${mode || 'unknown'} / ${execution} / ${succeeded} of ${queried} rows OK / errors ${errors} / candidates ${candidates} / ${auth}`
 })
 
+const operationsReadinessConvergenceOperatorInputNonReadyActions = computed(() => {
+  const actions = operationsReadinessConvergence.value?.handoffOperatorInputValuesCheckNonReadyActionSummaries
+  return Array.isArray(actions) ? actions : []
+})
+
+const operationsReadinessConvergenceOperatorInputSummary = computed(() => {
+  const convergence = operationsReadinessConvergence.value || {}
+  const result = convergence.handoffOperatorInputValuesCheckResult || ''
+  const valueCount = Number(convergence.handoffOperatorInputValuesCheckValueCount || 0)
+  const readyValueCount = Number(convergence.handoffOperatorInputValuesCheckReadyValueCount || 0)
+  const missingValueCount = Number(convergence.handoffOperatorInputValuesCheckMissingValueCount || 0)
+  const unsafeValueCount = Number(convergence.handoffOperatorInputValuesCheckUnsafeValueCount || 0)
+  const invalidValueCount = Number(convergence.handoffOperatorInputValuesCheckInvalidValueCount || 0)
+  const valueReadyActionCount = Number(convergence.handoffOperatorInputValuesCheckValueReadyActionCount || 0)
+  const nonReadyActionCount = Number(convergence.handoffOperatorInputValuesCheckNonReadyActionCount || 0)
+  const orders = Array.isArray(convergence.handoffOperatorInputValuesCheckNonReadyActionOrders) ? convergence.handoffOperatorInputValuesCheckNonReadyActionOrders : []
+  if (!result && valueCount === 0 && readyValueCount === 0 && missingValueCount === 0 && unsafeValueCount === 0 && invalidValueCount === 0 && valueReadyActionCount === 0 && nonReadyActionCount === 0 && orders.length === 0) return ''
+  const orderText = orders.length > 0 ? orders.join(', ') : 'none'
+  return `Operator inputs ${result || 'unknown'} / values ${readyValueCount}/${valueCount} ready / missing ${missingValueCount} / unsafe ${unsafeValueCount} / invalid ${invalidValueCount} / value-ready actions ${valueReadyActionCount} / non-ready actions ${nonReadyActionCount} (${orderText})`
+})
 const operationsReadinessConvergenceInputFreeReviewSummary = computed(() => {
   const convergence = operationsReadinessConvergence.value || {}
   const exists = Boolean(convergence.handoffInputFreeBlockedReviewReportExists)
@@ -5968,6 +6050,21 @@ function formatEvidenceHandoffActionOrders(orders) {
   return `${orders.slice(0, 8).join(', ')}${suffix}`
 }
 
+function formatOperatorInputValueActionMeta(action) {
+  const counts = [
+    `values ${Number(action?.readyValueCount || 0)}/${Number(action?.valueCount || 0)} ready`,
+    `missing ${Number(action?.missingValueCount || 0)}`,
+    `unsafe ${Number(action?.unsafeValueCount || 0)}`,
+    `invalid ${Number(action?.invalidValueCount || 0)}`,
+  ]
+  const workflow = action?.workflow ? `workflow ${action.workflow}` : ''
+  const keys = Array.isArray(action?.nonReadyValueKeys) && action.nonReadyValueKeys.length > 0
+    ? `keys ${action.nonReadyValueKeys.slice(0, 6).join(', ')}${action.nonReadyValueKeys.length > 6 ? ', ...' : ''}`
+    : ''
+  return [action?.status || 'action-required', ...counts, workflow, keys]
+    .filter(Boolean)
+    .join(' / ')
+}
 function formatEvidenceHandoffDispatchWorkflowMeta(workflow) {
   const name = workflow?.name || workflow?.category || 'action detail unavailable'
   const inputs = Number(workflow?.missingInputCount || 0)

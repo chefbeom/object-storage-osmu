@@ -4796,6 +4796,24 @@
           "note": { "type": "string" }
         }
       },
+      "DashboardOperationsInputValueActionSummary": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "actionOrder": { "type": "integer" },
+          "actionName": { "type": "string" },
+          "category": { "type": "string" },
+          "workflow": { "type": "string" },
+          "inputFree": { "type": "boolean" },
+          "status": { "type": "string" },
+          "valueCount": { "type": "integer" },
+          "readyValueCount": { "type": "integer" },
+          "missingValueCount": { "type": "integer" },
+          "unsafeValueCount": { "type": "integer" },
+          "invalidValueCount": { "type": "integer" },
+          "nonReadyValueKeys": { "type": "array", "items": { "type": "string" } }
+        }
+      },
       "DashboardOperationsEvidenceHandoffResponse": {
         "type": "object",
         "additionalProperties": true,
@@ -4824,6 +4842,17 @@
           "inputFreeBlockedReviewReportActionOrders": { "type": "array", "items": { "type": "integer" } },
           "inputFreeBlockedReviewReportStale": { "type": "boolean" },
           "inputFreeBlockedReviewReportScopeMismatch": { "type": "boolean" },
+          "operatorInputValuesCheckResult": { "type": "string" },
+          "operatorInputValuesCheckValueCount": { "type": "integer" },
+          "operatorInputValuesCheckReadyValueCount": { "type": "integer" },
+          "operatorInputValuesCheckMissingValueCount": { "type": "integer" },
+          "operatorInputValuesCheckUnsafeValueCount": { "type": "integer" },
+          "operatorInputValuesCheckInvalidValueCount": { "type": "integer" },
+          "operatorInputValuesCheckValueReadyActionCount": { "type": "integer" },
+          "operatorInputValuesCheckNonReadyActionCount": { "type": "integer" },
+          "operatorInputValuesCheckActionSummaryCount": { "type": "integer" },
+          "operatorInputValuesCheckNonReadyActionOrders": { "type": "array", "items": { "type": "integer" } },
+          "operatorInputValuesCheckNonReadyActionSummaries": { "type": "array", "items": { "$ref": "#/components/schemas/DashboardOperationsInputValueActionSummary" } },
           "browserDispatchChecklistCount": { "type": "integer" },
           "missingWorkflowRunCount": { "type": "integer" },
           "missingRequiredArtifactCount": { "type": "integer" },
@@ -4865,6 +4894,17 @@
           "handoffInputFreeBlockedReviewReportActionOrders": { "type": "array", "items": { "type": "integer" } },
           "handoffInputFreeBlockedReviewReportStale": { "type": "boolean" },
           "handoffInputFreeBlockedReviewReportScopeMismatch": { "type": "boolean" },
+          "handoffOperatorInputValuesCheckResult": { "type": "string" },
+          "handoffOperatorInputValuesCheckValueCount": { "type": "integer" },
+          "handoffOperatorInputValuesCheckReadyValueCount": { "type": "integer" },
+          "handoffOperatorInputValuesCheckMissingValueCount": { "type": "integer" },
+          "handoffOperatorInputValuesCheckUnsafeValueCount": { "type": "integer" },
+          "handoffOperatorInputValuesCheckInvalidValueCount": { "type": "integer" },
+          "handoffOperatorInputValuesCheckValueReadyActionCount": { "type": "integer" },
+          "handoffOperatorInputValuesCheckNonReadyActionCount": { "type": "integer" },
+          "handoffOperatorInputValuesCheckActionSummaryCount": { "type": "integer" },
+          "handoffOperatorInputValuesCheckNonReadyActionOrders": { "type": "array", "items": { "type": "integer" } },
+          "handoffOperatorInputValuesCheckNonReadyActionSummaries": { "type": "array", "items": { "$ref": "#/components/schemas/DashboardOperationsInputValueActionSummary" } },
           "decisionRule": { "type": "string" },
           "safetyPolicy": { "type": "string" }
         }

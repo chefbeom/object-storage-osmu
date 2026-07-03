@@ -41,6 +41,27 @@ const SECURITY_FINALIZER_RUN_ID_HINTS = [
     supplementalForSecurityFinalizer: false,
   },
 ]
+const OPERATOR_INPUT_NON_READY_ACTIONS = [
+  {
+    actionOrder: 7,
+    actionName: 'Data-flow storage transition target evidence',
+    category: 'data-flow',
+    workflow: 'data-flow-storage-transition-ci.yml',
+    inputFree: false,
+    status: 'action-required',
+    valueCount: 4,
+    readyValueCount: 0,
+    missingValueCount: 4,
+    unsafeValueCount: 0,
+    invalidValueCount: 0,
+    nonReadyValueKeys: [
+      'action_7_environment_name',
+      'action_7_target_cluster',
+      'action_7_operator_name',
+      'action_7_storage_plan_evidence_ref',
+    ],
+  },
+]
 
 let state = createInitialState()
 
@@ -4168,6 +4189,17 @@ function readinessSummary() {
       inputFreeBlockedReviewReportActionOrders: [6],
       inputFreeBlockedReviewReportStale: false,
       inputFreeBlockedReviewReportScopeMismatch: false,
+      operatorInputValuesCheckResult: 'action-required',
+      operatorInputValuesCheckValueCount: 4,
+      operatorInputValuesCheckReadyValueCount: 0,
+      operatorInputValuesCheckMissingValueCount: 4,
+      operatorInputValuesCheckUnsafeValueCount: 0,
+      operatorInputValuesCheckInvalidValueCount: 0,
+      operatorInputValuesCheckValueReadyActionCount: 0,
+      operatorInputValuesCheckNonReadyActionCount: 1,
+      operatorInputValuesCheckActionSummaryCount: 1,
+      operatorInputValuesCheckNonReadyActionOrders: [7],
+      operatorInputValuesCheckNonReadyActionSummaries: OPERATOR_INPUT_NON_READY_ACTIONS,
       artifactCollectionStale: false,
       artifactCollectionScopeMismatch: false,
       staleReportCount: 0,
@@ -4378,6 +4410,17 @@ function readinessSummary() {
       handoffInputFreeBlockedReviewReportActionOrders: [6],
       handoffInputFreeBlockedReviewReportStale: false,
       handoffInputFreeBlockedReviewReportScopeMismatch: false,
+      handoffOperatorInputValuesCheckResult: 'action-required',
+      handoffOperatorInputValuesCheckValueCount: 4,
+      handoffOperatorInputValuesCheckReadyValueCount: 0,
+      handoffOperatorInputValuesCheckMissingValueCount: 4,
+      handoffOperatorInputValuesCheckUnsafeValueCount: 0,
+      handoffOperatorInputValuesCheckInvalidValueCount: 0,
+      handoffOperatorInputValuesCheckValueReadyActionCount: 0,
+      handoffOperatorInputValuesCheckNonReadyActionCount: 1,
+      handoffOperatorInputValuesCheckActionSummaryCount: 1,
+      handoffOperatorInputValuesCheckNonReadyActionOrders: [7],
+      handoffOperatorInputValuesCheckNonReadyActionSummaries: OPERATOR_INPUT_NON_READY_ACTIONS,
       missingWorkflowRunCount: 1,
       missingRequiredArtifactCount: 0,
       failedImportCount: 0,
@@ -5008,6 +5051,9 @@ async function runSelfTest() {
     if (readiness.data.operationsEvidenceHandoff?.postDispatchCommands?.length !== 5 || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[0].command.includes('-RunListJsonDirectory') || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[1].command.includes('-UseGitHubApi') || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[3].command.includes('-ContainerSecurityRunId <ContainerSecurityRunId>') || !readiness.data.operationsEvidenceHandoff.postDispatchCommands[4].command.includes('write-operations-artifact-collection-plan.ps1')) {
       throw new Error('readiness handoff post-dispatch command self-test failed')
     }
+    if (readiness.data.operationsEvidenceHandoff?.operatorInputValuesCheckMissingValueCount !== 4 || readiness.data.operationsEvidenceHandoff?.operatorInputValuesCheckNonReadyActionOrders?.[0] !== 7 || readiness.data.operationsEvidenceHandoff?.operatorInputValuesCheckNonReadyActionSummaries?.[0]?.nonReadyValueKeys?.length !== 4) {
+      throw new Error('readiness handoff operator input values self-test failed')
+    }
     const securityFinalizerInputs = readiness.data.operationsArtifactCollectionPlan?.securityEvidenceFinalizerInputs || []
     const imageSigningInput = securityFinalizerInputs.find((input) => input.name === 'ImageSigningRunId')
     const containerSecurityInput = securityFinalizerInputs.find((input) => input.name === 'ContainerSecurityRunId')
@@ -5031,6 +5077,9 @@ async function runSelfTest() {
     }
     if (readiness.data.operationsReadinessConvergence?.handoffPostDispatchCommands?.length !== 5 || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[0].command.includes('-RunListJsonDirectory') || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[1].command.includes('-UseGitHubApi') || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[3].command.includes('-ContainerSecurityRunId <ContainerSecurityRunId>') || !readiness.data.operationsReadinessConvergence.handoffPostDispatchCommands[4].command.includes('write-operations-artifact-collection-plan.ps1')) {
       throw new Error('readiness convergence post-dispatch command self-test failed')
+    }
+    if (readiness.data.operationsReadinessConvergence?.handoffOperatorInputValuesCheckMissingValueCount !== 4 || readiness.data.operationsReadinessConvergence?.handoffOperatorInputValuesCheckNonReadyActionOrders?.[0] !== 7 || readiness.data.operationsReadinessConvergence?.handoffOperatorInputValuesCheckNonReadyActionSummaries?.[0]?.workflow !== 'data-flow-storage-transition-ci.yml') {
+      throw new Error('readiness convergence operator input values self-test failed')
     }
     if (!readiness.data.items.some((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE')) {
       throw new Error('readiness convergence item self-test failed')

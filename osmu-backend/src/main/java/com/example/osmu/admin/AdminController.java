@@ -4756,6 +4756,30 @@ public class AdminController {
     private List<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> operationsEvidenceHandoffPostDispatchCommands(JsonNode handoffReport) {
         return operationsPostDispatchCommands(handoffReport, "postDispatchCommands");
     }
+
+    private List<DashboardOperationsInputValueActionSummaryResponse> operationsInputValueActionSummaries(JsonNode report, String fieldName) {
+        java.util.ArrayList<DashboardOperationsInputValueActionSummaryResponse> summaries = new java.util.ArrayList<>();
+        JsonNode summaryNodes = report.path(fieldName);
+        if (summaryNodes.isArray()) {
+            for (JsonNode summary : summaryNodes) {
+                summaries.add(new DashboardOperationsInputValueActionSummaryResponse(
+                        jsonInt(summary, "actionOrder"),
+                        jsonText(summary, "actionName"),
+                        jsonText(summary, "category"),
+                        jsonText(summary, "workflow"),
+                        jsonBoolean(summary, "inputFree"),
+                        jsonText(summary, "status"),
+                        jsonInt(summary, "valueCount"),
+                        jsonInt(summary, "readyValueCount"),
+                        jsonInt(summary, "missingValueCount"),
+                        jsonInt(summary, "unsafeValueCount"),
+                        jsonInt(summary, "invalidValueCount"),
+                        jsonTextList(summary, "nonReadyValueKeys")
+                ));
+            }
+        }
+        return List.copyOf(summaries);
+    }
     private DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoffSnapshot() {
         JsonNode handoffReport = readOptionalJsonReport(operationsEvidenceHandoffReportPath);
         if (handoffReport == null) {
@@ -4788,6 +4812,7 @@ public class AdminController {
             }
         }
         List<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> postDispatchCommands = operationsEvidenceHandoffPostDispatchCommands(handoffReport);
+        List<DashboardOperationsInputValueActionSummaryResponse> operatorInputValuesCheckNonReadyActionSummaries = operationsInputValueActionSummaries(handoffReport, "operatorInputValuesCheckNonReadyActionSummaries");
         JsonNode nextStep = handoffReport.path("nextStep");
         JsonNode currentBottleneck = handoffReport.path("currentBottleneck");
         if (currentBottleneck.isMissingNode() || currentBottleneck.isNull()) {
@@ -4852,6 +4877,17 @@ public class AdminController {
                 jsonIntList(handoffReport, "inputFreeBlockedReviewReportActionOrders"),
                 jsonBoolean(handoffReport, "inputFreeBlockedReviewReportStale"),
                 jsonBoolean(handoffReport, "inputFreeBlockedReviewReportScopeMismatch"),
+                jsonText(handoffReport, "operatorInputValuesCheckResult"),
+                jsonInt(handoffReport, "operatorInputValuesCheckValueCount"),
+                jsonInt(handoffReport, "operatorInputValuesCheckReadyValueCount"),
+                jsonInt(handoffReport, "operatorInputValuesCheckMissingValueCount"),
+                jsonInt(handoffReport, "operatorInputValuesCheckUnsafeValueCount"),
+                jsonInt(handoffReport, "operatorInputValuesCheckInvalidValueCount"),
+                jsonInt(handoffReport, "operatorInputValuesCheckValueReadyActionCount"),
+                jsonInt(handoffReport, "operatorInputValuesCheckNonReadyActionCount"),
+                jsonInt(handoffReport, "operatorInputValuesCheckActionSummaryCount"),
+                jsonIntList(handoffReport, "operatorInputValuesCheckNonReadyActionOrders"),
+                operatorInputValuesCheckNonReadyActionSummaries,
                 jsonBoolean(handoffReport, "artifactCollectionStale"),
                 jsonBoolean(handoffReport, "artifactCollectionScopeMismatch"),
                 readyDispatchWorkflows,
@@ -4946,6 +4982,7 @@ public class AdminController {
                 ));
             }
         }
+        List<DashboardOperationsInputValueActionSummaryResponse> handoffOperatorInputValuesCheckNonReadyActionSummaries = operationsInputValueActionSummaries(convergenceReport, "handoffOperatorInputValuesCheckNonReadyActionSummaries");
         return new DashboardOperationsReadinessConvergenceResponse(
                 jsonText(convergenceReport, "result"),
                 jsonText(convergenceReport, "generatedAt"),
@@ -5003,6 +5040,17 @@ public class AdminController {
                 jsonIntList(convergenceReport, "handoffInputFreeBlockedReviewReportActionOrders"),
                 jsonBoolean(convergenceReport, "handoffInputFreeBlockedReviewReportStale"),
                 jsonBoolean(convergenceReport, "handoffInputFreeBlockedReviewReportScopeMismatch"),
+                jsonText(convergenceReport, "handoffOperatorInputValuesCheckResult"),
+                jsonInt(convergenceReport, "handoffOperatorInputValuesCheckValueCount"),
+                jsonInt(convergenceReport, "handoffOperatorInputValuesCheckReadyValueCount"),
+                jsonInt(convergenceReport, "handoffOperatorInputValuesCheckMissingValueCount"),
+                jsonInt(convergenceReport, "handoffOperatorInputValuesCheckUnsafeValueCount"),
+                jsonInt(convergenceReport, "handoffOperatorInputValuesCheckInvalidValueCount"),
+                jsonInt(convergenceReport, "handoffOperatorInputValuesCheckValueReadyActionCount"),
+                jsonInt(convergenceReport, "handoffOperatorInputValuesCheckNonReadyActionCount"),
+                jsonInt(convergenceReport, "handoffOperatorInputValuesCheckActionSummaryCount"),
+                jsonIntList(convergenceReport, "handoffOperatorInputValuesCheckNonReadyActionOrders"),
+                handoffOperatorInputValuesCheckNonReadyActionSummaries,
                 jsonText(convergenceReport, "handoffWorkflowRunIdPlanQueryMode"),
                 jsonBoolean(convergenceReport, "handoffWorkflowRunIdPlanGithubApiTokenPresent"),
                 jsonBoolean(convergenceReport, "handoffWorkflowRunIdPlanGithubApiUnauthenticated"),
