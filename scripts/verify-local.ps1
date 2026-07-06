@@ -2,7 +2,8 @@ param(
     [switch] $SkipDocker,
     [switch] $SkipBackend,
     [switch] $SkipFrontend,
-    [string] $JavaHome = ""
+    [string] $JavaHome = "",
+    [string] $OperationsBranch = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -623,16 +624,20 @@ $operationsSelectedActionOrders = @(Get-OperationsSelectedActionOrders)
 $operationsActionOrderArgument = New-ActionOrderArgument $operationsSelectedActionOrders
 $operationsRunIdContext = Get-JsonFile ".osmu-run\latest-operations-workflow-run-ids.json"
 $operationsGitHubRepository = [string] (Get-JsonPropertyValue $operationsRunIdContext "githubRepository")
-$operationsBranch = [string] (Get-JsonPropertyValue $operationsRunIdContext "branch")
+$operationsBranchContext = [string] (Get-JsonPropertyValue $operationsRunIdContext "branch")
+if ([string]::IsNullOrWhiteSpace($OperationsBranch)) {
+    $OperationsBranch = $operationsBranchContext
+}
 $operationsImageSigningVersion = [string] (Get-JsonPropertyValue $operationsRunIdContext "imageSigningVersion")
 $operationsGitHubRepositoryArgument = New-RunArgument "GitHubRepository" $operationsGitHubRepository
-$operationsBranchArgument = New-RunArgument "Branch" $operationsBranch
+$operationsBranchArgument = New-RunArgument "Branch" $OperationsBranch
+$operationsGitHubRefArgument = New-RunArgument "GitHubRef" $OperationsBranch
 $operationsImageSigningVersionArgument = New-RunArgument "ImageSigningVersion" $operationsImageSigningVersion
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-plan.ps1$operationsGitHubRepositoryArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1$operationsActionOrderArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1"
-Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1$operationsActionOrderArgument -CheckGitHubCli -CheckGitRefSafety$operationsGitHubRepositoryArgument"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1$operationsActionOrderArgument -CheckGitHubCli -CheckGitRefSafety$operationsGitHubRepositoryArgument$operationsGitHubRefArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-worksheet.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-values-check.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1$operationsBranchArgument$operationsGitHubRepositoryArgument$operationsImageSigningVersionArgument"
