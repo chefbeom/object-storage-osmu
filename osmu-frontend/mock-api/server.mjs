@@ -4158,6 +4158,24 @@ function readinessSummary() {
       readinessCheckCount: 102,
       dispatchPreflightResult: 'action-required',
       dispatchGithubRepository: 'chefbeom/object-storage-osmu',
+      requiredGitHubSecretCount: 2,
+      requiredGitHubSecrets: ['KUBECONFIG_B64', 'GITHUB_TOKEN'],
+      requiredGitHubSecretSummaries: [
+        {
+          secretName: 'KUBECONFIG_B64',
+          actionCount: 1,
+          actionOrders: [1],
+          inputFreeBlockedActionCount: 1,
+          inputFreeBlockedActionOrders: [1],
+        },
+        {
+          secretName: 'GITHUB_TOKEN',
+          actionCount: 1,
+          actionOrders: [5],
+          inputFreeBlockedActionCount: 0,
+          inputFreeBlockedActionOrders: [],
+        },
+      ],
       readyDispatchTemplateCount: 1,
       blockedDispatchTemplateCount: 0,
       readyDispatchActionOrders: [6],
@@ -5058,6 +5076,9 @@ async function runSelfTest() {
     }
     if (readiness.data.operationsEvidenceHandoff?.currentBottleneck?.code !== 'dispatch-ready-subset-browser') {
       throw new Error('readiness handoff bottleneck self-test failed')
+    }
+    if (readiness.data.operationsEvidenceHandoff?.requiredGitHubSecretCount !== 2 || !readiness.data.operationsEvidenceHandoff?.requiredGitHubSecrets?.includes('KUBECONFIG_B64') || readiness.data.operationsEvidenceHandoff?.requiredGitHubSecretSummaries?.[0]?.inputFreeBlockedActionOrders?.[0] !== 1) {
+      throw new Error('readiness handoff required secret self-test failed')
     }
     if (readiness.data.operationsEvidenceHandoff?.browserDispatchChecklistCount !== 1 || readiness.data.operationsEvidenceHandoff?.browserDispatchChecklist?.[0]?.runIdParameter !== 'ContainerSecurityRunId' || !readiness.data.operationsEvidenceHandoff?.browserDispatchChecklist?.[0]?.dispatchUrl?.includes('container-security-ci.yml') || !readiness.data.operationsEvidenceHandoff?.browserDispatchChecklist?.[0]?.securityFinalizerDependencyNote?.includes('ImageSigningRunId') || !readiness.data.operationsEvidenceHandoff?.browserDispatchChecklist?.[0]?.securityFinalizerMissingRunIdInputs?.includes('ContainerSecurityRunId')) {
       throw new Error('readiness handoff browser dispatch checklist self-test failed')

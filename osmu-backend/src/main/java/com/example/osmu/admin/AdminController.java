@@ -4791,6 +4791,23 @@ public class AdminController {
         return List.copyOf(actions);
     }
 
+    private List<DashboardOperationsHandoffRequiredSecretSummaryResponse> operationsHandoffRequiredSecretSummaries(JsonNode handoffReport) {
+        java.util.ArrayList<DashboardOperationsHandoffRequiredSecretSummaryResponse> summaries = new java.util.ArrayList<>();
+        JsonNode summaryNodes = handoffReport.path("requiredGitHubSecretSummaries");
+        if (summaryNodes.isArray()) {
+            for (JsonNode summary : summaryNodes) {
+                summaries.add(new DashboardOperationsHandoffRequiredSecretSummaryResponse(
+                        jsonText(summary, "secretName"),
+                        jsonInt(summary, "actionCount"),
+                        jsonIntList(summary, "actionOrders"),
+                        jsonInt(summary, "inputFreeBlockedActionCount"),
+                        jsonIntList(summary, "inputFreeBlockedActionOrders")
+                ));
+            }
+        }
+        return List.copyOf(summaries);
+    }
+
     private List<DashboardOperationsInputValueActionSummaryResponse> operationsInputValueActionSummaries(JsonNode report, String fieldName) {
         java.util.ArrayList<DashboardOperationsInputValueActionSummaryResponse> summaries = new java.util.ArrayList<>();
         JsonNode summaryNodes = report.path(fieldName);
@@ -4847,6 +4864,7 @@ public class AdminController {
         }
         List<DashboardOperationsEvidenceHandoffPostDispatchCommandResponse> postDispatchCommands = operationsEvidenceHandoffPostDispatchCommands(handoffReport);
         List<DashboardOperationsHandoffInputFreeBlockedActionResponse> inputFreeBlockedActions = operationsHandoffInputFreeBlockedActions(handoffReport);
+        List<DashboardOperationsHandoffRequiredSecretSummaryResponse> requiredGitHubSecretSummaries = operationsHandoffRequiredSecretSummaries(handoffReport);
         List<DashboardOperationsInputValueActionSummaryResponse> operatorInputValuesCheckNonReadyActionSummaries = operationsInputValueActionSummaries(handoffReport, "operatorInputValuesCheckNonReadyActionSummaries");
         JsonNode nextStep = handoffReport.path("nextStep");
         JsonNode currentBottleneck = handoffReport.path("currentBottleneck");
@@ -4881,6 +4899,9 @@ public class AdminController {
                 jsonInt(handoffReport, "readinessCheckCount"),
                 jsonText(handoffReport, "dispatchPreflightResult"),
                 jsonText(handoffReport, "dispatchGithubRepository"),
+                jsonInt(handoffReport, "requiredGitHubSecretCount"),
+                jsonTextList(handoffReport, "requiredGitHubSecrets"),
+                requiredGitHubSecretSummaries,
                 jsonInt(handoffReport, "readyDispatchTemplateCount"),
                 jsonInt(handoffReport, "blockedDispatchTemplateCount"),
                 jsonIntList(handoffReport, "readyDispatchActionOrders"),

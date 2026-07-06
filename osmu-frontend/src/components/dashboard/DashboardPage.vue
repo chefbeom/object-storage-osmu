@@ -2069,6 +2069,12 @@
           {{ operationsEvidenceHandoffRunIdQuerySummary }}
         </small>
         <small
+          v-if="operationsEvidenceHandoffRequiredSecretsSummary"
+          data-testid="readiness-evidence-handoff-required-secrets"
+        >
+          {{ operationsEvidenceHandoffRequiredSecretsSummary }}
+        </small>
+        <small
           v-if="operationsEvidenceHandoffInputFreeReviewSummary"
           data-testid="readiness-evidence-handoff-input-free-review"
         >
@@ -4887,6 +4893,24 @@ const operationsEvidenceHandoffRunIdQuerySummary = computed(() => {
   const auth = handoff.workflowRunIdPlanGithubApiUnauthenticated ? 'unauthenticated' : 'authenticated'
   const execution = executed ? `executed ${executedCount} of ${queried}` : 'not executed'
   return `Run-id query ${mode || 'unknown'} / ${execution} / ${succeeded} of ${queried} rows OK / errors ${errors} / candidates ${candidates} / ${auth}`
+})
+
+const operationsEvidenceHandoffRequiredSecretsSummary = computed(() => {
+  const handoff = operationsEvidenceHandoff.value || {}
+  const secrets = Array.isArray(handoff.requiredGitHubSecrets) ? handoff.requiredGitHubSecrets : []
+  const summaries = Array.isArray(handoff.requiredGitHubSecretSummaries) ? handoff.requiredGitHubSecretSummaries : []
+  const count = Number(handoff.requiredGitHubSecretCount || secrets.length || 0)
+  if (count === 0 && secrets.length === 0 && summaries.length === 0) return ''
+  const secretText = secrets.length > 0 ? secrets.join(', ') : 'none'
+  const inputFreeSummaries = summaries.filter((summary) => Number(summary?.inputFreeBlockedActionCount || 0) > 0)
+  const inputFreeText = inputFreeSummaries.length > 0
+    ? inputFreeSummaries.map((summary) => {
+      const orders = Array.isArray(summary?.inputFreeBlockedActionOrders) ? summary.inputFreeBlockedActionOrders : []
+      const orderText = orders.length > 0 ? orders.join(', ') : 'none'
+      return `${summary?.secretName || 'unknown'} actions ${orderText}`
+    }).join('; ')
+    : 'none'
+  return `Required GitHub secrets ${count} (${secretText}) / input-free blockers ${inputFreeText}`
 })
 
 const operationsEvidenceHandoffOperatorInputNonReadyActions = computed(() => {

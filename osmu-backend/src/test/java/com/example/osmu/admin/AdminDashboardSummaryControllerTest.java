@@ -3117,6 +3117,35 @@ class AdminDashboardSummaryControllerTest {
                             "readinessCheckCount":  102,
                             "dispatchPreflightResult":  "action-required",
                             "dispatchGithubRepository":  "chefbeom/object-storage-osmu",
+                            "requiredGitHubSecretCount":  2,
+                            "requiredGitHubSecrets":  [
+                                                           "KUBECONFIG_B64",
+                                                           "GITHUB_TOKEN"
+                                                       ],
+                            "requiredGitHubSecretSummaries":  [
+                                                                    {
+                                                                        "secretName":  "KUBECONFIG_B64",
+                                                                        "actionCount":  1,
+                                                                        "actionOrders":  [
+                                                                                              1
+                                                                                          ],
+                                                                        "inputFreeBlockedActionCount":  1,
+                                                                        "inputFreeBlockedActionOrders":  [
+                                                                                                             1
+                                                                                                         ]
+                                                                    },
+                                                                    {
+                                                                        "secretName":  "GITHUB_TOKEN",
+                                                                        "actionCount":  1,
+                                                                        "actionOrders":  [
+                                                                                              5
+                                                                                          ],
+                                                                        "inputFreeBlockedActionCount":  0,
+                                                                        "inputFreeBlockedActionOrders":  [
+
+                                                                                                         ]
+                                                                    }
+                                                                ],
                             "readyDispatchTemplateCount":  1,
                             "blockedDispatchTemplateCount":  0,
                             "readyDispatchActionOrders":  [
@@ -4410,6 +4439,11 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.currentBottleneck.code").value("dispatch-ready-subset-browser"));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.currentBottleneck.dispatchUrls[0]").value("https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.dispatchGithubRepository").value("chefbeom/object-storage-osmu"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.requiredGitHubSecretCount").value(2));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.requiredGitHubSecrets[0]").value("KUBECONFIG_B64"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.requiredGitHubSecretSummaries[0].secretName").value("KUBECONFIG_B64"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.requiredGitHubSecretSummaries[0].inputFreeBlockedActionCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.requiredGitHubSecretSummaries[0].inputFreeBlockedActionOrders[0]").value(1));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.readyDispatchTemplateCount").value(1));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedDispatchTemplateCount").value(0));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.readinessSummary").value("passed=82 pending=20"));
