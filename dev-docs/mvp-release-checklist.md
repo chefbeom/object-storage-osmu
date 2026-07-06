@@ -33,7 +33,7 @@ This checklist turns the current prototype evidence into a repeatable MVP releas
 - Operations evidence handoff run-id query: mode=plan-only, executed=false, executedWorkflows=0, succeeded=19/19, errors=0, candidates=0.
 - Operations evidence handoff input-free review: exists=true, result=blocked, actionOrders=1,2,5, selected=3, blocked=3, stale=false, scopeMismatch=false.
 - Operations evidence handoff browser dispatch checklist: count=0, actionOrders=none, workflows=none, runIdParameters=none.
-- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
+- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=false.
 - Operations readiness convergence run-id query: mode=plan-only, executed=false, executedWorkflows=0, succeeded=19/19, errors=0, candidates=0.
 - Operations readiness convergence input-free review: exists=true, result=blocked, actionOrders=1,2,5, selected=3, blocked=3, stale=false, scopeMismatch=false.
 - Latest operations evidence plan: `.osmu-run/latest-operations-evidence-plan.json` and `.osmu-run/latest-operations-evidence-plan.md`
