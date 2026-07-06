@@ -4418,6 +4418,17 @@ function readinessSummary() {
       stageCount: 8,
       readyStageCount: 2,
       blockedActionCount: 0,
+      handoffRequiredGitHubSecretCount: 2,
+      handoffRequiredGitHubSecrets: ['KUBECONFIG_B64', 'GITHUB_TOKEN'],
+      handoffRequiredGitHubSecretSummaries: [
+        {
+          secretName: 'KUBECONFIG_B64',
+          actionCount: 1,
+          actionOrders: [1],
+          inputFreeBlockedActionCount: 1,
+          inputFreeBlockedActionOrders: [1],
+        },
+      ],
       handoffWorkflowRunIdPlanQueryMode: 'github-api',
       handoffWorkflowRunIdPlanGithubApiTokenPresent: false,
       handoffWorkflowRunIdPlanGithubApiUnauthenticated: true,
@@ -5109,6 +5120,9 @@ async function runSelfTest() {
     }
     if (readiness.data.operationsReadinessConvergence?.currentBottleneck?.code !== 'dispatch-ready-subset-browser' || !readiness.data.operationsReadinessConvergence?.currentBottleneck?.note?.includes('ImageSigningRunId') || !readiness.data.operationsReadinessConvergence?.handoffBrowserDispatchDependencyNotes?.[0]?.includes('security-evidence-finalizer-ci.yml')) {
       throw new Error('readiness convergence self-test failed')
+    }
+    if (readiness.data.operationsReadinessConvergence?.handoffRequiredGitHubSecretCount !== 2 || !readiness.data.operationsReadinessConvergence?.handoffRequiredGitHubSecrets?.includes('KUBECONFIG_B64') || readiness.data.operationsReadinessConvergence?.handoffRequiredGitHubSecretSummaries?.[0]?.inputFreeBlockedActionOrders?.[0] !== 1) {
+      throw new Error('readiness convergence required secret self-test failed')
     }
     const convergenceRunIdHints = readiness.data.operationsReadinessConvergence?.handoffSecurityEvidenceFinalizerRunIdInputHints || []
     const convergenceImageSigningRunIdHint = convergenceRunIdHints.find((hint) => hint.runIdParameter === 'ImageSigningRunId')

@@ -2350,6 +2350,12 @@
           {{ operationsReadinessConvergenceInputFreeReviewSummary }}
         </small>
         <small
+          v-if="operationsReadinessConvergenceRequiredSecretsSummary"
+          data-testid="readiness-convergence-required-secrets"
+        >
+          {{ operationsReadinessConvergenceRequiredSecretsSummary }}
+        </small>
+        <small
           v-if="operationsReadinessConvergenceOperatorInputSummary"
           data-testid="readiness-convergence-operator-input-values"
         >
@@ -5895,6 +5901,24 @@ const operationsReadinessConvergenceOperatorInputSummary = computed(() => {
   const orderText = orders.length > 0 ? orders.join(', ') : 'none'
   return `Operator inputs ${result || 'unknown'} / values ${readyValueCount}/${valueCount} ready / missing ${missingValueCount} / unsafe ${unsafeValueCount} / invalid ${invalidValueCount} / value-ready actions ${valueReadyActionCount} / non-ready actions ${nonReadyActionCount} (${orderText})`
 })
+const operationsReadinessConvergenceRequiredSecretsSummary = computed(() => {
+  const convergence = operationsReadinessConvergence.value || {}
+  const secrets = Array.isArray(convergence.handoffRequiredGitHubSecrets) ? convergence.handoffRequiredGitHubSecrets : []
+  const summaries = Array.isArray(convergence.handoffRequiredGitHubSecretSummaries) ? convergence.handoffRequiredGitHubSecretSummaries : []
+  const count = Number(convergence.handoffRequiredGitHubSecretCount || secrets.length || 0)
+  if (count === 0 && secrets.length === 0 && summaries.length === 0) return ''
+  const secretText = secrets.length > 0 ? secrets.join(', ') : 'none'
+  const inputFreeSummaries = summaries.filter((summary) => Number(summary?.inputFreeBlockedActionCount || 0) > 0)
+  const inputFreeText = inputFreeSummaries.length > 0
+    ? inputFreeSummaries.map((summary) => {
+      const orders = Array.isArray(summary?.inputFreeBlockedActionOrders) ? summary.inputFreeBlockedActionOrders : []
+      const orderText = orders.length > 0 ? orders.join(', ') : 'none'
+      return `${summary?.secretName || 'unknown'} actions ${orderText}`
+    }).join('; ')
+    : 'none'
+  return `Handoff required GitHub secrets ${count} (${secretText}) / input-free blockers ${inputFreeText}`
+})
+
 const operationsReadinessConvergenceInputFreeReviewSummary = computed(() => {
   const convergence = operationsReadinessConvergence.value || {}
   const exists = Boolean(convergence.handoffInputFreeBlockedReviewReportExists)

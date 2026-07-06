@@ -4791,9 +4791,9 @@ public class AdminController {
         return List.copyOf(actions);
     }
 
-    private List<DashboardOperationsHandoffRequiredSecretSummaryResponse> operationsHandoffRequiredSecretSummaries(JsonNode handoffReport) {
+    private List<DashboardOperationsHandoffRequiredSecretSummaryResponse> operationsRequiredSecretSummaries(JsonNode report, String fieldName) {
         java.util.ArrayList<DashboardOperationsHandoffRequiredSecretSummaryResponse> summaries = new java.util.ArrayList<>();
-        JsonNode summaryNodes = handoffReport.path("requiredGitHubSecretSummaries");
+        JsonNode summaryNodes = report.path(fieldName);
         if (summaryNodes.isArray()) {
             for (JsonNode summary : summaryNodes) {
                 summaries.add(new DashboardOperationsHandoffRequiredSecretSummaryResponse(
@@ -4806,6 +4806,10 @@ public class AdminController {
             }
         }
         return List.copyOf(summaries);
+    }
+
+    private List<DashboardOperationsHandoffRequiredSecretSummaryResponse> operationsHandoffRequiredSecretSummaries(JsonNode handoffReport) {
+        return operationsRequiredSecretSummaries(handoffReport, "requiredGitHubSecretSummaries");
     }
 
     private List<DashboardOperationsInputValueActionSummaryResponse> operationsInputValueActionSummaries(JsonNode report, String fieldName) {
@@ -5051,6 +5055,7 @@ public class AdminController {
                 ));
             }
         }
+        List<DashboardOperationsHandoffRequiredSecretSummaryResponse> handoffRequiredGitHubSecretSummaries = operationsRequiredSecretSummaries(convergenceReport, "handoffRequiredGitHubSecretSummaries");
         List<DashboardOperationsInputValueActionSummaryResponse> handoffOperatorInputValuesCheckNonReadyActionSummaries = operationsInputValueActionSummaries(convergenceReport, "handoffOperatorInputValuesCheckNonReadyActionSummaries");
         return new DashboardOperationsReadinessConvergenceResponse(
                 jsonText(convergenceReport, "result"),
@@ -5098,6 +5103,9 @@ public class AdminController {
                 jsonInt(convergenceReport, "stageCount"),
                 jsonInt(convergenceReport, "readyStageCount"),
                 jsonInt(convergenceReport, "blockedActionCount"),
+                jsonInt(convergenceReport, "handoffRequiredGitHubSecretCount"),
+                jsonTextList(convergenceReport, "handoffRequiredGitHubSecrets"),
+                handoffRequiredGitHubSecretSummaries,
                 jsonBoolean(convergenceReport, "handoffInputFreeBlockedReviewReportExists"),
                 jsonText(convergenceReport, "handoffInputFreeBlockedReviewReportResult"),
                 jsonText(convergenceReport, "handoffInputFreeBlockedReviewReportGeneratedAt"),

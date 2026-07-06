@@ -3498,6 +3498,24 @@ class AdminDashboardSummaryControllerTest {
                             "stageCount":  8,
                             "readyStageCount":  2,
                             "blockedActionCount":  0,
+                            "handoffRequiredGitHubSecretCount":  2,
+                            "handoffRequiredGitHubSecrets":  [
+                                                                 "KUBECONFIG_B64",
+                                                                 "GITHUB_TOKEN"
+                                                             ],
+                            "handoffRequiredGitHubSecretSummaries":  [
+                                                                          {
+                                                                              "secretName":  "KUBECONFIG_B64",
+                                                                              "actionCount":  1,
+                                                                              "actionOrders":  [
+                                                                                                    1
+                                                                                                ],
+                                                                              "inputFreeBlockedActionCount":  1,
+                                                                              "inputFreeBlockedActionOrders":  [
+                                                                                                                   1
+                                                                                                               ]
+                                                                          }
+                                                                      ],
                             "handoffWorkflowRunIdPlanQueryMode":  "github-api",
                             "handoffWorkflowRunIdPlanGithubApiTokenPresent":  false,
                             "handoffWorkflowRunIdPlanGithubApiUnauthenticated":  true,
@@ -4554,6 +4572,10 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffSecurityEvidenceFinalizerRunIdInputHints[0].supplementalForSecurityFinalizer").value(true));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffSecurityEvidenceFinalizerRunIdInputHints[1].runIdParameter").value("ContainerSecurityRunId"));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffSecurityEvidenceFinalizerRunIdInputHints[1].sourceSelected").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffRequiredGitHubSecretCount").value(2));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffRequiredGitHubSecrets[0]").value("KUBECONFIG_B64"));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffRequiredGitHubSecretSummaries[0].secretName").value("KUBECONFIG_B64"));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffRequiredGitHubSecretSummaries[0].inputFreeBlockedActionOrders[0]").value(1));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanQueryMode").value("github-api"));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanGithubApiTokenPresent").value(false));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanGithubApiUnauthenticated").value(true));

@@ -423,6 +423,19 @@ $nextCommand = Get-Text $nextStep "command"
 $nextStepDispatchUrls = if ($nextCode -like "dispatch-ready-subset*") { Get-ReadyDispatchUrls $handoff.json } else { @() }
 $handoffBrowserDispatchDependencyNotes = if ($nextCode -like "dispatch-ready-subset*") { Get-BrowserDispatchDependencyNotes $handoff.json } else { @() }
 $handoffSecurityEvidenceFinalizerRunIdInputHints = @(Get-Array (Get-JsonProperty $handoff.json "securityEvidenceFinalizerRunIdInputHints"))
+$handoffRequiredGitHubSecretCount = Get-Int $handoff.json "requiredGitHubSecretCount"
+$handoffRequiredGitHubSecrets = @(Get-Array (Get-JsonProperty $handoff.json "requiredGitHubSecrets") | ForEach-Object { [string] $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+if ($handoffRequiredGitHubSecretCount -eq 0) { $handoffRequiredGitHubSecretCount = $handoffRequiredGitHubSecrets.Count }
+$handoffRequiredGitHubSecretSummaries = @(Get-Array (Get-JsonProperty $handoff.json "requiredGitHubSecretSummaries") | ForEach-Object {
+    [ordered]@{
+        secretName = Get-Text $_ "secretName"
+        actionCount = Get-Int $_ "actionCount"
+        actionOrders = @(Get-Array (Get-JsonProperty $_ "actionOrders") | ForEach-Object { try { [int] $_ } catch { 0 } } | Where-Object { $_ -gt 0 })
+        inputFreeBlockedActionCount = Get-Int $_ "inputFreeBlockedActionCount"
+        inputFreeBlockedActionOrders = @(Get-Array (Get-JsonProperty $_ "inputFreeBlockedActionOrders") | ForEach-Object { try { [int] $_ } catch { 0 } } | Where-Object { $_ -gt 0 })
+    }
+} | Where-Object { -not [string]::IsNullOrWhiteSpace($_.secretName) })
+$handoffRequiredGitHubSecretsText = if ($handoffRequiredGitHubSecrets.Count -gt 0) { $handoffRequiredGitHubSecrets -join "," } else { "none" }
 $handoffInputFreeBlockedActionCount = Get-Int $handoff.json "inputFreeBlockedActionCount"
 $handoffInputFreeBlockedActionOrders = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedActionOrders") | ForEach-Object { try { [int] $_ } catch { 0 } } | Where-Object { $_ -gt 0 })
 $handoffInputFreeBlockedActionOrdersText = if ($handoffInputFreeBlockedActionOrders.Count -gt 0) { $handoffInputFreeBlockedActionOrders -join "," } else { "none" }
@@ -687,6 +700,9 @@ $report = [ordered]@{
     stageCount = Get-Int $handoff.json "stageCount"
     readyStageCount = Get-Int $handoff.json "readyStageCount"
     blockedActionCount = Get-Int $handoff.json "blockedActionCount"
+    handoffRequiredGitHubSecretCount = $handoffRequiredGitHubSecretCount
+    handoffRequiredGitHubSecrets = @($handoffRequiredGitHubSecrets)
+    handoffRequiredGitHubSecretSummaries = @($handoffRequiredGitHubSecretSummaries)
     handoffInputFreeBlockedActionCount = $handoffInputFreeBlockedActionCount
     handoffInputFreeBlockedActionOrders = @($handoffInputFreeBlockedActionOrders)
     handoffInputFreeBlockedReviewCommand = $handoffInputFreeBlockedReviewCommand
@@ -784,6 +800,7 @@ $markdownLines = @(
     "- Kubernetes report sync freshness reason: $($report.kubernetesReportSyncFreshnessReason)",
     "- Stages: $($report.readyStageCount)/$($report.stageCount) ready",
     "- Blocked actions: $($report.blockedActionCount)",
+    "- Handoff required GitHub secrets: count=$($report.handoffRequiredGitHubSecretCount), names=$handoffRequiredGitHubSecretsText",
     "- Input-free blocked actions: $($report.handoffInputFreeBlockedActionCount)",
     "- Input-free blocked action orders: $handoffInputFreeBlockedActionOrdersText",
     "- Input-free review command: ``$handoffInputFreeBlockedReviewCommand``",
@@ -833,6 +850,14 @@ if ($bottleneckDispatchUrls.Count -gt 0) {
             $dispatchLines +
             $markdownLines[($statusIndex - 1)..($markdownLines.Count - 1)]
         )
+    }
+}
+if ($handoffRequiredGitHubSecretSummaries.Count -gt 0) {
+    $markdownLines += @("", "## Handoff Required GitHub Secrets", "")
+    foreach ($summary in @($handoffRequiredGitHubSecretSummaries | Sort-Object { [string] $_.secretName })) {
+        $actionText = if (@($summary.actionOrders).Count -gt 0) { @($summary.actionOrders) -join "," } else { "none" }
+        $inputFreeText = if (@($summary.inputFreeBlockedActionOrders).Count -gt 0) { @($summary.inputFreeBlockedActionOrders) -join "," } else { "none" }
+        $markdownLines += "- $($summary.secretName): actions=$actionText; inputFreeBlockedActions=$inputFreeText; actionCount=$($summary.actionCount); inputFreeBlockedCount=$($summary.inputFreeBlockedActionCount)"
     }
 }
 if ($handoffInputFreeBlockedActions.Count -gt 0) {

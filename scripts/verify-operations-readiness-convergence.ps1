@@ -112,6 +112,12 @@ Write-JsonFixture $actionHandoffPath ([ordered]@{
     stageCount = 7
     readyStageCount = 5
     blockedActionCount = 0
+    requiredGitHubSecretCount = 2
+    requiredGitHubSecrets = @("OSMU_KUBECONFIG_BASE64", "GITHUB_TOKEN")
+    requiredGitHubSecretSummaries = @(
+        [ordered]@{ secretName = "OSMU_KUBECONFIG_BASE64"; actionCount = 1; actionOrders = @(1); inputFreeBlockedActionCount = 1; inputFreeBlockedActionOrders = @(1) },
+        [ordered]@{ secretName = "GITHUB_TOKEN"; actionCount = 1; actionOrders = @(5); inputFreeBlockedActionCount = 1; inputFreeBlockedActionOrders = @(5) }
+    )
     inputFreeBlockedActionCount = 2
     inputFreeBlockedActionOrders = @(1, 5)
     inputFreeBlockedReviewCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -NoWrite"
@@ -204,6 +210,11 @@ Assert-Equal $actionReport.currentBottleneck.code "run-operations-finalizer" "ac
 Assert-Equal $actionReport.stageCount 7 "action stage count"
 Assert-Equal $actionReport.readyStageCount 5 "action ready stage count"
 Assert-Equal $actionReport.handoffInputFreeBlockedActionCount 2 "action input-free blocked action count"
+Assert-Equal $actionReport.handoffRequiredGitHubSecretCount 2 "action required GitHub secret count"
+Assert-Equal (@($actionReport.handoffRequiredGitHubSecrets) -join ",") "OSMU_KUBECONFIG_BASE64,GITHUB_TOKEN" "action required GitHub secrets"
+Assert-Equal @($actionReport.handoffRequiredGitHubSecretSummaries).Count 2 "action required GitHub secret summary count"
+Assert-Equal @($actionReport.handoffRequiredGitHubSecretSummaries)[0].secretName "OSMU_KUBECONFIG_BASE64" "action required GitHub secret summary name"
+Assert-Equal (@(@($actionReport.handoffRequiredGitHubSecretSummaries)[0].inputFreeBlockedActionOrders) -join ",") "1" "action required GitHub secret input-free orders"
 Assert-Equal $actionReport.handoffWorkflowRunIdPlanQueryMode "github-api" "action run-id query mode"
 Assert-Equal $actionReport.handoffWorkflowRunIdPlanGithubApiTokenPresent $false "action run-id token present"
 Assert-Equal $actionReport.handoffWorkflowRunIdPlanGithubApiUnauthenticated $true "action run-id unauthenticated"
@@ -257,6 +268,8 @@ Assert-Contains $actionMarkdown "Input-free blocked action orders: 1,5" "action 
 Assert-Contains $actionMarkdown "Input-free review command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -NoWrite``" "action markdown input-free aggregate review command"
 Assert-Contains $actionMarkdown "Input-free review report command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -JsonOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.json -MarkdownOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.md``" "action markdown input-free aggregate review report command"
 Assert-Contains $actionMarkdown "Input-free confirmed plan command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -KubeconfigSecretConfirmed -ConfirmOperatorApproval``" "action markdown input-free aggregate confirmed plan command"
+Assert-Contains $actionMarkdown "Handoff required GitHub secrets: count=2" "action markdown required secrets summary"
+Assert-Contains $actionMarkdown "OSMU_KUBECONFIG_BASE64: actions=1; inputFreeBlockedActions=1" "action markdown required secret details"
 Assert-Contains $actionMarkdown "Handoff operator input values profile: exists=True, result=action-required, defaultsUsed=False, defaultsSkipped=True, defaultValues=0, filled=1, blank=3" "action markdown operator input values profile"
 Assert-Contains $actionMarkdown "Handoff operator input values profile skip reason: handoff package identity contains self-test marker" "action markdown operator input values profile skip reason"
 Assert-Contains $actionMarkdown "Handoff operator input values: result=action-required, values=4, ready=1, missing=3, unsafe=0, invalid=0, valueReadyActions=1, nonReadyActions=1" "action markdown operator input values summary"
