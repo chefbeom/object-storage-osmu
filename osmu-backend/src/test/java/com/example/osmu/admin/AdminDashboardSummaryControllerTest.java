@@ -2785,6 +2785,14 @@ class AdminDashboardSummaryControllerTest {
                             "branch":  "main",
                             "githubRepository":  "chefbeom/object-storage-osmu",
                             "queryMode":  "plan-only",
+                            "githubApiTokenPresent":  false,
+                            "githubApiUnauthenticated":  false,
+                            "queryExecuted":  false,
+                            "queryExecutedCount":  0,
+                            "queryWorkflowCount":  1,
+                            "querySucceededCount":  1,
+                            "queryErrorCount":  0,
+                            "candidateCount":  0,
                             "runListJsonDirectory":  ".\\\\.osmu-run\\\\workflow-run-lists",
                             "runListJsonDirectoryCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-workflow-run-id-plan.ps1 -RunListJsonDirectory .\\\\.osmu-run\\\\workflow-run-lists",
                             "githubApiRunListCommand":  "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1",
@@ -3961,6 +3969,14 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.securityEvidenceFinalizerMissingRunIdInputs").value(hasItems("ImageSigningRunId", "ContainerSecurityRunId")));
         readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.securityEvidenceFinalizerDependencyNote").value(containsString("ImageSigningRunId")));
         readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflowCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.githubApiTokenPresent").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.githubApiUnauthenticated").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.queryExecuted").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.queryExecutedCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.queryWorkflowCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.querySucceededCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.queryErrorCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.candidateCount").value(0));
         readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.missingWorkflowCount").value(1));
         readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.artifactCollectionPlanCommand").value(containsString("write-operations-artifact-collection-plan.ps1")));
         readiness.andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflows[0].workflow").value("container-security-ci.yml"));

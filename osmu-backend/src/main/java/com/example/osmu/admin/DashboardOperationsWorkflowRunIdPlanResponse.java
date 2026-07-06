@@ -17,6 +17,14 @@ public record DashboardOperationsWorkflowRunIdPlanResponse(
         String branch,
         String githubRepository,
         String queryMode,
+        boolean githubApiTokenPresent,
+        boolean githubApiUnauthenticated,
+        boolean queryExecuted,
+        int queryExecutedCount,
+        int queryWorkflowCount,
+        int querySucceededCount,
+        int queryErrorCount,
+        int candidateCount,
         String runListJsonDirectory,
         String runListJsonDirectoryCommand,
         String githubApiRunListCommand,
@@ -44,6 +52,6 @@ public record DashboardOperationsWorkflowRunIdPlanResponse(
         List<DashboardOperationsWorkflowRunResponse> workflows
 ) {
     public static DashboardOperationsWorkflowRunIdPlanResponse empty() {
-        return new DashboardOperationsWorkflowRunIdPlanResponse("", "", "", "", 0, 0, 0, 0, List.of(), "", "", "", "", "", "", "", "", "", List.of(), List.of(), List.of(), 0, 0, 0, 0, 0, "", "", "", false, List.of(), List.of(), List.of(), "", "", "", List.of());
+        return new DashboardOperationsWorkflowRunIdPlanResponse("", "", "", "", 0, 0, 0, 0, List.of(), "", "", "", false, false, false, 0, 0, 0, 0, 0, "", "", "", "", "", "", List.of(), List.of(), List.of(), 0, 0, 0, 0, 0, "", "", "", false, List.of(), List.of(), List.of(), "", "", "", List.of());
     }
 }

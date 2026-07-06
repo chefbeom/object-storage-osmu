@@ -4610,12 +4610,23 @@ const operationsWorkflowRunIdPlanWorkflows = computed(() => {
 
 const operationsWorkflowRunIdPlanSourceSummary = computed(() => {
   const plan = operationsWorkflowRunIdPlan.value || {}
+  const queryWorkflowCount = Number(plan.queryWorkflowCount || 0)
+  const queryExecutedCount = Number(plan.queryExecutedCount || 0)
+  const querySucceededCount = Number(plan.querySucceededCount || 0)
+  const queryErrorCount = Number(plan.queryErrorCount || 0)
+  const candidateCount = Number(plan.candidateCount || 0)
+  const queryAuth = plan.githubApiUnauthenticated ? 'api=unauthenticated' : (plan.githubApiTokenPresent ? 'api=token' : '')
   return [
     plan.invocationResult && `invocation=${plan.invocationResult}`,
     plan.sourceSummary && `summary=${plan.sourceSummary}`,
     formatOperationsSourceCounts(plan),
     plan.sourceInvocationReport && `source=${plan.sourceInvocationReport}`,
     plan.queryMode && `query=${plan.queryMode}`,
+    queryWorkflowCount > 0 && `queryRuns=${plan.queryExecuted ? 'executed' : 'planned'} ${queryExecutedCount}/${queryWorkflowCount}`,
+    queryWorkflowCount > 0 && `queryOk=${querySucceededCount}/${queryWorkflowCount}`,
+    queryErrorCount > 0 && `queryErrors=${queryErrorCount}`,
+    queryWorkflowCount > 0 && `candidates=${candidateCount}`,
+    queryAuth,
     plan.limit && `limit=${plan.limit}`,
   ].filter(Boolean).join(' / ')
 })

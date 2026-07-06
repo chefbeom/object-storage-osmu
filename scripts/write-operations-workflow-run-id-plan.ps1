@@ -928,6 +928,32 @@ $recommendedCommands = @(
 )
 
 $generatedAt = [DateTimeOffset]::Now.ToString("o")
+$queryWorkflowCount = @($workflowReports | Where-Object {
+    -not [string]::IsNullOrWhiteSpace([string] $_.queryMode) -or
+    $null -ne $_.querySucceeded -or
+    -not [string]::IsNullOrWhiteSpace([string] $_.queryError)
+}).Count
+if ($queryWorkflowCount -eq 0 -and -not [string]::IsNullOrWhiteSpace($queryMode)) {
+    $queryWorkflowCount = $workflowReports.Count
+}
+$querySucceededCount = @($workflowReports | Where-Object { [bool] $_.querySucceeded }).Count
+$queryErrorCount = @($workflowReports | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_.queryError) }).Count
+$candidateCount = 0
+foreach ($workflowReport in $workflowReports) {
+    try {
+        $candidateCount += [int] $workflowReport.candidateCount
+    } catch {
+        $candidateCount += 0
+    }
+}
+$queryExecutedCount = @($workflowReports | Where-Object {
+    $rowQueryMode = [string] $_.queryMode
+    -not [string]::IsNullOrWhiteSpace($rowQueryMode) -and -not "plan-only".Equals($rowQueryMode, [System.StringComparison]::OrdinalIgnoreCase)
+}).Count
+if ($queryExecutedCount -eq 0 -and -not [string]::IsNullOrWhiteSpace($queryMode) -and -not "plan-only".Equals($queryMode, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $queryExecutedCount = $queryWorkflowCount
+}
+$queryExecuted = $queryExecutedCount -gt 0
 $reportObject = [ordered]@{
     formatVersion = "osmu.operations-workflow-run-id-plan.v1"
     generatedAt = $generatedAt
@@ -947,6 +973,12 @@ $reportObject = [ordered]@{
     queryMode = $queryMode
     githubApiTokenPresent = [bool] $githubApiTokenPresent
     githubApiUnauthenticated = [bool] ($UseGitHubApi -and -not $githubApiTokenPresent)
+    queryExecuted = [bool] $queryExecuted
+    queryExecutedCount = $queryExecutedCount
+    queryWorkflowCount = $queryWorkflowCount
+    querySucceededCount = $querySucceededCount
+    queryErrorCount = $queryErrorCount
+    candidateCount = $candidateCount
     runListJsonDirectory = $runListJsonDirectoryForHandoff
     runListJsonDirectoryCommand = $runListJsonDirectoryCommand
     githubApiRunListCommand = $githubApiRunListCommand
@@ -1005,6 +1037,11 @@ $markdownLines = @(
     "- Missing successful runs: $($reportObject.missingWorkflowCount)",
     "- Stale successful runs: $($reportObject.staleWorkflowCount)",
     "- Workflow query errors: $($reportObject.workflowQueryErrorCount)",
+    "- Query executed: $($reportObject.queryExecuted)",
+    "- Query execution count: $($reportObject.queryExecutedCount)/$($reportObject.queryWorkflowCount)",
+    "- Query success count: $($reportObject.querySucceededCount)/$($reportObject.queryWorkflowCount)",
+    "- Query error count: $($reportObject.queryErrorCount)",
+    "- Candidate runs: $($reportObject.candidateCount)",
     "- Source action orders: $(if ($sourceActionOrders.Count -gt 0) { $sourceActionOrders -join ', ' } else { 'none' })",
     "- Selected action orders: $(if ($sourceActionOrders.Count -gt 0) { $sourceActionOrders -join ', ' } else { 'none' })",
     "- Commit SHA for security artifacts: $effectiveCommitSha",
