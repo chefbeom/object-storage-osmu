@@ -21,7 +21,7 @@ public record AccessKeyCredential(
         return "AccessKeyCredential["
                 + "id=" + id
                 + ", ownerId=" + ownerId
-                + ", accessKey=" + accessKey
+                + ", accessKey=<redacted>"
                 + ", secretKeyHash=<redacted>"
                 + ", secretKeyCiphertext=<redacted>"
                 + ", previousSecretKeyHash=<redacted>"

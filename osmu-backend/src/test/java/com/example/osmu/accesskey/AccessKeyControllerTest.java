@@ -376,14 +376,14 @@ class AccessKeyControllerTest {
         AccessKeyCredential credential = new AccessKeyCredential(900L, 1L, accessKey, "raw-secret-hash", "raw-secret-ciphertext", null, null, null, scopes, "ACTIVE", null);
 
         assertThat(response.toString())
-                .contains("secretKey=<redacted>")
-                .doesNotContain(rawSecret);
+                .contains("accessKey=<redacted>", "secretKey=<redacted>")
+                .doesNotContain(accessKey, rawSecret);
         assertThat(entity.toString())
-                .contains("secretKeyHash=<redacted>", "secretKeyCiphertext=<redacted>")
-                .doesNotContain("raw-secret-hash", "raw-secret-ciphertext");
+                .contains("accessKey=<redacted>", "secretKeyHash=<redacted>", "secretKeyCiphertext=<redacted>")
+                .doesNotContain(accessKey, "raw-secret-hash", "raw-secret-ciphertext");
         assertThat(credential.toString())
-                .contains("secretKeyHash=<redacted>", "secretKeyCiphertext=<redacted>")
-                .doesNotContain("raw-secret-hash", "raw-secret-ciphertext");
+                .contains("accessKey=<redacted>", "secretKeyHash=<redacted>", "secretKeyCiphertext=<redacted>")
+                .doesNotContain(accessKey, "raw-secret-hash", "raw-secret-ciphertext");
     }
 
     private void createUser(String adminToken, String loginId, String email) throws Exception {

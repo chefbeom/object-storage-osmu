@@ -18,7 +18,7 @@ public record CreateAccessKeyResponse(
         return "CreateAccessKeyResponse["
                 + "id=" + id
                 + ", name=" + name
-                + ", accessKey=" + accessKey
+                + ", accessKey=<redacted>"
                 + ", secretKey=<redacted>"
                 + ", policyName=" + policyName
                 + ", policyDocument=<omitted>"

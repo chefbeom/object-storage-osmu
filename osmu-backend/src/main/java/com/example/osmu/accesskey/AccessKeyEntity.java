@@ -28,7 +28,7 @@ public record AccessKeyEntity(
                 + "id=" + id
                 + ", ownerId=" + ownerId
                 + ", name=" + name
-                + ", accessKey=" + accessKey
+                + ", accessKey=<redacted>"
                 + ", secretKeyHash=<redacted>"
                 + ", secretKeyCiphertext=<redacted>"
                 + ", previousSecretKeyHash=<redacted>"
