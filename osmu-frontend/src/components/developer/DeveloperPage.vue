@@ -1,6 +1,14 @@
 <template>
   <section id="developer-workbench" class="management-grid lower" data-testid="developer-page">
-    <article class="panel developer-onboarding-panel" data-testid="developer-onboarding-panel">
+    <header class="workspace-page-header developer-workspace-header">
+      <div>
+        <p class="eyebrow">Developer</p>
+        <h2>Developer workspace</h2>
+        <small>Set up one connection step at a time, then select the client example you need.</small>
+      </div>
+      <WorkspaceSectionTabs v-model="activeDeveloperArea" :items="developerWorkspaceAreas" label="Developer workspace areas" />
+    </header>
+    <article v-if="activeDeveloperArea === 'start'" class="panel developer-onboarding-panel" data-testid="developer-onboarding-panel">
       <div class="panel-head">
         <div>
           <p class="eyebrow">Onboarding</p>
@@ -30,6 +38,7 @@
     </article>
 
     <AccessKeyPanel
+      v-if="activeDeveloperArea === 'credentials'"
       id="developer-access-keys"
       :access-key-form="accessKeyForm"
       :buckets="buckets"
@@ -45,7 +54,7 @@
       @bulk-disable-access-keys="$emit('bulk-disable-access-keys', $event)"
     />
 
-    <article class="panel developer-endpoint-panel" data-testid="developer-s3-endpoint-panel">
+    <article v-if="activeDeveloperArea === 'start'" class="panel developer-endpoint-panel" data-testid="developer-s3-endpoint-panel">
       <div class="panel-head">
         <div>
           <p class="eyebrow">S3 Compatible</p>
@@ -86,42 +95,47 @@
       </dl>
     </article>
 
-    <article class="panel developer-client-snippets-panel" data-testid="developer-client-snippets-panel">
+    <article v-if="activeDeveloperArea === 'examples'" class="panel developer-client-snippets-panel" data-testid="developer-client-snippets-panel">
       <div class="panel-head">
         <div>
           <p class="eyebrow">Client Setup</p>
           <h3>S3 클라이언트 예시</h3>
         </div>
       </div>
-      <div class="client-snippet-list">
-        <section>
+      <div class="developer-client-picker" role="tablist" aria-label="Client examples">
+        <button v-for="client in developerClientExamples" :key="client.id" type="button" :class="{ active: activeDeveloperClient === client.id }" @click="activeDeveloperClient = client.id">
+          {{ client.label }}
+        </button>
+      </div>
+      <div class="client-snippet-list client-snippet-single">
+        <section v-if="activeDeveloperClient === 'aws-cli'">
           <h4>AWS CLI</h4>
           <pre data-testid="developer-client-aws-cli"><code>{{ awsCliSnippet }}</code></pre>
         </section>
-        <section>
+        <section v-else-if="activeDeveloperClient === 's3fs'">
           <h4>s3fs-fuse</h4>
           <pre data-testid="developer-client-s3fs"><code>{{ s3fsSnippet }}</code></pre>
         </section>
-        <section>
+        <section v-else-if="activeDeveloperClient === 'goofys'">
           <h4>goofys</h4>
           <pre data-testid="developer-client-goofys"><code>{{ goofysSnippet }}</code></pre>
         </section>
-        <section>
+        <section v-else-if="activeDeveloperClient === 'javascript'">
           <h4>AWS SDK JavaScript</h4>
           <pre data-testid="developer-sdk-javascript"><code>{{ javascriptSdkSnippet }}</code></pre>
         </section>
-        <section>
+        <section v-else-if="activeDeveloperClient === 'python'">
           <h4>boto3 Python</h4>
           <pre data-testid="developer-sdk-python"><code>{{ pythonSdkSnippet }}</code></pre>
         </section>
-        <section>
+        <section v-else>
           <h4>AWS SDK Java</h4>
           <pre data-testid="developer-sdk-java"><code>{{ javaSdkSnippet }}</code></pre>
         </section>
       </div>
     </article>
 
-    <article class="panel developer-compatibility-panel" data-testid="developer-client-compatibility-panel">
+    <article v-if="activeDeveloperArea === 'compatibility'" class="panel developer-compatibility-panel" data-testid="developer-client-compatibility-panel">
       <div class="panel-head">
         <div>
           <p class="eyebrow">Compatibility</p>
@@ -155,7 +169,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import WorkspaceSectionTabs from '../common/WorkspaceSectionTabs.vue'
 import AccessKeyPanel from '../admin/AccessKeyPanel.vue'
 
 const props = defineProps({
@@ -178,6 +193,22 @@ defineEmits([
   'bulk-disable-access-keys',
 ])
 
+const activeDeveloperArea = ref('start')
+const activeDeveloperClient = ref('aws-cli')
+const developerWorkspaceAreas = [
+  { id: 'start', label: 'Start', hint: 'Endpoint and checklist' },
+  { id: 'credentials', label: 'Credentials', hint: 'Access keys' },
+  { id: 'examples', label: 'Examples', hint: 'One client at a time' },
+  { id: 'compatibility', label: 'Compatibility', hint: 'Client support' },
+]
+const developerClientExamples = [
+  { id: 'aws-cli', label: 'AWS CLI' },
+  { id: 's3fs', label: 's3fs' },
+  { id: 'goofys', label: 'goofys' },
+  { id: 'javascript', label: 'JavaScript' },
+  { id: 'python', label: 'Python' },
+  { id: 'java', label: 'Java' },
+]
 const virtualHostedLabel = computed(() => props.s3ClientConfig.virtualHostedStyleDomainSuffixes?.join(', ') || 'Enabled')
 const snippetEndpoint = computed(() => props.s3ClientConfig.endpoint || '<S3_ENDPOINT>')
 const snippetRegion = computed(() => props.s3ClientConfig.region || 'us-east-1')

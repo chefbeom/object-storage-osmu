@@ -6,7 +6,12 @@ import java.util.Optional;
 
 public interface UserRepository {
 
-    List<UserAccount> findAll();
+
+    List<UserAccount> findByIds(List<Long> userIds);
+
+    List<UserAccount> findPage(Long organizationId, String keyword, String status, Long cursorId, int limit);
+
+    List<Long> findIdsByOrganizationId(long organizationId);
 
     Optional<UserAccount> findById(long id);
 
@@ -17,6 +22,8 @@ public interface UserRepository {
     boolean existsByLoginId(String loginId);
 
     boolean existsByEmail(String email);
+
+    boolean existsByOrganizationId(long organizationId);
 
     long nextId();
 

@@ -1,6 +1,7 @@
 package com.example.osmu.storageexpansion;
 
 import com.example.osmu.auth.AuthenticatedUser;
+import com.example.osmu.common.api.ListResponse;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
 import com.example.osmu.storageexpansion.repository.StorageExpansionExecutionRepository;
@@ -38,6 +39,8 @@ public class StorageExpansionService {
     private static final int MAX_EXECUTION_OUTPUT_LENGTH = 16384;
     private static final int MAX_EXECUTION_URL_LENGTH = 1024;
     private static final int MAX_EXECUTION_NOTES_LENGTH = 1024;
+    private static final int DEFAULT_LIST_LIMIT = 50;
+    private static final int MAX_LIST_LIMIT = 200;
     private static final Set<String> STATUSES = Set.of("PLANNED", "APPROVED", "REJECTED", "APPLIED");
     private static final Set<String> EXECUTION_TYPES = Set.of("DRY_RUN", "GITOPS_PR", "HELM_DIFF", "KUBECTL_DIFF", "APPLY", "ROLLBACK");
     private static final Set<String> EXECUTION_RESULTS = Set.of("SUCCESS", "FAILED", "SKIPPED");
@@ -86,11 +89,28 @@ public class StorageExpansionService {
         this.executionLogRetentionBatchSize = clamp(executionLogRetentionBatchSize, 1, 1000);
     }
 
-    public List<StorageExpansionRequestResponse> list(AuthenticatedUser user) {
+    public ListResponse<StorageExpansionRequestResponse> list(
+            AuthenticatedUser user,
+            String status,
+            String cursor,
+            Integer limit
+    ) {
         requireAdmin(user);
-        return repository.findAll().stream()
+        int pageSize = normalizeListLimit(limit);
+        List<StorageExpansionRequestRecord> matchedRequests = repository.findPage(
+                normalizeListStatuses(status),
+                parseListCursor(cursor),
+                pageSize + 1
+        );
+        boolean hasNextPage = matchedRequests.size() > pageSize;
+        List<StorageExpansionRequestRecord> page = hasNextPage
+                ? matchedRequests.subList(0, pageSize)
+                : matchedRequests;
+        List<StorageExpansionRequestResponse> items = page.stream()
                 .map(StorageExpansionRequestResponse::of)
                 .toList();
+        String nextCursor = hasNextPage ? String.valueOf(page.get(page.size() - 1).id()) : null;
+        return ListResponse.of(items, nextCursor);
     }
 
     public StorageExpansionSummaryResponse summary(AuthenticatedUser user) {
@@ -603,12 +623,29 @@ public class StorageExpansionService {
         return StorageExpansionExecutionResponse.of(saved);
     }
 
-    public List<StorageExpansionExecutionResponse> listExecutions(AuthenticatedUser user, long requestId) {
+    public ListResponse<StorageExpansionExecutionResponse> listExecutions(
+            AuthenticatedUser user,
+            long requestId,
+            String cursor,
+            Integer limit
+    ) {
         requireAdmin(user);
         requireExistingRequest(requestId);
-        return executionRepository.findByRequestId(requestId).stream()
+        int pageSize = normalizeListLimit(limit);
+        List<StorageExpansionExecutionRecord> matchedExecutions = executionRepository.findPageByRequestId(
+                requestId,
+                parseListCursor(cursor),
+                pageSize + 1
+        );
+        boolean hasNextPage = matchedExecutions.size() > pageSize;
+        List<StorageExpansionExecutionRecord> page = hasNextPage
+                ? matchedExecutions.subList(0, pageSize)
+                : matchedExecutions;
+        List<StorageExpansionExecutionResponse> items = page.stream()
                 .map(StorageExpansionExecutionResponse::of)
                 .toList();
+        String nextCursor = hasNextPage ? String.valueOf(page.get(page.size() - 1).id()) : null;
+        return ListResponse.of(items, nextCursor);
     }
 
     public StorageExpansionExecutionResponse createExecution(
@@ -663,6 +700,45 @@ public class StorageExpansionService {
     private void requireAdmin(AuthenticatedUser user) {
         if (!user.isAdmin()) {
             throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Storage expansion management requires ADMIN role.");
+        }
+    }
+
+    private List<String> normalizeListStatuses(String status) {
+        String normalized = status == null ? "ALL" : status.trim().toUpperCase(Locale.ROOT);
+        if (normalized.isBlank() || "ALL".equals(normalized)) {
+            return List.of();
+        }
+        if ("OPEN".equals(normalized)) {
+            return List.of("PLANNED", "APPROVED");
+        }
+        if (!STATUSES.contains(normalized)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Storage expansion request status filter is invalid.");
+        }
+        return List.of(normalized);
+    }
+
+    private int normalizeListLimit(Integer limit) {
+        if (limit == null) {
+            return DEFAULT_LIST_LIMIT;
+        }
+        if (limit < 1 || limit > MAX_LIST_LIMIT) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Storage expansion page limit must be between 1 and 200.");
+        }
+        return limit;
+    }
+
+    private Long parseListCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            long parsed = Long.parseLong(cursor.trim());
+            if (parsed < 1) {
+                throw new NumberFormatException("cursor must be positive");
+            }
+            return parsed;
+        } catch (NumberFormatException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Storage expansion page cursor is invalid.");
         }
     }
 

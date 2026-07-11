@@ -6,16 +6,13 @@ import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.common.api.ApiResponse;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
-import com.example.osmu.object.ObjectShareLink;
-import com.example.osmu.object.ObjectShareLinkResponse;
+
 import com.example.osmu.object.ObjectSharePolicy;
 import com.example.osmu.object.ObjectSharePolicyRequest;
 import com.example.osmu.object.ObjectSharePolicyService;
 import com.example.osmu.object.repository.ObjectShareLinkRepository;
 import jakarta.servlet.http.HttpServletRequest;
-import java.time.OffsetDateTime;
-import java.util.Comparator;
-import java.util.List;
+
 import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -80,37 +77,9 @@ public class AdminObjectSharePolicyController {
         int normalizedLimit = normalizeLimit(limit);
         String normalizedBucketName = optionalBucketName(bucketName);
         String normalizedStatus = optionalStatus(status);
-        List<ObjectShareLink> links = shareLinkRepository.findAll().stream()
-                .filter(link -> normalizedBucketName.isBlank() || normalizedBucketName.equals(link.bucketName()))
-                .filter(link -> normalizedStatus.isBlank() || normalizedStatus.equals(link.status()))
-                .toList();
-        List<ObjectShareLinkResponse> recentLinks = links.stream()
-                .sorted(Comparator.comparing(ObjectShareLink::id).reversed())
-                .limit(normalizedLimit)
-                .map(link -> ObjectShareLinkResponse.of(link, null, null))
-                .toList();
-        return ApiResponse.of(new ObjectShareAnalyticsResponse(
-                links.size(),
-                countStatus(links, "ACTIVE"),
-                countStatus(links, "EXPIRED"),
-                countStatus(links, "REVOKED"),
-                countStatus(links, "LIMIT_REACHED"),
-                links.stream().filter(ObjectShareLink::passwordProtected).count(),
-                links.stream().filter(ObjectShareLink::ipRestricted).count(),
-                links.stream().mapToLong(ObjectShareLink::downloadCount).sum(),
-                links.stream()
-                        .map(ObjectShareLink::lastAccessedAt)
-                        .filter(value -> value != null)
-                        .max(OffsetDateTime::compareTo)
-                        .orElse(null),
-                recentLinks
+        return ApiResponse.of(ObjectShareAnalyticsResponse.of(
+                shareLinkRepository.analytics(normalizedBucketName, normalizedStatus, normalizedLimit)
         ));
-    }
-
-    private long countStatus(List<ObjectShareLink> links, String status) {
-        return links.stream()
-                .filter(link -> status.equals(link.status()))
-                .count();
     }
 
     private int normalizeLimit(int limit) {

@@ -41,8 +41,11 @@ public class AdminQuotaPolicyController {
     }
 
     @GetMapping
-    public ListResponse<QuotaPolicyResponse> list() {
-        return ListResponse.of(quotaPolicyService.list());
+    public ListResponse<QuotaPolicyResponse> list(
+            @RequestParam(name = "cursor", required = false) String cursor,
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        return quotaPolicyService.list(cursor, limit);
     }
 
     @GetMapping("/history")

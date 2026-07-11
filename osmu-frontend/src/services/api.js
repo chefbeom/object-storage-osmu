@@ -481,8 +481,12 @@ export function getStorageProfiles() {
   return request('/storage-profiles')
 }
 
-export function getStorageProfileRequests() {
-  return request('/storage-profile-requests')
+export function getStorageProfileRequests(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'bucketName', filters.bucketName)
+  appendQuery(query, 'cursor', filters.cursor)
+  appendQuery(query, 'limit', filters.limit || 50)
+  return request('/storage-profile-requests?' + query.toString())
 }
 
 export function getBucketStorageProfile(bucketName) {
@@ -1819,8 +1823,12 @@ export function getUsage() {
   return request('/admin/usage')
 }
 
-export function getQuotaPolicies() {
-  return request('/admin/quota-policies')
+export function getQuotaPolicies(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'cursor', filters.cursor)
+  appendQuery(query, 'limit', filters.limit)
+  const parameters = query.toString()
+  return request(parameters ? '/admin/quota-policies?' + parameters : '/admin/quota-policies')
 }
 
 export function getQuotaPolicyHistory(limit = 50) {
@@ -1845,12 +1853,55 @@ export function deleteQuotaPolicy(targetType, targetId, reason = '') {
   })
 }
 
-export function getStorageExpansionRequests() {
-  return request('/admin/storage-expansion/requests')
+export function getStorageExpansionRequests(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'status', filters.status || 'OPEN')
+  appendQuery(query, 'cursor', filters.cursor)
+  appendQuery(query, 'limit', filters.limit || 50)
+  return request(`/admin/storage-expansion/requests?${query.toString()}`)
 }
 
-export function getAdminStorageProfileRequests() {
-  return request('/admin/storage-profile-requests')
+export function getStorageLayoutCapabilities() {
+  return request('/admin/storage-layouts/capabilities')
+}
+
+export function getStorageLayoutPlans(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'status', filters.status || 'OPEN')
+  appendQuery(query, 'cursor', filters.cursor)
+  appendQuery(query, 'limit', filters.limit || 50)
+  return request('/admin/storage-layouts/plans?' + query.toString())
+}
+
+export function createStorageLayoutPlan(payload) {
+  return request('/admin/storage-layouts/plans', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function updateStorageLayoutPlanStatus(planId, status, adminNote = '') {
+  const body = { status }
+  if (adminNote) {
+    body.adminNote = adminNote
+  }
+  return request('/admin/storage-layouts/plans/' + encodeURIComponent(planId) + '/status', {
+    method: 'PATCH',
+    body,
+  })
+}
+
+export function simulateStorageLayoutPlan(planId) {
+  return request('/admin/storage-layouts/plans/' + encodeURIComponent(planId) + '/simulate', {
+    method: 'POST',
+  })
+}
+export function getAdminStorageProfileRequests(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'status', filters.status || 'OPEN')
+  appendQuery(query, 'cursor', filters.cursor)
+  appendQuery(query, 'limit', filters.limit || 50)
+  return request('/admin/storage-profile-requests?' + query.toString())
 }
 
 export function updateStorageProfileRequestStatus(requestId, status, adminNote = '') {
@@ -1864,9 +1915,10 @@ export function updateStorageProfileRequestStatus(requestId, status, adminNote =
   })
 }
 
-export function applyStorageProfileRequest(requestId) {
+export function applyStorageProfileRequest(requestId, storageLayoutPlanId) {
   return request(`/admin/storage-profile-requests/${encodeURIComponent(requestId)}/apply`, {
     method: 'POST',
+    body: { storageLayoutPlanId },
   })
 }
 
@@ -1950,8 +2002,11 @@ export function recordStorageExpansionGitOpsPrExecution(requestId, payload) {
   })
 }
 
-export function getStorageExpansionExecutions(requestId) {
-  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/executions`)
+export function getStorageExpansionExecutions(requestId, filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'cursor', filters.cursor)
+  appendQuery(query, 'limit', filters.limit || 50)
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/executions?${query.toString()}`)
 }
 
 export function createStorageExpansionExecutionRecord(requestId, payload) {
@@ -2044,8 +2099,13 @@ export function runObjectRetentionPurge() {
   })
 }
 
-export function getObjectLifecycleRules() {
-  return request('/admin/object-lifecycle/rules')
+export function getObjectLifecycleRules(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'status', filters.status || 'ALL')
+  appendQuery(query, 'targetType', filters.targetType || 'ALL')
+  appendQuery(query, 'cursor', filters.cursor)
+  appendQuery(query, 'limit', filters.limit || 50)
+  return request(`/admin/object-lifecycle/rules?${query.toString()}`)
 }
 
 export function getObjectLifecycleConflicts() {
@@ -2130,10 +2190,12 @@ export function getOrganizations() {
 }
 
 export function getTeams(filters = {}) {
-  const params = new URLSearchParams()
-  if (filters.organizationId) params.set('organizationId', filters.organizationId)
-  const query = params.toString()
-  return request(`/admin/teams${query ? `?${query}` : ''}`)
+  const query = new URLSearchParams()
+  appendQuery(query, 'organizationId', filters.organizationId)
+  appendQuery(query, 'limit', filters.limit)
+  appendQuery(query, 'cursor', filters.cursor)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/teams${suffix}`)
 }
 
 export function createTeam(payload) {

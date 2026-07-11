@@ -19,9 +19,14 @@ public class InMemoryStorageExpansionRequestRepository implements StorageExpansi
     private final ConcurrentMap<Long, StorageExpansionRequestRecord> requests = new ConcurrentHashMap<>();
 
     @Override
-    public List<StorageExpansionRequestRecord> findAll() {
+    public List<StorageExpansionRequestRecord> findPage(List<String> statuses, Long cursorId, int limit) {
+        java.util.Set<String> statusFilter = new java.util.HashSet<>(statuses == null ? List.of() : statuses);
+        statusFilter.remove(null);
         return requests.values().stream()
+                .filter(request -> statusFilter.isEmpty() || statusFilter.contains(request.status()))
+                .filter(request -> cursorId == null || request.id() < cursorId)
                 .sorted(Comparator.comparingLong(StorageExpansionRequestRecord::id).reversed())
+                .limit(limit)
                 .toList();
     }
 

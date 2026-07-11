@@ -1358,6 +1358,13 @@ function Read-ChargebackCloseoutEvidenceSnapshot([string] $Path) {
             integersValid = $false
             booleansValid = $false
             failureCountZero = $false
+            blockerCountZero = $false
+            scanLimitPositive = $false
+            sourceTruncated = $false
+            sourceComplete = $false
+            truncationBlockerCountZero = $false
+            closeoutReady = $false
+            readinessBooleansClosed = $false
             noRawDataStored = $false
             counts = [ordered]@{}
             rawDataFlags = [ordered]@{}
@@ -1449,6 +1456,9 @@ function Read-ChargebackCloseoutEvidenceSnapshot([string] $Path) {
         "paymentRequestedCount",
         "paymentHandoffCount",
         "paidInvoiceCount",
+        "scanLimit",
+        "truncationBlockerCount",
+        "blockerCount",
         "reconciliationDifferenceMinorUnits",
         "failureCount"
     )
@@ -1524,6 +1534,13 @@ function Read-ChargebackCloseoutEvidenceSnapshot([string] $Path) {
         integersValid = Get-PropertyBool $closeoutSnapshot "integersValid"
         booleansValid = Get-PropertyBool $closeoutSnapshot "booleansValid"
         failureCountZero = Get-PropertyBool $closeoutSnapshot "failureCountZero"
+        blockerCountZero = Get-PropertyBool $closeoutSnapshot "blockerCountZero"
+        scanLimitPositive = Get-PropertyBool $closeoutSnapshot "scanLimitPositive"
+        sourceTruncated = Get-PropertyBool $closeoutSnapshot "sourceTruncated"
+        sourceComplete = Get-PropertyBool $closeoutSnapshot "sourceComplete"
+        truncationBlockerCountZero = Get-PropertyBool $closeoutSnapshot "truncationBlockerCountZero"
+        closeoutReady = Get-PropertyBool $closeoutSnapshot "closeoutReady"
+        readinessBooleansClosed = Get-PropertyBool $closeoutSnapshot "readinessBooleansClosed"
         noRawDataStored = Get-PropertyBool $closeoutSnapshot "noRawDataStored"
         counts = $closeoutCountResult.values
         rawDataFlags = [ordered]@{
@@ -1562,7 +1579,7 @@ function Read-ChargebackCloseoutEvidenceSnapshot([string] $Path) {
     $snapshot["decisionRule"] = Get-PropertyText $payload "decisionRule"
     $snapshot["scopePolicy"] = Get-PropertyText $payload "scopePolicy"
     $snapshot["secretPolicy"] = Get-PropertyText $payload "secretPolicy"
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; billingPeriod=$($snapshot["billingPeriod"]); failures=$($snapshot["failureCount"]); planned=$($snapshot["plannedCount"]); reconciliationDifferenceMinorUnits=$($snapshot["reconciliationDifferenceMinorUnits"]); snapshotValid=$($snapshot["chargebackCloseoutSnapshot"]["valid"]); confirmationsValid=$($snapshot["confirmationsValid"]); noRawDataStored=$noRawDataStored"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; billingPeriod=$($snapshot["billingPeriod"]); failures=$($snapshot["failureCount"]); planned=$($snapshot["plannedCount"]); scanLimit=$($snapshot["chargebackCloseoutSnapshot"]["counts"]["scanLimit"]); sourceTruncated=$($snapshot["chargebackCloseoutSnapshot"]["sourceTruncated"]); truncationBlockers=$($snapshot["chargebackCloseoutSnapshot"]["counts"]["truncationBlockerCount"]); reconciliationDifferenceMinorUnits=$($snapshot["reconciliationDifferenceMinorUnits"]); snapshotValid=$($snapshot["chargebackCloseoutSnapshot"]["valid"]); confirmationsValid=$($snapshot["confirmationsValid"]); noRawDataStored=$noRawDataStored"
     return $snapshot
 }
 
@@ -2495,6 +2512,16 @@ $chargebackCloseoutSnapshotPassed = $chargebackCloseoutSnapshotValid `
     -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["statusClosed"] `
     -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["billingPeriodMatches"] `
     -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["failureCountZero"] `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["blockerCountZero"] `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["scanLimitPositive"] `
+    -and (-not [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["sourceTruncated"]) `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["sourceComplete"] `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["truncationBlockerCountZero"] `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["closeoutReady"] `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["readinessBooleansClosed"] `
+    -and ([int64] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["counts"]["scanLimit"]) -gt 0 `
+    -and ([int64] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["counts"]["blockerCount"]) -eq 0 `
+    -and ([int64] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["counts"]["truncationBlockerCount"]) -eq 0 `
     -and ([int64] $chargebackCloseoutSnapshot["failureCount"]) -eq 0 `
     -and ([int64] $chargebackCloseoutSnapshot["plannedCount"]) -eq 0 `
     -and ([int64] $chargebackCloseoutSnapshot["checkCount"]) -gt 0 `

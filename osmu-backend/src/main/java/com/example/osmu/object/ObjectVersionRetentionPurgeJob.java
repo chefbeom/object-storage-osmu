@@ -85,10 +85,10 @@ public class ObjectVersionRetentionPurgeJob {
                 purged++;
             }
         }
-        for (ObjectLifecycleRule rule : lifecycleRuleRepository.findAll()) {
-            if (rule.matchesTarget(ObjectLifecycleRule.TARGET_OBJECT_VERSION)) {
-                purged += purgeRule(now, rule);
-            }
+        for (ObjectLifecycleRule rule : lifecycleRuleRepository.findEnabledByTargetType(
+                ObjectLifecycleRule.TARGET_OBJECT_VERSION
+        )) {
+            purged += purgeRule(now, rule);
         }
         return purged;
     }

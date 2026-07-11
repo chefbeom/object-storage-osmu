@@ -107,10 +107,7 @@ public class LdapLoginService {
     }
 
     private Optional<UserAccount> findUserByEmail(String email) {
-        return userRepository.findByEmail(email)
-                .or(() -> userRepository.findAll().stream()
-                        .filter(user -> email.equalsIgnoreCase(user.email()))
-                        .findFirst());
+        return userRepository.findByEmail(email);
     }
 
     private String normalizedEmail(String email) {

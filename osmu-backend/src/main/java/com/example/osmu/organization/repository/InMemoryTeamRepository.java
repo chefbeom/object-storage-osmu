@@ -19,10 +19,23 @@ public class InMemoryTeamRepository implements TeamRepository {
     private final ConcurrentMap<Long, TeamRecord> teams = new ConcurrentHashMap<>();
     private final ConcurrentMap<Long, LinkedHashSet<Long>> membersByTeamId = new ConcurrentHashMap<>();
 
+
     @Override
-    public List<TeamRecord> findAll() {
+    public List<TeamRecord> findPage(Long organizationId, Long cursorId, int limit) {
         return teams.values().stream()
+                .filter(team -> organizationId == null || team.organizationId() == organizationId)
+                .filter(team -> cursorId == null || team.id() > cursorId)
                 .sorted(Comparator.comparingLong(TeamRecord::id))
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    public List<Long> findIdsByMember(long userId) {
+        return membersByTeamId.entrySet().stream()
+                .filter(entry -> entry.getValue().contains(userId))
+                .map(entry -> entry.getKey())
+                .sorted()
                 .toList();
     }
 
@@ -36,6 +49,12 @@ public class InMemoryTeamRepository implements TeamRepository {
         return teams.values().stream()
                 .anyMatch(team -> team.organizationId() == organizationId
                         && team.name().equalsIgnoreCase(name));
+    }
+
+    @Override
+    public boolean existsByOrganizationId(long organizationId) {
+        return teams.values().stream()
+                .anyMatch(team -> team.organizationId() == organizationId);
     }
 
     @Override
@@ -60,6 +79,21 @@ public class InMemoryTeamRepository implements TeamRepository {
         return membersByTeamId.getOrDefault(teamId, new LinkedHashSet<>()).stream()
                 .sorted()
                 .toList();
+    }
+
+    @Override
+    public java.util.Map<Long, List<Long>> findMemberIdsByTeamIds(List<Long> teamIds) {
+        java.util.Set<Long> ids = teamIds == null
+                ? java.util.Set.of()
+                : new java.util.HashSet<>(teamIds);
+        java.util.Map<Long, List<Long>> result = new java.util.LinkedHashMap<>();
+        ids.stream().sorted().forEach(teamId -> {
+            List<Long> memberIds = findMemberIds(teamId);
+            if (!memberIds.isEmpty()) {
+                result.put(teamId, memberIds);
+            }
+        });
+        return result;
     }
 
     @Override

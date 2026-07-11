@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
-import LoginView from '../views/LoginView.vue'
 import { useAuthStore } from '../stores/auth.js'
+
+const HomeView = () => import('../views/HomeView.vue')
+const LoginView = () => import('../views/LoginView.vue')
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -15,6 +16,12 @@ const router = createRouter({
       name: 'login',
       component: LoginView,
       meta: { public: true },
+    },
+    {
+      path: '/quick-start',
+      name: 'quick-start',
+      component: HomeView,
+      meta: { requiresAuth: true, roles: ['ADMIN', 'ORG_ADMIN', 'USER'] },
     },
     {
       path: '/dashboard',
@@ -51,6 +58,12 @@ const router = createRouter({
       name: 'audit',
       component: HomeView,
       meta: { requiresAuth: true, roles: ['ADMIN', 'AUDITOR'] },
+    },
+    {
+      path: '/dev-docs',
+      name: 'dev-docs',
+      component: HomeView,
+      meta: { requiresAuth: true },
     },
     {
       path: '/:pathMatch(.*)*',
@@ -92,7 +105,14 @@ router.beforeEach(async (to) => {
   }
 
   if (to.meta.roles && !to.meta.roles.includes(auth.state.user?.role)) {
-    return fallbackPathForRole(auth.state.user?.role)
+    const fallbackPath = fallbackPathForRole(auth.state.user?.role)
+    if (to.path.startsWith('/admin')) {
+      return {
+        path: fallbackPath,
+        query: { notice: 'admin-role-required' },
+      }
+    }
+    return fallbackPath
   }
 
   return true
@@ -121,7 +141,7 @@ function adminLandingPathForRole(role) {
 }
 
 function defaultLandingPathForRole(role) {
-  return role === 'USER' ? '/developer' : '/dashboard'
+  return role === 'USER' ? '/quick-start' : '/dashboard'
 }
 
 function fallbackPathForRole(role) {
@@ -134,7 +154,7 @@ function fallbackPathForRole(role) {
   if (role === 'AUDITOR') {
     return '/dashboard'
   }
-  return '/developer'
+  return '/quick-start'
 }
 
 export default router

@@ -459,6 +459,28 @@
         "tags": ["Users", "Admin"],
         "operationId": "getUsers",
         "summary": "List users visible to the administrator",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 200 }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
         "responses": {
           "200": { "$ref": "#/components/responses/JsonList" }
         }
@@ -485,6 +507,93 @@
         "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
         "responses": {
           "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/teams": {
+      "get": {
+        "tags": ["Organizations", "Teams", "Admin"],
+        "operationId": "getTeams",
+        "summary": "List a bounded team page visible to the administrator",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "tags": ["Organizations", "Teams", "Admin"],
+        "operationId": "createTeam",
+        "summary": "Create a team",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "201": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/teams/{teamId}/members": {
+      "put": {
+        "tags": ["Organizations", "Teams", "Admin"],
+        "operationId": "updateTeamMembers",
+        "summary": "Replace all members of a team",
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/teams/{teamId}": {
+      "delete": {
+        "tags": ["Organizations", "Teams", "Admin"],
+        "operationId": "deleteTeam",
+        "summary": "Delete a team and its TEAM bucket permissions",
+        "parameters": [
+          {
+            "name": "teamId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
         }
       }
     },
@@ -2192,7 +2301,108 @@
         }
       }
     },
-    "/api/storage-profiles": {
+    "/api/admin/storage-layouts/capabilities": {
+      "get": {
+        "tags": ["Storage Layout", "Admin"],
+        "operationId": "getStorageLayoutCapabilities",
+        "summary": "List Kubernetes PVC storage layout capabilities",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-layouts/plans": {
+      "get": {
+        "tags": ["Storage Layout", "Admin"],
+        "operationId": "getStorageLayoutPlans",
+        "summary": "List a bounded page of PVC storage layout plans",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["OPEN", "ALL", "PLANNED", "APPROVED", "REJECTED"], "default": "OPEN" }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "tags": ["Storage Layout", "Admin"],
+        "operationId": "createStorageLayoutPlan",
+        "summary": "Create a simulation-only Kubernetes PVC storage layout plan",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-layouts/plans/{planId}/status": {
+      "patch": {
+        "tags": ["Storage Layout", "Admin"],
+        "operationId": "updateStorageLayoutPlanStatus",
+        "summary": "Approve or reject a planned PVC storage layout",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-layouts/plans/{planId}/simulate": {
+      "post": {
+        "tags": ["Storage Layout", "Admin"],
+        "operationId": "simulateStorageLayoutPlan",
+        "summary": "Preview a PVC and MinIO pool layout without cluster mutation",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },    "/api/storage-profiles": {
       "get": {
         "tags": ["Storage Profile"],
         "operationId": "getStorageProfiles",
@@ -2207,10 +2417,33 @@
       "get": {
         "tags": ["Storage Profile"],
         "operationId": "getStorageProfileRequests",
-        "summary": "List Storage Profile requests visible to the current user",
+        "summary": "List a bounded page of Storage Profile requests visible to the current user",
+        "parameters": [
+          {
+            "name": "bucketName",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 63 }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          }
+        ],
         "responses": {
           "200": { "$ref": "#/components/responses/JsonList" },
-          "401": { "$ref": "#/components/responses/Error" }
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
         }
       }
     },
@@ -2252,9 +2485,34 @@
       "get": {
         "tags": ["Storage Profile", "Admin"],
         "operationId": "getAdminStorageProfileRequests",
-        "summary": "List all Storage Profile requests",
+        "summary": "List a bounded Storage Profile approval queue page",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["OPEN", "ALL", "PENDING", "APPROVED", "APPLIED", "REJECTED"],
+              "default": "OPEN"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          }
+        ],
         "responses": {
           "200": { "$ref": "#/components/responses/JsonList" },
+          "400": { "$ref": "#/components/responses/Error" },
           "401": { "$ref": "#/components/responses/Error" },
           "403": { "$ref": "#/components/responses/Error" }
         }
@@ -2298,6 +2556,24 @@
         ],
         "responses": {
           "200": { "$ref": "#/components/responses/JsonOk" },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["storageLayoutPlanId"],
+                "properties": {
+                  "storageLayoutPlanId": {
+                    "type": "integer",
+                    "format": "int64",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
           "400": { "$ref": "#/components/responses/Error" },
           "401": { "$ref": "#/components/responses/Error" },
           "403": { "$ref": "#/components/responses/Error" },
@@ -3842,6 +4118,20 @@
         "tags": ["Admin"],
         "operationId": "getQuotaPolicies",
         "summary": "List quota policies with current usage",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "description": "Opaque targetType/targetId continuation cursor" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          }
+        ],
         "responses": {
           "200": { "$ref": "#/components/responses/JsonList" }
         }
@@ -4099,7 +4389,33 @@
       "get": {
         "tags": ["Lifecycle", "Admin"],
         "operationId": "getObjectLifecycleRules",
-        "summary": "List object lifecycle rules",
+        "summary": "List object lifecycle rules with bounded filters and an opaque priority cursor",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["ALL", "ENABLED", "DISABLED"],
+              "default": "ALL"
+            }
+          },
+          {
+            "name": "targetType",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["ALL", "TRASH_OBJECT", "OBJECT_VERSION"],
+              "default": "ALL"
+            }
+          },
+          { "$ref": "#/components/parameters/CursorQuery" },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          }
+        ],
         "responses": {
           "200": { "$ref": "#/components/responses/JsonList" }
         }
@@ -4129,16 +4445,16 @@
       "get": {
         "tags": ["Lifecycle", "Admin"],
         "operationId": "getObjectLifecycleS3Xml",
-        "summary": "Export lifecycle rules as S3 XML",
+        "summary": "Export the complete lifecycle rule snapshot as S3 XML in a JSON response",
         "responses": {
-          "200": { "$ref": "#/components/responses/XmlOk" }
+          "200": { "$ref": "#/components/responses/JsonOk" }
         }
       },
       "post": {
         "tags": ["Lifecycle", "Admin"],
         "operationId": "importObjectLifecycleS3Xml",
         "summary": "Import lifecycle rules from S3 XML",
-        "requestBody": { "$ref": "#/components/requestBodies/XmlOnly" },
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
         "responses": {
           "200": { "$ref": "#/components/responses/JsonOk" }
         }

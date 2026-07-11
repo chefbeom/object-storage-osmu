@@ -121,6 +121,8 @@ function createInitialState() {
     storageProfileAssignments: new Map(),
     storageProfileRequests: [],
     storageProfileRequestSequence: 1,
+    storageLayoutPlans: [],
+    storageLayoutPlanSequence: 1,
     storageExpansionRequests: [],
     storageExpansionExecutions: [],
     storageExpansionRequestSequence: 1,
@@ -1010,6 +1012,88 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData({ status: 'MOCK', ready: false, enabledRunnerCount: 0, failedCheckCount: 0, checks: [] }))
     return
   }
+  if (request.method === 'GET' && path === '/admin/storage-layouts/capabilities') {
+    sendJson(response, 200, apiData(storageLayoutCapabilities()))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/storage-layouts/plans') {
+    sendJson(response, 200, apiItems(state.storageLayoutPlans))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/storage-layouts/plans') {
+    const layout = storageLayoutCapabilities().find((item) => item.code === String(jsonBody.layoutCode || '').toUpperCase())
+    const serverCount = Number(jsonBody.serverCount || 4)
+    const volumesPerServer = Number(jsonBody.volumesPerServer || 1)
+    const pvcCount = serverCount * volumesPerServer
+    if (!layout || pvcCount < layout.minimumPvcCount || (layout.requiresEvenPvcCount && pvcCount % 2 !== 0)) {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Invalid storage layout topology.' } })
+      return
+    }
+    const now = new Date().toISOString()
+    const id = state.storageLayoutPlanSequence++
+    const plan = storageLayoutPlanResponse({
+      id,
+      layout,
+      storageClassName: jsonBody.storageClassName || 'osmu-storage',
+      serverCount,
+      volumesPerServer,
+      volumeSizeGiB: Number(jsonBody.volumeSizeGiB || 1024),
+      status: 'PLANNED',
+      reason: jsonBody.reason || '',
+      createdBy: 'admin',
+      approvedBy: null,
+      approvedAt: null,
+      simulatedBy: null,
+      simulatedAt: null,
+      adminNote: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    state.storageLayoutPlans.unshift(plan)
+    sendJson(response, 200, apiData(plan))
+    return
+  }
+  const layoutStatusMatch = /^\/admin\/storage-layouts\/plans\/(\d+)\/status$/.exec(path)
+  if (layoutStatusMatch && request.method === 'PATCH') {
+    const plan = findStorageLayoutPlan(Number(layoutStatusMatch[1]))
+    const status = String(jsonBody.status || '').toUpperCase()
+    if (!plan || plan.status !== 'PLANNED' || !['APPROVED', 'REJECTED'].includes(status)) {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Invalid storage layout status transition.' } })
+      return
+    }
+    if (status === 'APPROVED' && !plan.simulatedAt) {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Storage layout plan must complete simulation before approval.' } })
+      return
+    }
+    const now = new Date().toISOString()
+    Object.assign(plan, {
+      status,
+      approvedBy: status === 'APPROVED' ? 'admin' : null,
+      approvedAt: status === 'APPROVED' ? now : null,
+      adminNote: jsonBody.adminNote || '',
+      updatedAt: now,
+    })
+    sendJson(response, 200, apiData(plan))
+    return
+  }
+  const layoutSimulateMatch = /^\/admin\/storage-layouts\/plans\/(\d+)\/simulate$/.exec(path)
+  if (layoutSimulateMatch && request.method === 'POST') {
+    const plan = findStorageLayoutPlan(Number(layoutSimulateMatch[1]))
+    if (!plan || plan.status === 'REJECTED') {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Storage layout plan cannot be simulated.' } })
+      return
+    }
+    plan.simulatedBy = 'admin'
+    plan.simulatedAt = new Date().toISOString()
+    plan.updatedAt = plan.simulatedAt
+    sendJson(response, 200, apiData({
+      plan,
+      mode: 'DEVELOPMENT_SIMULATION',
+      manifestPreview: storageLayoutManifest(plan),
+      message: 'No Kubernetes resources were created.',
+    }))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/storage-profile-requests') {
     sendJson(response, 200, apiItems(state.storageProfileRequests))
     return
@@ -1048,10 +1132,22 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
       sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Storage profile request must be APPROVED before apply.' } })
       return
     }
+    const layoutPlan = findStorageLayoutPlan(Number(jsonBody.storageLayoutPlanId))
+    if (!layoutPlan || layoutPlan.status !== 'APPROVED' || !layoutPlan.simulatedAt) {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'An approved, simulated storage layout plan is required.' } })
+      return
+    }
+    if (!compatibleStorageLayout(requestRecord.requestedProfile.code, layoutPlan.layout.code)) {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Storage profile and layout are not compatible.' } })
+      return
+    }
     const now = new Date().toISOString()
     state.storageProfileAssignments.set(requestRecord.bucketName, {
       bucketName: requestRecord.bucketName,
       profile: requestRecord.requestedProfile,
+      storageLayoutPlanId: layoutPlan.id,
+      storagePoolName: layoutPlan.poolName,
+      storageLayoutCode: layoutPlan.layout.code,
       appliedBy: 'admin',
       appliedAt: now,
       updatedAt: now,
@@ -1061,6 +1157,9 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
       status: 'APPLIED',
       appliedBy: 'admin',
       appliedAt: now,
+      storageLayoutPlanId: layoutPlan.id,
+      storagePoolName: layoutPlan.poolName,
+      storageLayoutCode: layoutPlan.layout.code,
       updatedAt: now,
     })
     state.auditLogs.unshift(auditLog('STORAGE_PROFILE_REQUEST_APPLY', 'STORAGE_PROFILE_REQUEST', String(requestRecord.id)))
@@ -4670,6 +4769,101 @@ function updateStorageExpansionStatusRecord(requestRecord, status, appliedEviden
   return requestRecord
 }
 
+function storageLayoutCapabilities() {
+  return [
+    { code: 'JBOD', name: 'JBOD', description: 'Independent PVC volumes without redundancy.', minimumPvcCount: 1, requiresEvenPvcCount: false, faultTolerance: 'None', riskLevel: 'HIGH' },
+    { code: 'RAID0', name: 'RAID 0-like', description: 'Performance-first striped PVC pool intent.', minimumPvcCount: 2, requiresEvenPvcCount: false, faultTolerance: 'None', riskLevel: 'HIGH' },
+    { code: 'RAID1', name: 'RAID 1-like', description: 'Mirrored PVC pool intent.', minimumPvcCount: 2, requiresEvenPvcCount: true, faultTolerance: 'Mirror', riskLevel: 'LOW' },
+    { code: 'RAID5', name: 'RAID 5-like', description: 'Single-parity PVC pool intent.', minimumPvcCount: 3, requiresEvenPvcCount: false, faultTolerance: '1 PVC', riskLevel: 'MEDIUM' },
+    { code: 'RAID6', name: 'RAID 6-like', description: 'Double-parity PVC pool intent.', minimumPvcCount: 4, requiresEvenPvcCount: false, faultTolerance: '2 PVCs', riskLevel: 'LOW' },
+    { code: 'RAID10', name: 'RAID 10-like', description: 'Striped mirror PVC pool intent.', minimumPvcCount: 4, requiresEvenPvcCount: true, faultTolerance: 'Mirror set', riskLevel: 'MEDIUM' },
+  ]
+}
+
+function storageLayoutPlanResponse(plan) {
+  const pvcCount = plan.serverCount * plan.volumesPerServer
+  const rawBytes = pvcCount * plan.volumeSizeGiB * BYTES_PER_GIB
+  const usableRatios = {
+    JBOD: 1,
+    RAID0: 1,
+    RAID1: 0.5,
+    RAID5: (pvcCount - 1) / pvcCount,
+    RAID6: (pvcCount - 2) / pvcCount,
+    RAID10: 0.5,
+  }
+  return {
+    ...plan,
+    poolName: `storage-layout-${plan.id}`,
+    pvcCount,
+    estimatedRawCapacityBytes: rawBytes,
+    estimatedUsableCapacityBytes: Math.floor(rawBytes * usableRatios[plan.layout.code]),
+    simulationOnly: true,
+    preflight: {
+      result: 'SIMULATION_READY',
+      ready: true,
+      checks: [
+        {
+          code: 'LAYOUT_POLICY',
+          result: 'PASS',
+          detail: `${plan.layout.name} is a PVC storage intent, not a node-local RAID command.`,
+        },
+        {
+          code: 'PVC_TOPOLOGY',
+          result: 'PASS',
+          detail: `${pvcCount} PVCs meet the requested topology.`,
+        },
+        {
+          code: 'STORAGE_CLASS',
+          result: 'UNVERIFIED',
+          detail: `StorageClass ${plan.storageClassName} must be validated in the target cluster.`,
+        },
+        {
+          code: 'MINIO_POOL',
+          result: 'PLANNED',
+          detail: `Pool storage-layout-${plan.id} remains a development plan.`,
+        },
+        {
+          code: 'CLUSTER_MUTATION',
+          result: 'SIMULATED',
+          detail: 'Mock simulation never creates Kubernetes resources.',
+        },
+      ],
+    },
+  }
+}
+
+function findStorageLayoutPlan(id) {
+  return state.storageLayoutPlans.find((plan) => plan.id === id) || null
+}
+
+function storageLayoutManifest(plan) {
+  return `# Development simulation only.
+apiVersion: osmu.example/v1alpha1
+kind: StorageLayoutPlan
+metadata:
+  name: ${plan.poolName}
+spec:
+  layout: ${plan.layout.code}
+  storageClassName: ${plan.storageClassName}
+  pvcTopology:
+    servers: ${plan.serverCount}
+    volumesPerServer: ${plan.volumesPerServer}
+    volumeSizeGiB: ${plan.volumeSizeGiB}
+  minio:
+    poolName: ${plan.poolName}
+    clusterMutation: disabled
+`
+}
+
+function compatibleStorageLayout(profileCode, layoutCode) {
+  const compatibility = {
+    PERFORMANCE: ['JBOD', 'RAID0'],
+    STANDARD: ['RAID5', 'RAID10'],
+    DURABLE: ['RAID1', 'RAID6'],
+  }
+  return (compatibility[profileCode] || []).includes(layoutCode)
+}
+
 function storageProfiles() {
   return [
     {
@@ -5466,6 +5660,50 @@ async function runSelfTest() {
     if (!recordedPayment.data || recordedPayment.data.status !== 'PAID' || recordedPayment.data.invoice?.paymentReference !== 'PAY-SELF-TEST') {
       throw new Error('chargeback final invoice payment record self-test failed')
     }
+    const layoutCapabilities = await (await fetch(`${base}/admin/storage-layouts/capabilities`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!layoutCapabilities.data?.some((layout) => layout.code === 'RAID0')) {
+      throw new Error('storage layout capabilities self-test failed')
+    }
+    const layoutCreated = await (await fetch(`${base}/admin/storage-layouts/plans`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
+      body: JSON.stringify({
+        layoutCode: 'RAID0',
+        storageClassName: 'osmu-storage',
+        serverCount: 2,
+        volumesPerServer: 1,
+        volumeSizeGiB: 100,
+      }),
+    })).json()
+    if (layoutCreated.data?.preflight?.checks?.find((check) => check.code === 'STORAGE_CLASS')?.result !== 'UNVERIFIED') {
+      throw new Error('storage layout preflight self-test failed')
+    }
+    const earlyApprovalResponse = await fetch(`${base}/admin/storage-layouts/plans/${layoutCreated.data.id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
+      body: JSON.stringify({ status: 'APPROVED' }),
+    })
+    if (earlyApprovalResponse.status !== 400) {
+      throw new Error('storage layout simulation gate self-test failed')
+    }
+    const layoutSimulation = await (await fetch(`${base}/admin/storage-layouts/plans/${layoutCreated.data.id}/simulate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!layoutSimulation.data?.manifestPreview?.includes('clusterMutation: disabled')) {
+      throw new Error('storage layout simulation self-test failed')
+    }
+    const layoutApproved = await (await fetch(`${base}/admin/storage-layouts/plans/${layoutCreated.data.id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
+      body: JSON.stringify({ status: 'APPROVED' }),
+    })).json()
+    if (layoutApproved.data?.status !== 'APPROVED' || !layoutApproved.data?.simulatedAt) {
+      throw new Error('storage layout approval self-test failed')
+    }
+
     const bucket = await (await fetch(`${base}/buckets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },

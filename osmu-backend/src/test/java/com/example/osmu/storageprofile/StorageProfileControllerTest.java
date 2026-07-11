@@ -91,6 +91,16 @@ class StorageProfileControllerTest {
                 .andExpect(jsonPath("$.data.status").value("PENDING"))
                 .andExpect(jsonPath("$.data.requestedBy").value(loginId));
 
+        mockMvc.perform(get("/api/storage-profile-requests")
+                        .queryParam("bucketName", bucketName)
+                        .queryParam("limit", "5")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].bucketName").value(bucketName))
+                .andExpect(jsonPath("$.items[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.nextCursor").value(nullValue()));
+
         String listResponse = mockMvc.perform(get("/api/admin/storage-profile-requests")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
@@ -100,6 +110,39 @@ class StorageProfileControllerTest {
                 .getContentAsString();
         List<Integer> requestIds = JsonPath.read(listResponse, "$.items[?(@.bucketName == '" + bucketName + "')].id");
         int requestId = requestIds.get(0);
+        String layoutResponse = mockMvc.perform(post("/api/admin/storage-layouts/plans")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "layoutCode": "RAID0",
+                                  "storageClassName": "osmu-storage",
+                                  "serverCount": 2,
+                                  "volumesPerServer": 1,
+                                  "volumeSizeGiB": 100,
+                                  "reason": "performance profile pool"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        int layoutPlanId = JsonPath.read(layoutResponse, "$.data.id");
+
+        mockMvc.perform(post("/api/admin/storage-layouts/plans/{planId}/simulate", layoutPlanId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/admin/storage-layouts/plans/{planId}/status", layoutPlanId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "APPROVED"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
 
         mockMvc.perform(patch("/api/admin/storage-profile-requests/{requestId}/status", requestId)
                         .header("Authorization", "Bearer " + userToken)
@@ -127,11 +170,20 @@ class StorageProfileControllerTest {
                 .andExpect(jsonPath("$.data.adminNote").value("approved for temporary media pool"));
 
         mockMvc.perform(post("/api/admin/storage-profile-requests/{requestId}/apply", requestId)
-                        .header("Authorization", "Bearer " + adminToken))
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "storageLayoutPlanId": %d
+                                }
+                                """.formatted(layoutPlanId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(requestId))
                 .andExpect(jsonPath("$.data.status").value("APPLIED"))
-                .andExpect(jsonPath("$.data.appliedBy").value("admin"));
+                .andExpect(jsonPath("$.data.appliedBy").value("admin"))
+                .andExpect(jsonPath("$.data.storageLayoutPlanId").value(layoutPlanId))
+                .andExpect(jsonPath("$.data.storagePoolName").value("storage-layout-" + layoutPlanId))
+                .andExpect(jsonPath("$.data.storageLayoutCode").value("RAID0"));
 
         mockMvc.perform(get("/api/buckets/{bucketName}/storage-profile", bucketName)
                         .header("Authorization", "Bearer " + userToken))
@@ -139,7 +191,10 @@ class StorageProfileControllerTest {
                 .andExpect(jsonPath("$.data.assignment.profile.code").value("PERFORMANCE"))
                 .andExpect(jsonPath("$.data.assignment.profile.alias").value("RAID0-like"))
                 .andExpect(jsonPath("$.data.assignment.defaultProfile").value(false))
-                .andExpect(jsonPath("$.data.latestRequest.status").value("APPLIED"));
+                .andExpect(jsonPath("$.data.assignment.storageLayoutPlanId").value(layoutPlanId))
+                .andExpect(jsonPath("$.data.assignment.storageLayoutCode").value("RAID0"))
+                .andExpect(jsonPath("$.data.latestRequest.status").value("APPLIED"))
+                .andExpect(jsonPath("$.data.latestRequest.storageLayoutPlanId").value(layoutPlanId));
 
         mockMvc.perform(post("/api/buckets/{bucketName}/storage-profile-requests", bucketName)
                         .header("Authorization", "Bearer " + userToken)

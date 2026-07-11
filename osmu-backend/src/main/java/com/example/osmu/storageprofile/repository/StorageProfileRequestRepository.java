@@ -6,9 +6,11 @@ import java.util.Optional;
 
 public interface StorageProfileRequestRepository {
 
-    List<StorageProfileRequestRecord> findAll();
+    List<StorageProfileRequestRecord> findPage(List<String> statuses, Long cursorId, int limit);
 
-    List<StorageProfileRequestRecord> findByBucketName(String bucketName);
+    List<StorageProfileRequestRecord> findPageByBucketName(String bucketName, Long cursorId, int limit);
+
+    List<StorageProfileRequestRecord> findPageByBucketNames(List<String> bucketNames, Long cursorId, int limit);
 
     Optional<StorageProfileRequestRecord> findLatestByBucketName(String bucketName);
 

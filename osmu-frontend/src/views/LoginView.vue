@@ -35,7 +35,7 @@
             />
             <span>
               <strong>관리자</strong>
-              <small>용량 증설, RAID 0-9, JBOD, IAM User 발급, 권한 부여 및 운영 작업</small>
+              <small>용량 증설, JBOD 및 RAID 0/1/5/6/10-like, IAM User 발급, 권한 부여 및 운영 작업</small>
             </span>
           </label>
 
@@ -198,6 +198,9 @@ function nextPath(role) {
   }
   if (loginForm.mode === 'admin' && (role === 'ADMIN' || role === 'ORG_ADMIN')) {
     return '/admin'
+  }
+  if (loginForm.mode === 'admin' && role === 'USER') {
+    return { path: '/developer', query: { notice: 'admin-role-required' } }
   }
   return loginForm.mode === 'developer' || role === 'USER' ? '/developer' : '/dashboard'
 }

@@ -2031,11 +2031,13 @@ test('getTeams sends admin team filters as query parameters', async () => {
   ])
 
   try {
-    await getTeams({ organizationId: 7 })
+    await getTeams({ organizationId: 7, limit: 25, cursor: '42' })
 
     const url = new URL(fetchMock.calls[0].url)
     assert.equal(url.pathname, '/api/admin/teams')
     assert.equal(url.searchParams.get('organizationId'), '7')
+    assert.equal(url.searchParams.get('limit'), '25')
+    assert.equal(url.searchParams.get('cursor'), '42')
   } finally {
     cleanupFetch(fetchMock)
   }

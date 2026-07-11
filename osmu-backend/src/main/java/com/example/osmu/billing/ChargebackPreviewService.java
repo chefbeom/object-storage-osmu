@@ -87,7 +87,7 @@ public class ChargebackPreviewService {
         String currency = BillingPricingPolicyService.normalizeCurrency(safeRequest.currency(), pricingPolicy.currency());
         int eventScanLimit = BillingPricingPolicyService.normalizeEventScanLimit(safeRequest.eventScanLimit(), pricingPolicy.eventScanLimit());
         List<OrganizationRecord> organizations = visibleOrganizations(actor);
-        List<BucketRecord> buckets = bucketRepository.findAll();
+        List<BucketRecord> buckets = organizationBuckets(organizations);
 
         Map<Long, OrganizationAccumulator> organizationAccumulators = new LinkedHashMap<>();
         for (OrganizationRecord organization : organizations) {
@@ -172,8 +172,9 @@ public class ChargebackPreviewService {
         String currency = BillingPricingPolicyService.normalizeCurrency(safeRequest.currency(), pricingPolicy.currency());
 
         List<OrganizationRecord> organizations = visibleOrganizations(actor);
-        Map<Long, OrganizationUsageSnapshot> organizationUsage = organizationUsageSnapshots(organizations);
-        Map<String, Long> bucketOrganizationIds = visibleBucketOrganizationIds(organizationUsage);
+        OrganizationUsageContext usageContext = organizationUsageContext(organizations);
+        Map<Long, OrganizationUsageSnapshot> organizationUsage = usageContext.organizationUsage();
+        Map<String, Long> bucketOrganizationIds = usageContext.bucketOrganizationIds();
         DataFlowEventFilter rollupFilter = chargebackRollupFilter(safeRequest, normalizedDays, generatedAt);
         List<DataFlowDailyRollupPointResponse> inputPoints = materialized
                 ? dataFlowEventRepository.materializedDailyRollup(rollupFilter, normalizedLimit)
@@ -547,12 +548,21 @@ public class ChargebackPreviewService {
         String normalizedBillingPeriod = normalizeCloseoutBillingPeriod(billingPeriod);
         CloseoutWindow window = closeoutWindow(normalizedBillingPeriod, from, to);
         int safeLimit = normalizeCloseoutLimit(limit);
-        List<ChargebackInvoiceDraftRecord> drafts = invoiceDraftRepository.findAll(safeLimit).stream()
-                .filter(record -> invoiceWindowMatches(record.from(), record.to(), window))
-                .toList();
-        List<ChargebackFinalInvoiceRecord> finalInvoices = finalInvoiceRepository.findAll(safeLimit).stream()
-                .filter(record -> invoiceWindowMatches(record.from(), record.to(), window))
-                .toList();
+        int fetchLimit = safeLimit + 1;
+        List<ChargebackInvoiceDraftRecord> draftSource = invoiceDraftRepository.findForCloseoutWindow(
+                window.from(),
+                window.to(),
+                fetchLimit
+        );
+        List<ChargebackFinalInvoiceRecord> finalInvoiceSource = finalInvoiceRepository.findForCloseoutWindow(
+                window.from(),
+                window.to(),
+                fetchLimit
+        );
+        boolean draftSourceTruncated = draftSource.size() > safeLimit;
+        boolean finalInvoiceSourceTruncated = finalInvoiceSource.size() > safeLimit;
+        List<ChargebackInvoiceDraftRecord> drafts = bounded(draftSource, safeLimit);
+        List<ChargebackFinalInvoiceRecord> finalInvoices = bounded(finalInvoiceSource, safeLimit);
         List<Long> finalInvoiceIds = finalInvoices.stream()
                 .map(ChargebackFinalInvoiceRecord::id)
                 .filter(id -> id != null && id > 0)
@@ -561,16 +571,27 @@ public class ChargebackPreviewService {
                 .map(ChargebackFinalInvoiceRecord::organizationId)
                 .distinct()
                 .toList();
-        List<ChargebackPaymentProviderHandoffRecord> handoffs = paymentHandoffRepository.findAll(safeLimit).stream()
-                .filter(record -> finalInvoiceIds.isEmpty()
-                        ? timestampWithinWindow(record.createdAt(), window)
-                        : finalInvoiceIds.contains(record.finalInvoiceId()))
-                .toList();
-        List<ChargebackAlertNotificationDeliveryRecord> notifications = notificationDeliveryRepository.findAll(safeLimit).stream()
-                .filter(record -> timestampWithinWindow(record.createdAt(), window))
-                .filter(record -> finalInvoiceOrganizationIds.isEmpty()
-                        || finalInvoiceOrganizationIds.contains(record.organizationId()))
-                .toList();
+        List<ChargebackPaymentProviderHandoffRecord> handoffSource = paymentHandoffRepository.findForCloseout(
+                finalInvoiceIds,
+                window.from(),
+                window.to(),
+                fetchLimit
+        );
+        List<ChargebackAlertNotificationDeliveryRecord> notificationSource =
+                notificationDeliveryRepository.findForCloseout(
+                        finalInvoiceOrganizationIds,
+                        window.from(),
+                        window.to(),
+                        fetchLimit
+                );
+        boolean handoffSourceTruncated = handoffSource.size() > safeLimit;
+        boolean notificationSourceTruncated = notificationSource.size() > safeLimit;
+        List<ChargebackPaymentProviderHandoffRecord> handoffs = bounded(handoffSource, safeLimit);
+        List<ChargebackAlertNotificationDeliveryRecord> notifications = bounded(notificationSource, safeLimit);
+        boolean sourceTruncated = draftSourceTruncated
+                || finalInvoiceSourceTruncated
+                || handoffSourceTruncated
+                || notificationSourceTruncated;
 
         int paymentRequestedCount = (int) finalInvoices.stream()
                 .filter(ChargebackPreviewService::isPaymentRequested)
@@ -605,6 +626,7 @@ public class ChargebackPreviewService {
         int openHandoffBlockerCount = openHandoffCount;
         int openNotificationBlockerCount = openNotificationCount;
         int reconciliationBlockerCount = reconciliationDifferenceMinorUnits == 0 ? 0 : 1;
+        int truncationBlockerCount = sourceTruncated ? 1 : 0;
         boolean invoiceFinalizationComplete = missingFinalInvoiceBlockerCount == 0;
         boolean paymentRequestsComplete = invoiceFinalizationComplete && missingPaymentRequestBlockerCount == 0;
         boolean paymentsSettled = invoiceFinalizationComplete && unpaidInvoiceBlockerCount == 0;
@@ -616,14 +638,16 @@ public class ChargebackPreviewService {
                 + unpaidInvoiceBlockerCount
                 + openHandoffBlockerCount
                 + openNotificationBlockerCount
-                + reconciliationBlockerCount;
+                + reconciliationBlockerCount
+                + truncationBlockerCount;
         int failureCount = blockerCount;
         boolean closeoutReady = invoiceFinalizationComplete
                 && paymentRequestsComplete
                 && paymentsSettled
                 && paymentHandoffsClosed
                 && notificationDeliveriesClosed
-                && reconciliationBalanced;
+                && reconciliationBalanced
+                && !sourceTruncated;
         String closeoutStatus = closeoutReady ? "RECONCILED" : "PENDING";
         OffsetDateTime generatedAt = OffsetDateTime.now();
         return new ChargebackCloseoutSummaryResponse(
@@ -641,6 +665,9 @@ public class ChargebackPreviewService {
                 paidInvoiceCount,
                 notifications.size(),
                 adapterRetryCount,
+                safeLimit,
+                sourceTruncated,
+                truncationBlockerCount,
                 unpaidInvoiceCount,
                 openHandoffCount,
                 openNotificationCount,
@@ -667,7 +694,7 @@ public class ChargebackPreviewService {
                 false,
                 false,
                 generatedAt,
-                "ADMIN-only reduced chargeback closeout snapshot for target billing evidence.",
+                "ADMIN-only bounded chargeback closeout snapshot for target billing evidence; truncated sources fail closed.",
                 "Response contains typed counts, reduced totals, and booleans only; it does not expose customer payment data, provider payloads/responses, endpoint URLs, credentials, price tables, or invoice documents.",
                 "Use this response as ChargebackCloseoutSnapshotJsonPath input for scripts/write-chargeback-closeout-evidence.ps1 after external evidence references have been reviewed."
         );
@@ -1216,31 +1243,28 @@ public class ChargebackPreviewService {
         }
     }
 
-    private Map<Long, OrganizationUsageSnapshot> organizationUsageSnapshots(List<OrganizationRecord> organizations) {
+    private List<BucketRecord> organizationBuckets(List<OrganizationRecord> organizations) {
+        return bucketRepository.findByOwners(
+                "ORG",
+                organizations.stream().map(OrganizationRecord::id).toList()
+        );
+    }
+
+    private OrganizationUsageContext organizationUsageContext(List<OrganizationRecord> organizations) {
         Map<Long, OrganizationUsageSnapshot> usage = new LinkedHashMap<>();
         for (OrganizationRecord organization : organizations) {
             usage.put(organization.id(), new OrganizationUsageSnapshot(organization));
         }
-        for (BucketRecord bucket : bucketRepository.findAll()) {
-            if (!"ORG".equals(bucket.ownerType())) {
+        Map<String, Long> bucketOrganizationIds = new LinkedHashMap<>();
+        for (BucketRecord bucket : organizationBuckets(organizations)) {
+            OrganizationUsageSnapshot snapshot = usage.get(bucket.ownerId());
+            if (snapshot == null) {
                 continue;
             }
-            OrganizationUsageSnapshot snapshot = usage.get(bucket.ownerId());
-            if (snapshot != null) {
-                snapshot.recordBucket(bucket);
-            }
+            snapshot.recordBucket(bucket);
+            bucketOrganizationIds.put(bucket.name(), bucket.ownerId());
         }
-        return usage;
-    }
-
-    private Map<String, Long> visibleBucketOrganizationIds(Map<Long, OrganizationUsageSnapshot> organizationUsage) {
-        Map<String, Long> bucketOrganizationIds = new LinkedHashMap<>();
-        for (BucketRecord bucket : bucketRepository.findAll()) {
-            if ("ORG".equals(bucket.ownerType()) && organizationUsage.containsKey(bucket.ownerId())) {
-                bucketOrganizationIds.put(bucket.name(), bucket.ownerId());
-            }
-        }
-        return bucketOrganizationIds;
+        return new OrganizationUsageContext(usage, bucketOrganizationIds);
     }
 
     private DataFlowEventFilter chargebackRollupFilter(
@@ -1349,6 +1373,13 @@ public class ChargebackPreviewService {
         return period;
     }
 
+    private static <T> List<T> bounded(List<T> records, int limit) {
+        if (records.size() <= limit) {
+            return records;
+        }
+        return List.copyOf(records.subList(0, limit));
+    }
+
     private static int normalizeCloseoutLimit(int limit) {
         if (limit <= 0) {
             return 500;
@@ -1374,33 +1405,6 @@ public class ChargebackPreviewService {
         }
     }
 
-    private static boolean invoiceWindowMatches(OffsetDateTime recordFrom, OffsetDateTime recordTo, CloseoutWindow window) {
-        if (window.from() == null && window.to() == null) {
-            return true;
-        }
-        OffsetDateTime recordStart = recordFrom == null ? recordTo : recordFrom;
-        OffsetDateTime recordEnd = recordTo == null ? recordFrom : recordTo;
-        if (recordStart == null && recordEnd == null) {
-            return true;
-        }
-        if (window.from() != null && recordEnd != null && recordEnd.isBefore(window.from())) {
-            return false;
-        }
-        return window.to() == null || recordStart == null || recordStart.isBefore(window.to());
-    }
-
-    private static boolean timestampWithinWindow(OffsetDateTime timestamp, CloseoutWindow window) {
-        if (window.from() == null && window.to() == null) {
-            return true;
-        }
-        if (timestamp == null) {
-            return true;
-        }
-        if (window.from() != null && timestamp.isBefore(window.from())) {
-            return false;
-        }
-        return window.to() == null || timestamp.isBefore(window.to());
-    }
 
     private static boolean isPaymentRequested(ChargebackFinalInvoiceRecord record) {
         return record.paymentRequestedAt() != null
@@ -2216,6 +2220,12 @@ public class ChargebackPreviewService {
                     total
             );
         }
+    }
+
+    private record OrganizationUsageContext(
+            Map<Long, OrganizationUsageSnapshot> organizationUsage,
+            Map<String, Long> bucketOrganizationIds
+    ) {
     }
 
     private static final class OrganizationUsageSnapshot {

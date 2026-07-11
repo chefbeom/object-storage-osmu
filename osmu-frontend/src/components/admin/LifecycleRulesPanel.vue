@@ -5,7 +5,10 @@
         <p class="eyebrow">Lifecycle Rules</p>
         <h3>오브젝트 수명주기</h3>
       </div>
-      <button type="button" class="ghost" @click="$emit('reset-lifecycle-rule-form')">New</button>
+      <div class="panel-head-actions">
+        <span class="bucket-label">{{ lifecycleRules.length }}{{ lifecycleRulesNextCursor ? '+' : '' }} rules</span>
+        <button type="button" class="ghost" @click="$emit('reset-lifecycle-rule-form')">New</button>
+      </div>
     </div>
     <form class="lifecycle-rule-form" @submit.prevent="$emit('save-object-lifecycle-rule')">
       <input v-model="lifecycleRuleForm.name" placeholder="rule name" />
@@ -20,6 +23,40 @@
       <input v-model.number="lifecycleRuleForm.retentionDays" min="1" max="3650" type="number" />
       <input v-model.number="lifecycleRuleForm.batchSize" min="1" max="10000" type="number" />
       <button type="submit" :disabled="lifecycleRuleForm.pending">{{ lifecycleRuleForm.pending ? 'Saving' : 'Save' }}</button>
+    </form>
+    <form class="inline-form" @submit.prevent>
+      <select
+        data-testid="lifecycle-rule-status-filter"
+        aria-label="Lifecycle rule status"
+        :value="lifecycleRuleStatusFilter"
+        :disabled="lifecycleRulesLoading"
+        @change="$emit('update-lifecycle-rule-status-filter', $event.target.value)"
+      >
+        <option value="ALL">All statuses</option>
+        <option value="ENABLED">Enabled</option>
+        <option value="DISABLED">Disabled</option>
+      </select>
+      <select
+        data-testid="lifecycle-rule-target-filter"
+        aria-label="Lifecycle rule target"
+        :value="lifecycleRuleTargetFilter"
+        :disabled="lifecycleRulesLoading"
+        @change="$emit('update-lifecycle-rule-target-filter', $event.target.value)"
+      >
+        <option value="ALL">All targets</option>
+        <option value="OBJECT_VERSION">Object versions</option>
+        <option value="TRASH_OBJECT">Trash objects</option>
+      </select>
+      <button
+        v-if="lifecycleRulesNextCursor"
+        data-testid="lifecycle-rule-load-more-button"
+        type="button"
+        class="ghost"
+        :disabled="lifecycleRulesLoading"
+        @click="$emit('load-more-lifecycle-rules')"
+      >
+        {{ lifecycleRulesLoading ? 'Loading...' : 'Load more' }}
+      </button>
     </form>
     <ul class="compact-list">
       <li v-for="rule in lifecycleRules" :key="rule.ruleId">
@@ -66,6 +103,10 @@ defineProps({
   isAdmin: { type: Boolean, required: true },
   lifecycleRuleForm: { type: Object, required: true },
   lifecycleRules: { type: Array, required: true },
+  lifecycleRuleStatusFilter: { type: String, required: true },
+  lifecycleRuleTargetFilter: { type: String, required: true },
+  lifecycleRulesNextCursor: { type: String, default: '' },
+  lifecycleRulesLoading: { type: Boolean, required: true },
   lifecycleRulePreview: { type: Object, required: true },
   lifecycleRuleConflicts: { type: Object, required: true },
   lifecycleXml: { type: Object, required: true },
@@ -78,6 +119,9 @@ defineEmits([
   'dry-run-object-lifecycle-rule',
   'edit-lifecycle-rule',
   'delete-object-lifecycle-rule',
+  'update-lifecycle-rule-status-filter',
+  'update-lifecycle-rule-target-filter',
+  'load-more-lifecycle-rules',
   'refresh-lifecycle-rule-conflicts',
   'export-lifecycle-xml',
   'import-lifecycle-xml',

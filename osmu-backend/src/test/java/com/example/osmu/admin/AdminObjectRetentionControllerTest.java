@@ -158,11 +158,26 @@ class AdminObjectRetentionControllerTest {
                 .getContentAsString();
         String urgentRuleId = JsonPath.read(urgentResponse, "$.data.ruleId");
 
-        mockMvc.perform(get("/api/admin/object-lifecycle/rules")
-                        .header("Authorization", "Bearer " + adminToken))
+        String firstPageResponse = mockMvc.perform(get("/api/admin/object-lifecycle/rules")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("status", "enabled")
+                        .param("limit", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].ruleId").value(urgentRuleId))
-                .andExpect(jsonPath("$.data[1].ruleId").value(ruleId));
+                .andExpect(jsonPath("$.items[0].ruleId").value(urgentRuleId))
+                .andExpect(jsonPath("$.nextCursor").isNotEmpty())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String nextCursor = JsonPath.read(firstPageResponse, "$.nextCursor");
+
+        mockMvc.perform(get("/api/admin/object-lifecycle/rules")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("status", "ENABLED")
+                        .param("cursor", nextCursor)
+                        .param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].ruleId").value(ruleId))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
 
         mockMvc.perform(delete("/api/admin/object-lifecycle/rules/{ruleId}", ruleId)
                         .header("Authorization", "Bearer " + adminToken))
@@ -174,7 +189,7 @@ class AdminObjectRetentionControllerTest {
         mockMvc.perform(get("/api/admin/object-lifecycle/rules")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.length()").value(0));
+                .andExpect(jsonPath("$.items.length()").value(0));
     }
 
     @Test

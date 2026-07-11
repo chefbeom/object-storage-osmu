@@ -96,6 +96,37 @@ public class MariaDbChargebackFinalInvoiceRepository implements ChargebackFinalI
     }
 
     @Override
+    public List<ChargebackFinalInvoiceRecord> findForCloseoutWindow(
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    ) {
+        ensureSchema();
+        StringBuilder sql = new StringBuilder("SELECT * FROM chargeback_final_invoices WHERE 1 = 1");
+        if (from != null) {
+            sql.append(" AND ((window_from IS NULL AND window_to IS NULL) OR COALESCE(window_to, window_from) >= ?)");
+        }
+        if (to != null) {
+            sql.append(" AND ((window_from IS NULL AND window_to IS NULL) OR COALESCE(window_from, window_to) < ?)");
+        }
+        sql.append(" ORDER BY created_at DESC, id DESC LIMIT ?");
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            if (from != null) {
+                statement.setTimestamp(parameterIndex++, timestamp(from));
+            }
+            if (to != null) {
+                statement.setTimestamp(parameterIndex++, timestamp(to));
+            }
+            statement.setInt(parameterIndex, Math.max(1, limit));
+            return mapRows(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public Optional<ChargebackFinalInvoiceRecord> findById(long id) {
         ensureSchema();
         String sql = """
@@ -364,7 +395,8 @@ public class MariaDbChargebackFinalInvoiceRepository implements ChargebackFinalI
                     UNIQUE KEY uk_chargeback_final_invoices_source_draft (source_draft_id),
                     INDEX idx_chargeback_final_invoices_status_created (status, created_at),
                     INDEX idx_chargeback_final_invoices_payment_status (payment_status, updated_at),
-                    INDEX idx_chargeback_final_invoices_org_created (organization_id, created_at)
+                    INDEX idx_chargeback_final_invoices_org_created (organization_id, created_at),
+                    INDEX idx_chargeback_final_invoices_window (window_from, window_to, id)
                 )
                 """;
         try (Connection connection = connect();

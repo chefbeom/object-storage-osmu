@@ -19,6 +19,7 @@ import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
@@ -85,6 +86,39 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, ownerId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<AccessKeyRecord> keys = new ArrayList<>();
+                while (resultSet.next()) {
+                    keys.add(mapRecord(resultSet));
+                }
+                return keys;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<AccessKeyRecord> findRecordsByOwnerIds(List<Long> ownerIds) {
+        ensureSchema();
+        LinkedHashSet<Long> uniqueOwnerIds = new LinkedHashSet<>(ownerIds == null ? List.of() : ownerIds);
+        uniqueOwnerIds.remove(null);
+        if (uniqueOwnerIds.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(", ", java.util.Collections.nCopies(uniqueOwnerIds.size(), "?"));
+        String sql = """
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count, previous_secret_key_expires_at
+                FROM access_keys
+                WHERE owner_id IN (%s)
+                ORDER BY owner_id, id
+                """.formatted(placeholders);
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            int parameterIndex = 1;
+            for (Long ownerId : uniqueOwnerIds) {
+                statement.setLong(parameterIndex++, ownerId);
+            }
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<AccessKeyRecord> keys = new ArrayList<>();
                 while (resultSet.next()) {

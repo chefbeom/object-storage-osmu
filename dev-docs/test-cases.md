@@ -4,9 +4,10 @@
 - Preconditions: ADMIN user is logged in. Objects or object versions exist with mixed prefixes/tags.
 - Input: `POST /api/admin/object-lifecycle/rules`, `GET /api/admin/object-lifecycle/rules`, `DELETE /api/admin/object-lifecycle/rules/{ruleId}`.
 - Steps: Create a rule with prefix `videos/raw/` and tag `stage=raw`, run matching retention job, list rules, then delete the rule.
-- Expected: Rules list in priority order. Only matching trash objects or object versions older than the rule retention window are purged. Non-matching prefix/tag data remains. Save/delete audit events are written.
+- Expected: Rules list in `priority/createdAt/ruleId` order through bounded `items/nextCursor` pages. Status and target filters execute before the limit. Only matching trash objects or object versions older than the rule retention window are purged. Non-matching prefix/tag data remains. Save/delete audit events are written.
 - Priority: P1
-- Automated: `AdminObjectRetentionControllerTest.adminCanManageLifecycleRules`, `ObjectRetentionPurgeJobTest.lifecycleRulePurgesMatchingDeletedObjectByPrefixAndTags`, `ObjectVersionRetentionPurgeJobTest.lifecycleRulePurgesMatchingVersionByPrefixAndTags`
+- Query contract: `ObjectLifecycleRuleQueryServiceTest` verifies status/target validation, opaque composite cursor continuation, bounded overfetch, and explicit full-export separation. `ObjectLifecycleRuleQueryTest` verifies trash/version purge jobs each load only enabled rules for their target and never call the full-export contract. `InMemoryObjectLifecycleRuleRepositoryTest` verifies target/bucket filters and same-priority cursor ties preserve deterministic order.
+- Automated: `AdminObjectRetentionControllerTest.adminCanManageLifecycleRules`, `ObjectLifecycleRuleQueryServiceTest`, `ObjectRetentionPurgeJobTest.lifecycleRulePurgesMatchingDeletedObjectByPrefixAndTags`, `ObjectVersionRetentionPurgeJobTest.lifecycleRulePurgesMatchingVersionByPrefixAndTags`, `ObjectLifecycleRuleQueryTest`, `InMemoryObjectLifecycleRuleRepositoryTest`
 
 ### TC-OBJECT-004D-3
 
@@ -24,9 +25,9 @@
 - Preconditions: ADMIN user is logged in. Two enabled rules share target type and overlapping prefix/tag scope.
 - Input: `GET /api/admin/object-lifecycle/conflicts`
 - Steps: Create a broad rule and a narrower rule with compatible tags, then request conflict report.
-- Expected: API returns ruleCount, conflictCount, conflictType, severity, targetType, firstRule, secondRule, and reason. Rules with different target type or incompatible shared tag values are not reported.
+- Expected: API returns ruleCount, conflictCount, conflictType, severity, targetType, firstRule, secondRule, and reason. Rules with different target type, different non-empty bucket scopes, or incompatible shared tag values are not reported. Only enabled rules are loaded through target-specific queries.
 - Priority: P1
-- Automated: `AdminObjectRetentionControllerTest.adminCanReadLifecycleRuleConflictReport`
+- Automated: `AdminObjectRetentionControllerTest.adminCanReadLifecycleRuleConflictReport`, `ObjectLifecycleRuleQueryServiceTest.conflictsLoadOnlyEnabledRulesForEachTarget`
 
 ### TC-OBJECT-004D-5
 
@@ -34,9 +35,9 @@
 - Preconditions: ADMIN user is logged in. Lifecycle rules can be created.
 - Input: `GET /api/admin/object-lifecycle/s3-xml`, `POST /api/admin/object-lifecycle/s3-xml`
 - Steps: Create a rule, export XML, then import XML with `Expiration/Days` and `NoncurrentVersionExpiration/NoncurrentDays`.
-- Expected: Export includes LifecycleConfiguration XML. Import creates OSMU rules with generated ids, priority from XML order, default batch size 100, correct target type, prefix, tags, and retention days.
+- Expected: Export uses the explicit full-snapshot repository contract and includes LifecycleConfiguration XML for all rules. Import creates OSMU rules with generated ids, priority from XML order, default batch size 100, correct target type, prefix, tags, and retention days.
 - Priority: P1
-- Automated: `AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`
+- Automated: `AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`, `ObjectLifecycleRuleQueryServiceTest.exportUsesExplicitFullExportContract`
 
 ### TC-OBJECT-004D-6
 
@@ -46,7 +47,8 @@
 - Steps: Put LifecycleConfiguration XML for one bucket, get the bucket XML, replace it with another XML, then delete it.
 - Expected: Imported rules have `bucketName` equal to the path bucket. PUT replaces only that bucket's lifecycle rules after object storage lifecycle sync succeeds. GET returns only bucket-scoped XML. DELETE removes the bucket-scoped rules and writes audit log after object storage lifecycle delete sync succeeds. Storage sync failure leaves repository rules unchanged.
 - Priority: P1
-- Automated: `BucketLifecycleControllerTest.adminCanPutGetAndDeleteBucketLifecycleConfiguration`, `BucketLifecycleServiceStorageSyncTest`
+- Query contract: `BucketLifecycleServiceQueryTest` verifies bucket lifecycle export delegates one bucket-scoped rule query and never loads all lifecycle rules.
+- Automated: `BucketLifecycleControllerTest.adminCanPutGetAndDeleteBucketLifecycleConfiguration`, `BucketLifecycleServiceStorageSyncTest`, `BucketLifecycleServiceQueryTest`
 
 ### TC-OBJECT-004D-7
 
@@ -662,8 +664,10 @@
 - Input: `GET /api/admin/storage-expansion/requests`, `GET /api/admin/storage-expansion/runner-preflight`, `POST /api/admin/storage-expansion/requests`, `GET /api/admin/storage-expansion/requests/{requestId}/manifest`, `GET /api/admin/storage-expansion/requests/{requestId}/manifest/{artifact}`, `POST /api/admin/storage-expansion/requests/{requestId}/execution-plan`, `POST /api/admin/storage-expansion/requests/{requestId}/dry-run-execution`, `POST /api/admin/storage-expansion/requests/{requestId}/gitops-plan`, `GET /api/admin/storage-expansion/requests/{requestId}/gitops-artifacts/bundle`, `POST /api/admin/storage-expansion/requests/{requestId}/gitops-pr-runner`, `POST /api/admin/storage-expansion/requests/{requestId}/gitops-pr-execution`, `GET/POST /api/admin/storage-expansion/requests/{requestId}/executions`, `POST /api/admin/storage-expansion/requests/{requestId}/executions/{executionId}/apply`, `PATCH /api/admin/storage-expansion/requests/{requestId}/status`.
 - Steps: Open Admin page, enter requested capacity, server count, PV per server, and reason, submit a storage expansion request, list requests, preview the request manifest, download tenant/helm/bundle YAML artifacts, approve the request, generate a dry-run execution plan, record `KUBECTL_DIFF` or `HELM_DIFF` output as dry-run evidence, generate a GitOps PR draft, run the GitOps PR runner in disabled mode, enter GitOps PR URL/merge SHA/pipeline URL, record GitOps PR evidence, download the GitOps ZIP bundle, record a Helm diff or kubectl diff execution result, list execution history, record a successful `APPLY` execution, apply the request from that execution record, confirm preflight checklist/commands/checksum/branch/changed files/PR body/ZIP entries/history entries, then attempt invalid status and invalid execution apply flows.
 - Expected: UI exposes stable storage expansion selectors, runner preflight panel/list/refresh/remediation controls, applied evidence input, manifest preview textareas, YAML download buttons, execution dry-run panel and dry-run evidence inputs/button, GitOps draft panel, GitOps PR runner/evidence buttons, GitOps ZIP download button, execution history form/list, GitOps runner `failureReason` badge, and execution apply button. Backend returns a MinIO pool plan with `poolName`, `serverCount`, `volumesPerServer`, `volumeSizeBytes`, `estimatedRawCapacityBytes`, `estimatedUsableCapacityBytes`, `status`, reason, actor, and applied evidence fields. Runner preflight returns `DISABLED` by default and reports tool/config readiness plus remediation hints only when runners are enabled, including `gh auth status`, repository `.git` metadata, and `git -C {repositoryPath} status --short` for enabled GitOps PR runner. Summary returns request status/capacity aggregate plus execution count/result/timedOut/recent values without requiring full request list or per-request history calls; MariaDB implementation uses aggregate/recent queries backed by status/result/timedOut indexes. Manifest preview returns `referenceOnly = true`, MinIO Tenant YAML, and Helm values YAML. Manifest artifact download returns `application/x-yaml` for `tenant`, `helm`, and `bundle`. Execution plan requires `APPROVED`, returns artifact SHA-256, preflight checks, suggested kubectl/helm diff/dry-run commands, and evidence template. Dry-run execution requires `APPROVED`, `KUBECTL_DIFF` or `HELM_DIFF`, valid result, output unless skipped, and records command/output/current artifact SHA-256. GitOps plan requires `APPROVED`, returns branch name, `[Feat][I]` commit message, PR title/body, changed files, review checklist, and artifact SHA-256. GitOps artifact bundle requires `APPROVED`, returns `application/zip` with tenant patch, Helm values, and README entries. GitOps PR runner requires `APPROVED`, writes configured repo artifacts when enabled, records `GITOPS_PR / SKIPPED` by default, records external PR URL when `gh pr create` returns one, and records notes plus response `failureReason` for fail-fast failures. GitOps PR execution requires `APPROVED`, valid HTTP(S) PR URL, optional valid merge SHA, then records `GITOPS_PR / SUCCESS` with generated command, output, artifact SHA-256, and notes. Execution history requires `APPROVED` or `APPLIED`, records `DRY_RUN/GITOPS_PR/HELM_DIFF/KUBECTL_DIFF/APPLY/ROLLBACK` results with command/output/external URL/checksum/notes/failureReason. Apply-from-execution requires `APPROVED` request, matching execution request id, `SUCCESS` result, and `APPLY` or `GITOPS_PR` execution type, then auto-generates `appliedEvidence`. Invalid capacity, server count, volume count, status, direct `PLANNED -> APPLIED`, invalid artifact, non-approved execution plan, non-approved dry-run execution, non-approved GitOps plan, non-approved GitOps bundle, non-approved GitOps PR runner, non-approved GitOps PR execution, non-approved execution history, invalid execution type/result/checksum, or invalid execution apply is rejected with HTTP 400. Audit logs include create/status/manifest/download/execution-plan/dry-run-execution/gitops-plan/gitops-artifact-download/gitops-pr-runner/gitops-pr-execution/execution-record/execution-apply events.
+- Query pagination: `GET /api/admin/storage-expansion/requests` accepts `OPEN/ALL/PLANNED/APPROVED/APPLIED/REJECTED`, a positive ID cursor, and limit 1..200. The default page is 50 rows, returns `nextCursor`, and the Admin UI exposes the status selector plus Load more without loading full request history.
+- Execution pagination: `GET /api/admin/storage-expansion/requests/{requestId}/executions` accepts a positive execution ID cursor and limit 1..200. The default page is 50 rows, returns `nextCursor`, delegates request/cursor filtering to the repository, and the Admin execution history appends only the selected request page through Load more.
 - Priority: P1
-- Automated: `AdminStorageExpansionControllerTest.adminCanPlanAndApproveStorageExpansionRequest`, `api-quota-policy.test.js`, `HomeView.test.js`, `verify-local-demo.ps1` storage expansion smoke.
+- Automated: `StorageExpansionServiceQueryTest`, `InMemoryStorageExpansionRequestRepositoryTest`, `InMemoryStorageExpansionExecutionRepositoryTest`, `AdminStorageExpansionControllerTest.adminCanPlanAndApproveStorageExpansionRequest`, `api-quota-policy.test.js`, `HomeView.test.js`, `verify-local-demo.ps1` storage expansion smoke.
 
 ### TC-S3-AUTH-002
 
@@ -832,6 +836,16 @@ ID:
 - 우선순위: P1
 - 자동화 여부: Automated (`npm run test:unit` route/static selector contract, Browser E2E spec verifies USER `/developer` landing, Admin nav hiding, S3 endpoint/snippet display, and Access Key create UI through mocked API; successful Browser runtime execution pending)
 
+### TC-AUTH-008
+
+- 기능: LDAP/OIDC 기존 사용자 email 매핑 단건 조회
+- 조건: 대소문자가 섞인 email을 가진 활성 로컬 사용자가 존재하고 LDAP 또는 OIDC가 동일 email을 다른 대소문자로 반환한다.
+- 입력: LDAP login, OIDC callback, OIDC claim preview/JIT provisioning.
+- 절차: 외부 identity email로 기존 사용자를 매핑하고 저장소 조회 동작을 확인한다.
+- 기대 결과: email은 대소문자와 무관하게 기존 사용자에 매핑되며 `UserRepository.findByEmail` 단건 조회만 사용한다. 대소문자 보정을 위해 전체 사용자 목록을 읽지 않는다.
+- 우선순위: P1
+- 자동화 여부: Automated (`InMemoryUserRepositoryTest`, `LdapLoginServiceTest`, `OidcLoginServiceTest`, `OidcClaimPreviewServiceTest`, `OidcJitProvisioningServiceTest`)
+
 ## 4. Organization
 
 ### TC-ORG-001
@@ -874,17 +888,20 @@ ID:
 - 우선순위: P1
 - 자동화 여부: Automated
 
+- Query contract: AdminOrganizationControllerQueryTest.usageUsesOneOwnerAggregateInsteadOfLoadingAllBuckets verifies organization usage delegates one ORG owner aggregate and never calls the full bucket list.
+
 ### TC-ORG-004A
 
 - Feature: Organization chargeback preview
 - Condition: Organization-owned buckets have current usage and recent `data_flow_events`.
 - Input: `PUT /api/admin/billing/pricing-policy`, `POST /api/admin/billing/pricing-policy-proposals`, `GET /api/admin/billing/pricing-policy-proposals?status=...&limit=...`, `POST /api/admin/billing/pricing-policy-proposals/{proposalId}/approve?approvalNote=...`, then `GET /api/admin/billing/chargeback-preview?storageGbMonthRate=...&ingressGbRate=...&egressGbRate=...&operationThousandRate=...`, `GET /api/admin/billing/chargeback-daily-rollup?days=...&limit=...&materialized=...`, `GET /api/admin/billing/chargeback-alerts?...`, `GET /api/admin/billing/chargeback-alert-notifications/preview?notificationChannel=...&notificationTarget=...`, `POST /api/admin/billing/chargeback-alert-notifications/outbox?notificationChannel=...&notificationTarget=...&reason=...`, `GET /api/admin/billing/chargeback-alert-notifications/outbox?limit=...`, `POST /api/admin/billing/chargeback-invoice-drafts?reason=...`, `GET /api/admin/billing/chargeback-invoice-drafts?status=...&limit=...`, `POST /api/admin/billing/chargeback-invoice-drafts/{invoiceId}/approve?approvalNote=...`, `POST /api/admin/billing/chargeback-invoice-drafts/{invoiceId}/finalize?finalizationNote=...`, `GET /api/admin/billing/chargeback-invoices?status=...&limit=...`, `POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-request?paymentRequestNote=...`, `GET /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff/preview?paymentProvider=...&paymentTargetAccount=...`, `POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff?paymentProvider=...&paymentTargetAccount=...&reason=...`, `GET /api/admin/billing/chargeback-payment-provider-handoffs?status=...&limit=...`, `POST /api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-send?retryDelayMinutes=...`, `POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-record?paymentReference=...&paymentNote=...`, `GET /api/admin/billing/chargeback-preview/export.csv?...`, `GET /api/admin/billing/chargeback-daily-rollup/export.csv?...`, and `GET /api/admin/billing/chargeback-invoice-draft/export.csv?...`
 - Steps: Create two organizations, upload data to an ORG-owned bucket, optionally generate download/copy/failure events, save a pricing policy with warning/critical thresholds as `ADMIN`, create/list/approve a pricing policy proposal as `ADMIN`, record its commercial price-list approval reference as `ADMIN`, call the chargeback preview, daily rollup trend API, threshold alert API, alert notification preview, alert notification outbox queue/list/adapter-result/adapter-send APIs, invoice draft persistence/list/approve/finalize/payment request/payment provider handoff/list/adapter-result/adapter-send/payment record APIs as `ADMIN`, preview CSV export, and invoice draft CSV export as `ADMIN` and `ORG_ADMIN`, then open Admin billing panel, save/propose/approve the policy, record price-list approval, preview daily chargeback trend rows, preview notification payloads, queue notification outbox records, send or record notification adapter block/retry state, persist/approve/finalize invoice draft records, queue payment provider handoff records, send or record payment adapter block/retry state, export CSV/draft CSV, and refresh the same preview/trend/alert/outbox/invoice/proposal view.
-- Expected: `ADMIN` can save pricing policy, create/list/approve internal pricing policy proposals, record commercial price-list approval references, persist/approve internal invoice draft records, finalize approved drafts into final invoices, request payment, queue payment provider handoff rows, send configured notification/payment webhook rows or record notification/payment adapter block/retry states, and record paid references. `ORG_ADMIN` can read pricing policy for preview/alerts/export and queue/list scoped notification outbox rows but cannot save it or access pricing proposal, commercial price-list approval, invoice draft persistence, invoice approval/finalization, notification adapter-result/adapter-send, payment handoff adapter-result/adapter-send, payment handoff, or payment APIs. `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller organization in JSON alert rows, notification payload rows, notification outbox rows, and CSV. Pricing proposal creation returns `PENDING_APPROVAL` and does not change the active policy; internal approval returns `APPROVED_APPLIED`, `approvedPriceList=false`, and updates only the internal chargeback calculation policy; commercial approval returns `PRICE_LIST_APPROVED`, `approvedPriceList=true`, `commercialApprovalReference`, and `commercialEffectiveFrom`. The commercial approval summary endpoint returns `BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY`, approved price-list counts, approval references, actor ids, and timestamps without rate, threshold, approval note, raw price table, contract, customer, license, payment, credential, or secret content. Preview uses saved policy values when query rates are omitted and query rates override saved values when present. The response includes current `usedBytes`, ingress/egress/internal bytes, billable successful operation count, failed/cancelled counts, per-organization cost components, and total estimated cost. Alert response includes warning/critical threshold amounts, severity, alert counts, and scoped organization rows. Notification preview returns `mode=PREVIEW`, `externalDeliveryEnabled` reflecting channel-compatible generic webhook, `SLACK` webhook, or `EMAIL` SMTP relay configuration, channel/target metadata, scoped notification subjects/messages, and machine-readable `chargeback.threshold` payloads without sending webhooks. Notification outbox queue returns `mode=OUTBOX`, `status=PENDING_DELIVERY_ADAPTER`, queued delivery rows, and a persisted outbox/history list without sending. Notification adapter result returns `ADAPTER_RESULT`, increments `attemptCount`, stores `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` or `DELIVERY_ADAPTER_RETRY_SCHEDULED`, and rejects credential-like `lastError` values. Notification adapter send returns `ADAPTER_RESULT`, increments `attemptCount`, stores `DELIVERY_ADAPTER_SUCCEEDED`, `DELIVERY_ADAPTER_RETRY_SCHEDULED`, or `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL`, supports generic webhook, `SLACK` incoming webhook, and `EMAIL` SMTP relay delivery, and never stores webhook URL, secret header values, or raw provider responses. Invoice draft persistence returns `mode=DRAFT_REVIEW`, `finalInvoice=false`, `paymentRequest=false`, persisted snapshot rows, and approval changes a row to `APPROVED_INTERNAL`. Finalization returns `mode=FINAL_INVOICE`, `status=FINALIZED`, `paymentStatus=NOT_REQUESTED`, `finalInvoice=true`, `paymentRequest=false`, and an `OSMU-FINAL-...` invoice number. Payment request returns `PAYMENT_REQUESTED` / `REQUESTED`; chargeback closeout summary returns `CHARGEBACK_CLOSEOUT_SUMMARY`, `RECONCILED` only when final invoices are paid and reconciled, typed count/minor-unit fields, false raw-data flags, and no payment reference/target/payload content; payment provider handoff preview returns `mode=PREVIEW`, `externalPaymentEnabled` reflecting generic or provider-specific CARD/BANK/TAX/ERP payment webhook profile configuration, `providerProfile`, and `chargeback.payment_provider.handoff` without sending; payment provider handoff queue returns `PENDING_PAYMENT_PROVIDER_ADAPTER` and a persisted outbox/history row without sending; payment handoff adapter result returns `ADAPTER_RESULT`, increments `attemptCount`, stores `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` or `PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED`, and rejects credential-like `lastError` values; payment handoff adapter send returns `ADAPTER_RESULT`, increments `attemptCount`, stores `PAYMENT_PROVIDER_ADAPTER_SUCCEEDED`, `PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED`, or `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`, uses the matching generic/CARD/BANK/TAX/ERP webhook profile, and never stores webhook URL, secret header values, or raw provider responses; payment record returns `PAID` with `paymentReference`. Preview CSV export returns `text/csv`, `osmu-chargeback-preview.csv`, a `TOTAL` row, and scoped `ORGANIZATION` rows. Invoice draft CSV export returns `text/csv`, `osmu-chargeback-invoice-draft.csv`, scoped `DRAFT_INVOICE` rows, `DRAFT` invoice status, and `OSMU-DRAFT-YYYYMMDD-{organizationId}` invoice numbers. User-owned or unknown buckets are excluded. The Admin billing panel renders `billing-chargeback-panel`, editable rate/date/event-limit/threshold/notification/payment handoff inputs, `chargeback-save-policy-button`, `billing-pricing-policy-proposal-button`, `billing-pricing-policy-proposal-list`, `billing-pricing-policy-proposal-approve-button`, `billing-pricing-policy-price-list-approve-button` for ADMIN, `chargeback-alert-list`, `chargeback-notification-list`, `chargeback-notification-queue-button`, `chargeback-notification-outbox-list`, `chargeback-notification-adapter-send-button`, `chargeback-notification-adapter-block-button`, `chargeback-notification-adapter-retry-button`, `chargeback-invoice-draft-save-button`, `chargeback-invoice-draft-list`, `chargeback-invoice-draft-approve-button`, `chargeback-invoice-draft-finalize-button`, `chargeback-final-invoice-list`, `chargeback-final-invoice-payment-request-button`, `chargeback-payment-handoff-button`, `chargeback-payment-handoff-list`, `chargeback-payment-handoff-adapter-send-button`, `chargeback-payment-handoff-adapter-block-button`, `chargeback-payment-handoff-adapter-retry-button`, `chargeback-final-invoice-payment-record-button`, `chargeback-export-button`, `chargeback-invoice-draft-export-button`, preview totals, and organization rows. The response, alerts, notification payloads, notification outbox records, adapter result rows, CSV, draft CSV, persisted invoice draft records, pricing proposal records, final invoice/payment state, and payment provider handoff outbox remain OSMU workflow records; external calls are limited to configured notification/payment webhook adapters.
+- Expected: `ADMIN` can save pricing policy, create/list/approve internal pricing policy proposals, record commercial price-list approval references, persist/approve internal invoice draft records, finalize approved drafts into final invoices, request payment, queue payment provider handoff rows, send configured notification/payment webhook rows or record notification/payment adapter block/retry states, and record paid references. `ORG_ADMIN` can read pricing policy for preview/alerts/export and queue/list scoped notification outbox rows but cannot save it or access pricing proposal, commercial price-list approval, invoice draft persistence, invoice approval/finalization, notification adapter-result/adapter-send, payment handoff adapter-result/adapter-send, payment handoff, or payment APIs. `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller organization in JSON alert rows, notification payload rows, notification outbox rows, and CSV. Pricing proposal creation returns `PENDING_APPROVAL` and does not change the active policy; internal approval returns `APPROVED_APPLIED`, `approvedPriceList=false`, and updates only the internal chargeback calculation policy; commercial approval returns `PRICE_LIST_APPROVED`, `approvedPriceList=true`, `commercialApprovalReference`, and `commercialEffectiveFrom`. The commercial approval summary endpoint returns `BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY`, approved price-list counts, approval references, actor ids, and timestamps without rate, threshold, approval note, raw price table, contract, customer, license, payment, credential, or secret content. Preview uses saved policy values when query rates are omitted and query rates override saved values when present. The response includes current `usedBytes`, ingress/egress/internal bytes, billable successful operation count, failed/cancelled counts, per-organization cost components, and total estimated cost. Alert response includes warning/critical threshold amounts, severity, alert counts, and scoped organization rows. Notification preview returns `mode=PREVIEW`, `externalDeliveryEnabled` reflecting channel-compatible generic webhook, `SLACK` webhook, or `EMAIL` SMTP relay configuration, channel/target metadata, scoped notification subjects/messages, and machine-readable `chargeback.threshold` payloads without sending webhooks. Notification outbox queue returns `mode=OUTBOX`, `status=PENDING_DELIVERY_ADAPTER`, queued delivery rows, and a persisted outbox/history list without sending. Notification adapter result returns `ADAPTER_RESULT`, increments `attemptCount`, stores `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` or `DELIVERY_ADAPTER_RETRY_SCHEDULED`, and rejects credential-like `lastError` values. Notification adapter send returns `ADAPTER_RESULT`, increments `attemptCount`, stores `DELIVERY_ADAPTER_SUCCEEDED`, `DELIVERY_ADAPTER_RETRY_SCHEDULED`, or `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL`, supports generic webhook, `SLACK` incoming webhook, and `EMAIL` SMTP relay delivery, and never stores webhook URL, secret header values, or raw provider responses. Invoice draft persistence returns `mode=DRAFT_REVIEW`, `finalInvoice=false`, `paymentRequest=false`, persisted snapshot rows, and approval changes a row to `APPROVED_INTERNAL`. Finalization returns `mode=FINAL_INVOICE`, `status=FINALIZED`, `paymentStatus=NOT_REQUESTED`, `finalInvoice=true`, `paymentRequest=false`, and an `OSMU-FINAL-...` invoice number. Payment request returns `PAYMENT_REQUESTED` / `REQUESTED`; chargeback closeout summary returns `CHARGEBACK_CLOSEOUT_SUMMARY`, `RECONCILED` only when final invoices are paid and reconciled, all bounded sources are untruncated, typed count/minor-unit fields, false raw-data flags, and no payment reference/target/payload content; payment provider handoff preview returns `mode=PREVIEW`, `externalPaymentEnabled` reflecting generic or provider-specific CARD/BANK/TAX/ERP payment webhook profile configuration, `providerProfile`, and `chargeback.payment_provider.handoff` without sending; payment provider handoff queue returns `PENDING_PAYMENT_PROVIDER_ADAPTER` and a persisted outbox/history row without sending; payment handoff adapter result returns `ADAPTER_RESULT`, increments `attemptCount`, stores `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` or `PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED`, and rejects credential-like `lastError` values; payment handoff adapter send returns `ADAPTER_RESULT`, increments `attemptCount`, stores `PAYMENT_PROVIDER_ADAPTER_SUCCEEDED`, `PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED`, or `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`, uses the matching generic/CARD/BANK/TAX/ERP webhook profile, and never stores webhook URL, secret header values, or raw provider responses; payment record returns `PAID` with `paymentReference`. Preview CSV export returns `text/csv`, `osmu-chargeback-preview.csv`, a `TOTAL` row, and scoped `ORGANIZATION` rows. Invoice draft CSV export returns `text/csv`, `osmu-chargeback-invoice-draft.csv`, scoped `DRAFT_INVOICE` rows, `DRAFT` invoice status, and `OSMU-DRAFT-YYYYMMDD-{organizationId}` invoice numbers. User-owned or unknown buckets are excluded. The Admin billing panel renders `billing-chargeback-panel`, editable rate/date/event-limit/threshold/notification/payment handoff inputs, `chargeback-save-policy-button`, `billing-pricing-policy-proposal-button`, `billing-pricing-policy-proposal-list`, `billing-pricing-policy-proposal-approve-button`, `billing-pricing-policy-price-list-approve-button` for ADMIN, `chargeback-alert-list`, `chargeback-notification-list`, `chargeback-notification-queue-button`, `chargeback-notification-outbox-list`, `chargeback-notification-adapter-send-button`, `chargeback-notification-adapter-block-button`, `chargeback-notification-adapter-retry-button`, `chargeback-invoice-draft-save-button`, `chargeback-invoice-draft-list`, `chargeback-invoice-draft-approve-button`, `chargeback-invoice-draft-finalize-button`, `chargeback-final-invoice-list`, `chargeback-final-invoice-payment-request-button`, `chargeback-payment-handoff-button`, `chargeback-payment-handoff-list`, `chargeback-payment-handoff-adapter-send-button`, `chargeback-payment-handoff-adapter-block-button`, `chargeback-payment-handoff-adapter-retry-button`, `chargeback-final-invoice-payment-record-button`, `chargeback-export-button`, `chargeback-invoice-draft-export-button`, preview totals, and organization rows. The response, alerts, notification payloads, notification outbox records, adapter result rows, CSV, draft CSV, persisted invoice draft records, pricing proposal records, final invoice/payment state, and payment provider handoff outbox remain OSMU workflow records; external calls are limited to configured notification/payment webhook adapters.
 - Daily chargeback trend expectation: `GET /api/admin/billing/chargeback-daily-rollup` returns `mode=CHARGEBACK_DAILY_ROLLUP`, `rollupSource`, `UTC_DAY` organization/day points, scoped `inputPointCount`, and data-flow-derived ingress/egress/internal/operation/failure/cancel counters without object keys or provider payloads. `GET /api/admin/billing/chargeback-daily-rollup/export.csv` returns `text/csv`, `osmu-chargeback-daily-rollup.csv`, a `TOTAL` row, scoped `DAILY_ORGANIZATION` rows, and no object keys/provider payloads. The Admin billing panel renders `chargeback-daily-rollup-metrics`, `chargeback-daily-rollup-count`, `chargeback-daily-rollup-total`, `chargeback-daily-rollup-source`, `chargeback-daily-rollup-list`, `chargeback-daily-rollup-row`, and `chargeback-daily-rollup-export-button`.
+- Query contract: `ChargebackPreviewServiceQueryTest` verifies ORG_ADMIN preview and daily rollup each issue one `BucketRepository.findByOwners("ORG", ...)` call for the visible organization and never load the global bucket list. It also verifies closeout delegates window/scoped `limit + 1` queries to all four billing repositories and fails closed with a truncation blocker. `verify-chargeback-closeout-evidence.ps1`, `verify-operations-readiness-artifact-import.ps1`, `verify-operations-handoff-package.ps1`, and `verify-operations-readiness.ps1` verify that scan completeness is retained through target evidence, artifact import, handoff packaging, direct readiness acceptance, and dashboard-ready summaries.
 - Adapter retry worker and adapter readiness: `GET /api/admin/billing/chargeback-adapter-retry-worker/status` returns `mode=ADAPTER_RETRY_WORKER`, `dryRun=true`, `externalAdaptersEnabled` reflecting notification/payment adapter configuration, candidate counts, and `updatedCount=0`; `POST /api/admin/billing/chargeback-adapter-retry-worker/run?dryRun=false` attempts configured generic notification webhook, `SLACK` notification webhook, `EMAIL` SMTP relay, configured native payment provider adapter rows, and matching payment webhook profile rows, blocks unconfigured rows without external calls, and is `ADMIN` only. `GET /api/admin/billing/payment-provider-adapter-readiness` returns `mode=PAYMENT_PROVIDER_ADAPTER_READINESS`, generic/CARD/BANK/TAX/ERP rows, webhook-ready counts, native-ready counts, native adapter flags, and no-secret policy without external calls. The Admin billing panel renders `chargeback-adapter-retry-worker-refresh-button`, `chargeback-adapter-retry-worker-run-button`, `chargeback-adapter-retry-worker-list`, `chargeback-payment-adapter-readiness-metrics`, and `chargeback-payment-adapter-readiness-list`.
 - Priority: P1
-- Automation: `AdminBillingControllerTest`, `ChargebackPreviewServiceTest`, `HomeView.test.js`
+- Automation: `AdminBillingControllerTest`, `ChargebackPreviewServiceTest`, `ChargebackPreviewServiceQueryTest`, `HomeView.test.js`
 
 ### TC-ORG-005
 
@@ -912,9 +929,9 @@ ID:
 - Condition: Organization has assigned users or ORG-owned buckets.
 - Input: `DELETE /api/admin/organizations/{organizationId}`
 - Steps: Try deleting an organization with an assigned user, then try deleting one with an ORG-owned bucket.
-- Expected: HTTP 409, `CONFLICT`.
+- Expected: HTTP 409, `CONFLICT`; bucket, user, and team assignment guards use indexed existence queries without loading full collections.
 - Priority: P1
-- Automation: Automated
+- Automation: AdminOrganizationControllerTest.deleteOrganizationRejectsAssignedUsersAndBuckets, AdminOrganizationControllerQueryTest.deleteUsesIndexedExistenceChecksInsteadOfLoadingCollections.
 
 ### TC-ORG-006
 
@@ -933,8 +950,9 @@ ID:
 - Input: `GET /api/admin/users?keyword={keyword}&status={status}&limit={limit}&cursor={cursor}`.
 - Steps: Create users with similar login/email/name values, deactivate one user, request the first filtered page with `keyword`, `status=ACTIVE`, and `limit=1`, then request the next page with returned `nextCursor`. Also request invalid `limit` and invalid `cursor`.
 - Expected: Results are newest-first by user id, keyword matches `loginId`/`email`/`name` case-insensitively, status filter excludes inactive users, `nextCursor` loads the next page with the same filter, invalid query returns `400 VALIDATION_ERROR`, and ORG_ADMIN only sees users in its organization.
+- Query contract: AdminUserControllerQueryTest verifies keyword/status/organization scope, id cursor, ordering, and bounded limit are delegated to UserRepository.findPage without calling findAll.
 - Priority: P1
-- Automated: `AdminUserControllerTest.adminUserListSupportsFiltersAndCursorPagination`, `api-query.test.js`
+- Automated: `AdminUserControllerTest.adminUserListSupportsFiltersAndCursorPagination`, `AdminUserControllerQueryTest`, `api-query.test.js`
 
 ### TC-ORG-006B
 
@@ -942,9 +960,19 @@ ID:
 - Preconditions: ADMIN, ORG_ADMIN, two organizations, same-org users, and another-org users exist.
 - Input: `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`.
 - Steps: ADMIN creates a team with same-org members. ORG_ADMIN creates a team in its organization, tries to include another-org user, lists teams, updates members, and deletes the team.
-- Expected: ADMIN can manage all teams. ORG_ADMIN sees and manages only its organization teams. Cross-organization members and protected admin/auditor members are rejected with `403 AUTHORIZATION_FAILED`. Team deletion removes connected `TEAM` bucket permission rows.
+- Expected: ADMIN can manage all teams. ORG_ADMIN sees and manages only its organization teams. Cross-organization members and protected admin/auditor members are rejected with `403 AUTHORIZATION_FAILED`. Invalid member input is rejected before a team ID is allocated or a team row is saved. Team deletion removes connected `TEAM` bucket permission rows. Listing applies organization scope, ascending id cursor, and a bounded limit in TeamRepository; it returns nextCursor and loads memberIds only for the returned page with one bulk query rather than one query per team. Create/update member validation also loads distinct user rows with one bulk query while preserving the first requested member order.
 - Priority: P1
-- Automated: `AdminTeamControllerTest`
+- Automated: `AdminTeamControllerTest`, `AdminTeamControllerQueryTest`, `InMemoryTeamRepositoryTest`
+
+### TC-ORG-006C
+
+- Feature: Organization/team access key policy reconciliation bulk query.
+- Preconditions: An organization or team has multiple affected users and active access keys.
+- Input: Organization or team subject type and subject id.
+- Steps: Resolve affected users and reconcile their active access key scopes after organization/team permission changes.
+- Expected: Organization users are resolved by indexed user-id query, then all affected access key rows load through one owner-id IN query. The service does not load all users or issue one access key query per owner, while existing sync/deactivation behavior remains unchanged.
+- Priority: P1
+- Automated: `AccessKeyServiceQueryTest`, `AccessKeyProvisioningRecoveryTest`
 
 ### TC-ORG-007
 
@@ -1011,12 +1039,12 @@ ID:
 ### TC-BUCKET-004
 
 - 기능: 버킷 목록 조회
-- 조건: 접근 가능한 버킷이 1개 이상 존재한다.
+- 조건: USER owner bucket, 같은 조직의 ORG owner bucket, 직접 USER permission bucket, TEAM permission bucket, 접근 불가 bucket이 존재한다.
 - 입력: `GET /api/buckets`
-- 절차: 버킷 목록 API 호출.
-- 기대 결과: 접근 가능한 버킷 목록 반환.
+- 절차: 일반 사용자로 버킷 목록 API를 호출하고 owner/organization/direct/team 접근 결과를 비교한다.
+- 기대 결과: 접근 가능한 버킷만 이름순으로 반환하며, 서비스는 전체 bucket 조회나 bucket별 permission 조회 대신 indexed bulk repository query를 사용한다.
 - 우선순위: P0
-- 자동화 여부: Automated
+- 자동화 여부: BucketObjectFlowTest, BucketServiceListTest
 
 ### TC-BUCKET-005
 
@@ -1073,8 +1101,8 @@ ID:
 - 기능: bucket permission으로 object action 제어
 - 조건: user bucket owner와 target user가 존재한다.
 - 입력: `POST /api/buckets/{bucketName}/permissions` with `READ`, `WRITE`, `DELETE`
-- 절차: owner가 target user에게 `READ`를 부여하면 object 목록 조회와 read-only Access Key 생성이 가능하고 upload는 차단된다. `READ`를 회수하면 목록 조회가 차단되고 기존 read-only Access Key가 `INACTIVE`가 된다. `WRITE`, `DELETE`를 부여하면 업로드와 삭제가 가능하다.
-- 기대 결과: permission별로 `READ`, `WRITE`, `DELETE` object action이 분리되어 동작하고, target user는 permission 목록 관리 API에 접근할 수 없다. 권한 회수 후 기존 Access Key도 stale policy를 유지하지 않는다.
+- 절차: owner가 target user에게 `READ`를 부여하면 bucket 목록과 object 목록에 표시되고 read-only Access Key 생성이 가능하며 upload는 차단된다. `READ`를 회수하면 bucket/object 목록 조회가 차단되고 기존 read-only Access Key가 `INACTIVE`가 된다. `WRITE`, `DELETE`를 부여하면 업로드와 삭제가 가능하다.
+- 기대 결과: permission별로 `READ`, `WRITE`, `DELETE` object action이 분리되어 동작하고, target user는 permission 목록 관리 API에 접근할 수 없다. 권한 부여/회수가 bucket 목록 가시성에 즉시 반영되며 기존 Access Key도 stale policy를 유지하지 않는다.
 - 우선순위: P1
 - 자동화 여부: Automated
 
@@ -1083,8 +1111,8 @@ ID:
 - Feature: `TEAM` bucket permission applies to team members.
 - Preconditions: A bucket, a team, one team member, and one outsider exist in the same organization.
 - Input: `POST /api/buckets/{bucketName}/permissions` with `subjectType = TEAM`.
-- Steps: Grant `READ` to the team, verify the member can list objects and create a scoped read Access Key, verify the outsider is denied, revoke the permission, then update team members.
-- Expected: Team members inherit bucket permissions through team membership. Outsiders do not. Permission revoke or membership removal resynchronizes affected active Access Keys and marks keys `INACTIVE` when no scope remains.
+- Steps: Grant `READ` to the team, verify the bucket appears in the member list but not the outsider list, then verify the member can list objects and create a scoped read Access Key, verify the outsider is denied, revoke the permission, then update team members.
+- Expected: Team members inherit bucket permissions and bucket-list visibility through team membership. Outsiders do not. Permission revoke removes list visibility, while revoke or membership removal resynchronizes affected active Access Keys and marks keys `INACTIVE` when no scope remains.
 - Priority: P1
 - Automated: `BucketObjectFlowTest.teamBucketPermissionAppliesToTeamMembers`
 
@@ -1119,6 +1147,26 @@ ID:
 - Expected: User UI shows active profile, alias, risk, MinIO binding, and recent requests. Admin UI shows request queue with note input and approve/reject/apply actions.
 - Priority: P1
 - Automated: `api-storage-profile.test.js` covers API wrappers, `npm run test:unit` covers stable storage profile selectors, and Browser E2E spec covers bucket-side profile select/reason/request, request row/status render, Admin approval, and Admin apply status transition.
+
+### TC-STORAGE-PROFILE-004
+
+- Feature: Non-admin visible Storage Profile request bulk query.
+- Preconditions: A non-admin user can access a subset of buckets and request history exists for both visible and hidden buckets.
+- Input: `GET /api/storage-profile-requests?bucketName={bucketName}&cursor={requestId}&limit=5`.
+- Steps: Load the selected bucket's first five requests, follow `nextCursor`, and also exercise an unfiltered visible-bucket page.
+- Expected: Bucket access is checked before the selected-bucket query. Bucket or visible-bucket filters, `id < cursor`, descending order, and `limit + 1` execute in the repository; the API returns at most the requested size and never loads global history. Storage UI keeps its history state separate from the admin approval queue, ignores stale bucket responses, and appends deduplicated rows with Load more.
+- Priority: P1
+- Automated: `StorageProfileServiceQueryTest`, `InMemoryStorageProfileRequestRepositoryTest`, `StorageProfileControllerTest`, `api-storage-profile.test.js`, `HomeView.test.js`
+
+### TC-STORAGE-PROFILE-005
+
+- Feature: Admin Storage Profile approval queue bounded query.
+- Preconditions: `PENDING`, `APPROVED`, and closed Storage Profile request history exists.
+- Input: `GET /api/admin/storage-profile-requests?status=OPEN&cursor={requestId}&limit=50`.
+- Steps: Load the open queue, change the status filter, and request the next cursor page.
+- Expected: `OPEN` expands to `PENDING` and `APPROVED`; status, `id < cursor`, descending order, and `limit + 1` are applied in the repository. The API returns at most the requested page size plus `nextCursor`, and invalid status/cursor/limit values are rejected before a repository query. Admin UI ignores stale filter responses and appends deduplicated rows with Load more.
+- Priority: P1
+- Automated: `StorageProfileServiceQueryTest`, `InMemoryStorageProfileRequestRepositoryTest`, `StorageProfileControllerTest`, `api-storage-profile.test.js`, `HomeView.test.js`
 
 ## 6. Object
 
@@ -1267,9 +1315,10 @@ ID:
 - Preconditions: ADMIN user is logged in and one or more object share links exist.
 - Input: `GET /api/admin/object-share-analytics?limit=10&bucketName={bucketName}&status=ACTIVE`.
 - Steps: Create a password/IP-restricted share link, download it once through the public URL, then query analytics with bucket/status filters.
-- Expected: Analytics includes filtered total/status/protection/download counters, `lastAccessedAt`, and recent links without raw token or public URL.
+- Expected: Analytics includes filtered total/status/protection/download counters, `lastAccessedAt`, and recent links without raw token or public URL. Aggregate counters are computed in the repository and only the requested recent-link limit is loaded.
+- Query contract: `AdminObjectSharePolicyControllerQueryTest` verifies normalized bucket/status/limit delegation. `ObjectShareLinkRepository` no longer exposes a global `findAll` contract, and `InMemoryObjectShareLinkRepositoryTest` verifies filtered counters plus newest-first bounded recent rows.
 - Priority: P1
-- Automated: `AdminObjectSharePolicyControllerTest.adminCanManageObjectSharePolicyAndPolicyIsEnforced`, `verify-lightweight-prototype.ps1`
+- Automated: `AdminObjectSharePolicyControllerTest.adminCanManageObjectSharePolicyAndPolicyIsEnforced`, `AdminObjectSharePolicyControllerQueryTest`, `InMemoryObjectShareLinkRepositoryTest`, `AdminDashboardSummaryControllerTest`, `verify-lightweight-prototype.ps1`
 
 ### TC-OBJECT-005
 
@@ -1700,10 +1749,13 @@ ID:
 - 기능: quota policy 관리 API
 - 조건: admin token과 존재하는 user target이 있다.
 - 입력: `GET/PUT/DELETE /api/admin/quota-policies`.
+- Cursor listing: GET /api/admin/quota-policies?limit=1 returns nextCursor when another policy exists; using that opaque value as cursor returns the next policy page without duplicates, and limit must remain in the 1 through 200 range.
 - 절차: user quota policy를 생성하고 목록에서 확인한 뒤 삭제한다.
 - 기대 결과: 생성 응답에 `targetType`, `targetId`, `quotaBytes`, `usedBytes`, `remainingBytes`가 포함되고, 삭제 후 목록에서 제거된다. `QUOTA_POLICY_SAVE`/`QUOTA_POLICY_DELETE` 감사 로그와 quota policy history가 기록된다.
 - 우선순위: P1
 - 자동화 여부: Automated
+
+- Query contract: QuotaPolicyServiceTest.listResolvesUsageWithBulkOwnerAndBucketQueries verifies a mixed USER/ORGANIZATION/BUCKET policy list uses at most two owner aggregates and one bucket-id bulk read and never loads all buckets per policy.
 
 ### TC-QUOTA-005
 
@@ -2063,6 +2115,15 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - 우선순위: P1
 - 자동화 여부: Automated (`api-multipart-upload.test.js` preserveSessionOnAbort/local session 보존, `HomeView.test.js` pause event/options/source wiring, `scripts/verify-browser-e2e-mock-demo.ps1 -EnableMultipartFixture -TestGrep "pause and resume multipart"` small multipart fixture Browser click path). Browser/MinIO pause/resume execution E2E pending.
 
+### TC-FE-036
+
+- Feature: Route-scoped frontend API loading.
+- Preconditions: A stored authenticated session exists and the Vue portal can reach mocked API routes.
+- Input: Open /developer, then navigate among Dashboard, Storage, Objects, Admin, and Audit routes allowed by the current role.
+- Steps: Record API requests during initial route load and route changes. Verify dashboard layout/readiness loads only on Dashboard, S3 client configuration only on Developer, object listing only on Dashboard/Objects, storage profile assignment only on Storage, bucket permission/lifecycle/tag metadata only on Admin, and audit logs on Audit for audit-capable roles.
+- Expected: /developer requests health, buckets, access keys, and S3 client configuration without dashboard layout, admin directory/operations, storage profile, object-list, or bucket metadata requests. Each route change loads its own data group, and selected-bucket refresh uses the active page's minimal detail group.
+- Priority: P1
+- Automated: HomeView.test.js source contract and Browser E2E "stored developer session opens developer console without login" API request capture; latest local run passed 16 tests with 3 environment-conditional skips.
 ## 11. Security
 
 ### TC-SEC-001
@@ -2414,7 +2475,7 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Feature: MariaDB metadata index coverage static gate.
 - Preconditions: PowerShell is available and Flyway migrations exist under `osmu-backend/src/main/resources/db/migration`.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-metadata-index-coverage.ps1`.
-- Steps: Verify the script reads migration SQL and checks expected leading index columns for object listing/tag filtering/version history/trash retention, audit request/result lookup, data-flow event and aggregate windows, storage expansion summary/timeout, and chargeback notification/payment retry worker query paths. Confirm the generated JSON/Markdown report states that this is static migration coverage and not a replacement for live MariaDB `EXPLAIN`/slow-query evidence.
+- Steps: Verify the script reads migration SQL and checks expected leading index columns for bucket access subject/team membership, bucket owner quota aggregation, object listing/tag filtering/version history/trash retention, audit request/result lookup, data-flow event and aggregate windows, storage expansion summary/timeout, and chargeback notification/payment retry worker query paths. Confirm the generated JSON/Markdown report states that this is static migration coverage and not a replacement for live MariaDB `EXPLAIN`/slow-query evidence.
 - Expected: The check fails if a listed high-volume query path loses its migration-backed index prefix, and passes when all expected indexes are present.
 - Priority: P1
 - Automated: `scripts/verify-metadata-index-coverage.ps1`, `scripts/verify-local.ps1`
@@ -2696,9 +2757,18 @@ MVP 완료 전 다음 테스트는 반드시 통과해야 한다.
 - TC-FE-022
 - TC-FE-023
 - TC-FE-035
+- TC-FE-036
 - TC-FE-033
 - TC-FE-034
 - TC-DEMO-001
 - TC-DEMO-002
 - TC-DEMO-003
 - TC-DEMO-004
+
+### TC-STORAGE-LAYOUT-001
+
+- Feature: Kubernetes PVC Storage Layout plan and simulation.
+- Preconditions: An ADMIN session is available; development mode has no target Kubernetes credentials.
+- Steps: Read the layout catalog, create a RAID6 plan with four PVCs, approve it, and run simulation. Attempt a RAID10 plan with an odd PVC count.
+- Expected: The valid plan returns simulationOnly=true, a SIMULATION_READY preflight result, PVC/StorageClass/MinIO pool checks, and a YAML preview with clusterMutation disabled. The simulation does not create a PVC or apply a Tenant. The odd RAID10 topology is rejected.
+- Automated: AdminStorageLayoutControllerTest, StorageLayoutCatalogTest, api-storage-layout.test.js.

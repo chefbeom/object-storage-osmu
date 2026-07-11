@@ -1018,6 +1018,11 @@ Query:
 
 - `organizationId`: 특정 조직 팀만 조회한다. `ORG_ADMIN`은 자기 조직 범위로 제한된다.
 
+- `limit`: page size from `1` to `200`. Default `50`.
+- `cursor`: previous `nextCursor`; uses ascending team id pagination.
+
+Response is ascending by team id and includes `nextCursor` when another page exists. Member ids are loaded only for the returned page.
+
 Response item:
 
 ```json
@@ -1258,7 +1263,15 @@ Response:
 
 ### GET /api/storage-profile-requests
 
-Returns Storage Profile requests visible to the current user. `ADMIN` receives all requests. Normal users receive requests for buckets they can access.
+Returns a newest-first cursor page of Storage Profile requests visible to the current user.
+
+Query:
+
+- `bucketName`: optional bucket filter. When present, bucket access is verified before the indexed request query.
+- `cursor`: optional positive request ID. The next page contains IDs lower than the cursor.
+- `limit`: optional page size, default `50`, minimum `1`, maximum `200`.
+
+Without `bucketName`, `ADMIN` can page all requests while normal users receive only requests for accessible buckets. The response uses the standard list envelope and returns `nextCursor` when another page exists. The Storage page requests the selected bucket in pages of five.
 
 ### GET /api/buckets/{bucketName}/storage-profile
 
@@ -1305,7 +1318,15 @@ Validation:
 
 ### GET /api/admin/storage-profile-requests
 
-Returns all Storage Profile requests. `ADMIN` only.
+Returns a newest-first cursor page of Storage Profile requests. `ADMIN` only. The default queue is `OPEN`, which includes `PENDING` and `APPROVED` requests.
+
+Query:
+
+- `status`: optional. `OPEN` (default), `ALL`, `PENDING`, `APPROVED`, `APPLIED`, or `REJECTED`.
+- `cursor`: optional positive request ID. The next page contains IDs lower than the cursor.
+- `limit`: optional page size, default `50`, minimum `1`, maximum `200`.
+
+The response uses the standard list envelope. `nextCursor` is the last visible request ID when another page exists; otherwise it is `null`.
 
 ### PATCH /api/admin/storage-profile-requests/{requestId}/status
 
@@ -3293,7 +3314,7 @@ Query parameters:
 
 - `billingPeriod` (required): target billing period label recorded in the evidence snapshot. When it is `yyyy-MM` and `from`/`to` are omitted, the endpoint filters that UTC month.
 - `from` / `to` (optional): ISO-8601 offset datetime window for custom closeout evidence windows.
-- `limit` (optional): repository scan limit, default `500`, max `1000`.
+- `limit` (optional): per-source repository scan limit, default `500`, max `1000`. The backend applies the closeout window first, requests `limit + 1` rows, and reports truncation instead of claiming a partial closeout is complete.
 
 Response:
 
@@ -3301,6 +3322,7 @@ Response:
 - `billingPeriod`, `from`, `to`, `currency`
 - `closeoutStatus` / `result`: `RECONCILED` only when at least one final invoice is present, payment requests are complete, every final invoice is paid, payment handoffs and notification deliveries are closed, and the final-invoice total equals the paid-invoice total; otherwise `PENDING`.
 - `invoiceDraftCount`, `finalInvoiceCount`, `paymentRequestedCount`, `paymentHandoffCount`, `paidInvoiceCount`, `notificationDeliveryCount`, `adapterRetryCount`
+- `scanLimit`, `sourceTruncated`, `truncationBlockerCount`. Any truncated source forces `closeoutStatus=PENDING` and `closeoutReady=false`.
 - `closeoutReady`, `invoiceFinalizationComplete`, `paymentRequestsComplete`, `paymentsSettled`, `paymentHandoffsClosed`, `notificationDeliveriesClosed`, `reconciliationBalanced`
 - `blockerCount`, `missingFinalInvoiceBlockerCount`, `missingPaymentRequestBlockerCount`, `unpaidInvoiceBlockerCount`, `openHandoffBlockerCount`, `openNotificationBlockerCount`, `reconciliationBlockerCount`
 - `finalInvoiceTotalMinorUnits`, `paidInvoiceTotalMinorUnits`, `paymentRequestedTotalMinorUnits`, `reconciliationDifferenceMinorUnits`, `failureCount`
@@ -4123,9 +4145,59 @@ Response:
 }
 ```
 
-`recentLinks`는 admin 운영 리뷰용이며 raw token과 public URL은 포함하지 않는다.
+`recentLinks`는 admin 운영 리뷰용이며 raw token과 public URL은 포함하지 않는다. 집계 값은 repository aggregate query로 계산하고 최근 링크는 `limit`만큼만 newest-first로 읽으므로 전체 공유 링크 row를 API memory에 적재하지 않는다.
 
+### GET /api/admin/storage-layouts/capabilities
+
+Returns the administrator-visible Kubernetes PVC layout catalog. The supported control-plane layouts are JBOD, RAID0-like, RAID1-like, RAID5-like, RAID6-like, and RAID10-like. These values describe storage intent and capacity estimation; they do not execute a node-local RAID command.
+
+### GET /api/admin/storage-layouts/plans
+
+Returns a newest-first cursor page of storage layout plans. ADMIN only.
+
+Query:
+
+- status: OPEN by default, ALL, PLANNED, APPROVED, or REJECTED.
+- cursor: positive plan ID returned as nextCursor.
+- limit: page size from 1 to 200; default 50.
+
+Each response includes layout metadata, StorageClass, server and PVC topology, raw and estimated usable capacity, preflight checks, and simulationOnly=true.
+
+### POST /api/admin/storage-layouts/plans
+
+Creates a Kubernetes PVC and MinIO pool intent plan. ADMIN only. It does not create a PVC, modify a StorageClass, or apply a MinIO Tenant.
+
+Request example:
+
+    {
+      "layoutCode": "RAID6",
+      "storageClassName": "osmu-storage",
+      "serverCount": 4,
+      "volumesPerServer": 1,
+      "volumeSizeGiB": 1024,
+      "reason": "durable media pool"
+    }
+
+Validation enforces the selected layout minimum PVC count, even PVC topology for RAID1-like and RAID10-like plans, a valid StorageClass name, and a PVC volume size from 10 GiB through 1 PiB.
+
+### PATCH /api/admin/storage-layouts/plans/{planId}/status
+
+Changes a PLANNED plan to APPROVED or REJECTED. The endpoint records the administrator and optional adminNote. It never applies a Kubernetes resource.
+
+### POST /api/admin/storage-layouts/plans/{planId}/simulate
+
+Records a development simulation and returns a YAML preview plus preflight checks for PVC topology, StorageClass registration, planned MinIO pool, and the explicit cluster-mutation-disabled guard. Rejected plans cannot be simulated.
 ### GET /api/admin/storage-expansion/requests
+
+Query:
+
+| Name | Required | Description |
+| --- | --- | --- |
+| `status` | N | `ALL` (default), `OPEN`, `PLANNED`, `APPROVED`, `APPLIED`, or `REJECTED`. `OPEN` expands to `PLANNED` and `APPROVED`. |
+| `cursor` | N | Positive request ID returned as `nextCursor`; the next page reads lower IDs. |
+| `limit` | N | Page size from 1 to 200; default 50. |
+
+The Admin UI requests `status=OPEN&limit=50` by default and appends older rows only through `nextCursor`.
 
 ADMIN이 MinIO pool 단위 storage expansion 요청과 계획을 조회한다. 현재 MVP는 Kubernetes 실행 전 단계로 요청/계획/상태 기록을 제공한다.
 
@@ -4152,7 +4224,8 @@ ADMIN이 MinIO pool 단위 storage expansion 요청과 계획을 조회한다. �
       "createdAt": "2026-06-15T06:00:00Z",
       "updatedAt": "2026-06-15T06:00:00Z"
     }
-  ]
+  ],
+  "nextCursor": null
 }
 ```
 
@@ -4323,6 +4396,46 @@ Storage Expansion execution output retention을 수동 실행한다. ADMIN 전�
 - `OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_INITIAL_DELAY_MS=180000`
 - `OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_FIXED_DELAY_MS=3600000`
 
+### GET /api/admin/storage-layouts/capabilities
+
+Returns the administrator-visible Kubernetes PVC layout catalog. The supported control-plane layouts are JBOD, RAID0-like, RAID1-like, RAID5-like, RAID6-like, and RAID10-like. These values describe storage intent and capacity estimation; they do not execute a node-local RAID command.
+
+### GET /api/admin/storage-layouts/plans
+
+Returns a newest-first cursor page of storage layout plans. ADMIN only.
+
+Query:
+
+- status: OPEN by default, ALL, PLANNED, APPROVED, or REJECTED.
+- cursor: positive plan ID returned as nextCursor.
+- limit: page size from 1 to 200; default 50.
+
+Each response includes layout metadata, StorageClass, server and PVC topology, raw and estimated usable capacity, preflight checks, and simulationOnly=true.
+
+### POST /api/admin/storage-layouts/plans
+
+Creates a Kubernetes PVC and MinIO pool intent plan. ADMIN only. It does not create a PVC, modify a StorageClass, or apply a MinIO Tenant.
+
+Request example:
+
+    {
+      "layoutCode": "RAID6",
+      "storageClassName": "osmu-storage",
+      "serverCount": 4,
+      "volumesPerServer": 1,
+      "volumeSizeGiB": 1024,
+      "reason": "durable media pool"
+    }
+
+Validation enforces the selected layout minimum PVC count, even PVC topology for RAID1-like and RAID10-like plans, a valid StorageClass name, and a PVC volume size from 10 GiB through 1 PiB.
+
+### PATCH /api/admin/storage-layouts/plans/{planId}/status
+
+Changes a PLANNED plan to APPROVED or REJECTED. The endpoint records the administrator and optional adminNote. It never applies a Kubernetes resource.
+
+### POST /api/admin/storage-layouts/plans/{planId}/simulate
+
+Records a development simulation and returns a YAML preview plus preflight checks for PVC topology, StorageClass registration, planned MinIO pool, and the explicit cluster-mutation-disabled guard. Rejected plans cannot be simulated.
 ### GET /api/admin/storage-expansion/requests/{requestId}/manifest
 
 ADMIN이 증설 요청에서 생성될 MinIO Operator Tenant patch와 Helm values patch 초안을 미리 확인한다. 현재 MVP는 실제 Kubernetes 적용 전 검토용 `referenceOnly = true` 응답을 반환한다.
@@ -4348,6 +4461,46 @@ ADMIN이 증설 요청에서 생성될 MinIO Operator Tenant patch와 Helm value
 - ADMIN 전용.
 - YAML은 운영 적용용 명령이 아니라, 증설 승인 후 검토/배포 파이프라인 연결을 위한 초안이다.
 
+### GET /api/admin/storage-layouts/capabilities
+
+Returns the administrator-visible Kubernetes PVC layout catalog. The supported control-plane layouts are JBOD, RAID0-like, RAID1-like, RAID5-like, RAID6-like, and RAID10-like. These values describe storage intent and capacity estimation; they do not execute a node-local RAID command.
+
+### GET /api/admin/storage-layouts/plans
+
+Returns a newest-first cursor page of storage layout plans. ADMIN only.
+
+Query:
+
+- status: OPEN by default, ALL, PLANNED, APPROVED, or REJECTED.
+- cursor: positive plan ID returned as nextCursor.
+- limit: page size from 1 to 200; default 50.
+
+Each response includes layout metadata, StorageClass, server and PVC topology, raw and estimated usable capacity, preflight checks, and simulationOnly=true.
+
+### POST /api/admin/storage-layouts/plans
+
+Creates a Kubernetes PVC and MinIO pool intent plan. ADMIN only. It does not create a PVC, modify a StorageClass, or apply a MinIO Tenant.
+
+Request example:
+
+    {
+      "layoutCode": "RAID6",
+      "storageClassName": "osmu-storage",
+      "serverCount": 4,
+      "volumesPerServer": 1,
+      "volumeSizeGiB": 1024,
+      "reason": "durable media pool"
+    }
+
+Validation enforces the selected layout minimum PVC count, even PVC topology for RAID1-like and RAID10-like plans, a valid StorageClass name, and a PVC volume size from 10 GiB through 1 PiB.
+
+### PATCH /api/admin/storage-layouts/plans/{planId}/status
+
+Changes a PLANNED plan to APPROVED or REJECTED. The endpoint records the administrator and optional adminNote. It never applies a Kubernetes resource.
+
+### POST /api/admin/storage-layouts/plans/{planId}/simulate
+
+Records a development simulation and returns a YAML preview plus preflight checks for PVC topology, StorageClass registration, planned MinIO pool, and the explicit cluster-mutation-disabled guard. Rejected plans cannot be simulated.
 ### GET /api/admin/storage-expansion/requests/{requestId}/manifest/{artifact}
 
 ADMIN이 증설 요청 manifest를 YAML 파일로 내려받는다. GitOps PR, Helm values patch, 운영 티켓 첨부를 위한 export 용도다.
@@ -4632,6 +4785,46 @@ Path:
 }
 ```
 
+### GET /api/admin/storage-layouts/capabilities
+
+Returns the administrator-visible Kubernetes PVC layout catalog. The supported control-plane layouts are JBOD, RAID0-like, RAID1-like, RAID5-like, RAID6-like, and RAID10-like. These values describe storage intent and capacity estimation; they do not execute a node-local RAID command.
+
+### GET /api/admin/storage-layouts/plans
+
+Returns a newest-first cursor page of storage layout plans. ADMIN only.
+
+Query:
+
+- status: OPEN by default, ALL, PLANNED, APPROVED, or REJECTED.
+- cursor: positive plan ID returned as nextCursor.
+- limit: page size from 1 to 200; default 50.
+
+Each response includes layout metadata, StorageClass, server and PVC topology, raw and estimated usable capacity, preflight checks, and simulationOnly=true.
+
+### POST /api/admin/storage-layouts/plans
+
+Creates a Kubernetes PVC and MinIO pool intent plan. ADMIN only. It does not create a PVC, modify a StorageClass, or apply a MinIO Tenant.
+
+Request example:
+
+    {
+      "layoutCode": "RAID6",
+      "storageClassName": "osmu-storage",
+      "serverCount": 4,
+      "volumesPerServer": 1,
+      "volumeSizeGiB": 1024,
+      "reason": "durable media pool"
+    }
+
+Validation enforces the selected layout minimum PVC count, even PVC topology for RAID1-like and RAID10-like plans, a valid StorageClass name, and a PVC volume size from 10 GiB through 1 PiB.
+
+### PATCH /api/admin/storage-layouts/plans/{planId}/status
+
+Changes a PLANNED plan to APPROVED or REJECTED. The endpoint records the administrator and optional adminNote. It never applies a Kubernetes resource.
+
+### POST /api/admin/storage-layouts/plans/{planId}/simulate
+
+Records a development simulation and returns a YAML preview plus preflight checks for PVC topology, StorageClass registration, planned MinIO pool, and the explicit cluster-mutation-disabled guard. Rejected plans cannot be simulated.
 ### GET /api/admin/storage-expansion/requests/{requestId}/gitops-artifacts/bundle
 
 승인된 증설 요청의 GitOps 초안 파일을 ZIP으로 내려받는다. ZIP에는 `tenant-patch.yaml`, `helm-values.yaml`, `README.md`가 `infra/gitops/storage-expansion/{poolName}/` 경로로 포함된다. 실제 PR 자동 생성 전 수동 GitOps 적용, 운영 티켓 첨부, review 자료로 사용한다.
@@ -4675,7 +4868,56 @@ Path:
 
 활성화 시 runner는 shell을 거치지 않고 `git checkout -B`를 먼저 실행한 뒤 repository 내부 경로에만 artifact를 쓰고, `git add`, `git commit`, `git push -u origin {branch}`, `gh pr create`를 순차 실행한다. 각 command는 fail-fast로 처리되어 실패 이후 command는 실행하지 않는다. artifact path가 repository 밖으로 벗어나면 실패한다. `gh pr create` 출력에서 첫 HTTP(S) URL을 찾아 execution `externalUrl`로 저장한다. 실패 시 notes에는 `failureReason`을 저장하고 execution response의 `failureReason` 필드로도 내려준다. 값은 `TIMEOUT`, `AUTHENTICATION`, `AUTHORIZATION`, `BRANCH_PROTECTION`, `NO_CHANGES`, `DIRTY_WORKTREE`, `TOOL_MISSING`, `REPOSITORY_CONFIG`, `UNKNOWN` 중 하나다.
 
+### GET /api/admin/storage-layouts/capabilities
+
+Returns the administrator-visible Kubernetes PVC layout catalog. The supported control-plane layouts are JBOD, RAID0-like, RAID1-like, RAID5-like, RAID6-like, and RAID10-like. These values describe storage intent and capacity estimation; they do not execute a node-local RAID command.
+
+### GET /api/admin/storage-layouts/plans
+
+Returns a newest-first cursor page of storage layout plans. ADMIN only.
+
+Query:
+
+- status: OPEN by default, ALL, PLANNED, APPROVED, or REJECTED.
+- cursor: positive plan ID returned as nextCursor.
+- limit: page size from 1 to 200; default 50.
+
+Each response includes layout metadata, StorageClass, server and PVC topology, raw and estimated usable capacity, preflight checks, and simulationOnly=true.
+
+### POST /api/admin/storage-layouts/plans
+
+Creates a Kubernetes PVC and MinIO pool intent plan. ADMIN only. It does not create a PVC, modify a StorageClass, or apply a MinIO Tenant.
+
+Request example:
+
+    {
+      "layoutCode": "RAID6",
+      "storageClassName": "osmu-storage",
+      "serverCount": 4,
+      "volumesPerServer": 1,
+      "volumeSizeGiB": 1024,
+      "reason": "durable media pool"
+    }
+
+Validation enforces the selected layout minimum PVC count, even PVC topology for RAID1-like and RAID10-like plans, a valid StorageClass name, and a PVC volume size from 10 GiB through 1 PiB.
+
+### PATCH /api/admin/storage-layouts/plans/{planId}/status
+
+Changes a PLANNED plan to APPROVED or REJECTED. The endpoint records the administrator and optional adminNote. It never applies a Kubernetes resource.
+
+### POST /api/admin/storage-layouts/plans/{planId}/simulate
+
+Records a development simulation and returns a YAML preview plus preflight checks for PVC topology, StorageClass registration, planned MinIO pool, and the explicit cluster-mutation-disabled guard. Rejected plans cannot be simulated.
 ### GET /api/admin/storage-expansion/requests/{requestId}/executions
+
+Query:
+
+| Name | Required | Description |
+| --- | --- | --- |
+| `cursor` | N | Positive execution ID returned as `nextCursor`; the next page reads lower IDs for the same request. |
+| `limit` | N | Page size from 1 to 200; default 50. |
+
+The Admin execution history loads the first 50 rows and appends older rows only through `nextCursor`.
 
 증설 요청의 dry-run, GitOps PR, Helm diff, kubectl diff, apply, rollback 실행 이력을 조회한다. 실제 executor가 붙기 전에는 운영자가 수동으로 수행한 결과를 기록하고 검토하는 용도로 사용한다.
 
@@ -4698,7 +4940,8 @@ Path:
       "createdBy": "admin",
       "createdAt": "2026-06-15T06:30:00+09:00"
     }
-  ]
+  ],
+  "nextCursor": null
 }
 ```
 
@@ -4778,6 +5021,9 @@ Approved storage expansion request를 성공한 실행 기록 기준으로 `APPL
 }
 ```
 
+### GET /api/admin/quota-policies
+
+The list is a bounded cursor page. Optional limit accepts 1 through 200 and defaults to 50. Optional cursor is an opaque continuation value; the response returns nextCursor only when another page exists.
 ### GET /api/admin/quota-policies
 
 사용자, 조직, 버킷 단위 quota 정책 목록을 조회한다. `ADMIN` 권한 필요.
@@ -5037,7 +5283,7 @@ The response combines runtime, backup, quota, sharing, and operations-readiness 
 
 `dataFlowStorageTransitionRunbook` is a summary only: it exposes runbook result, target labels, storage-plan result, candidate store, target p95 query latency, failure/check counts, confirmations, and top failed checks, but not raw SQL, raw EXPLAIN JSON, object keys, raw event messages, credentials, or full operational command output.
 
-`operationsHandoffPackage.chargebackCloseoutSnapshot` is reduced summary only: it exposes closeout result, target labels, billing period, closeout window, check/failure/planned counts, invoice/payment/reconciliation counts, payment-provider adapter readiness status, raw-data flags, confirmations, and evidence refs, but not customer payment data, provider payloads/responses, endpoint URLs, credentials, price tables, or invoice documents.
+`operationsHandoffPackage.chargebackCloseoutSnapshot` is reduced summary only: it exposes closeout result, target labels, billing period, closeout window, check/failure/planned counts, invoice/payment/reconciliation counts, `scanLimit`, `sourceTruncated`, `sourceComplete`, `truncationBlockerCount`, `closeoutReady`, payment-provider adapter readiness status, raw-data flags, confirmations, and evidence refs, but not customer payment data, provider payloads/responses, endpoint URLs, credentials, price tables, or invoice documents. Truncated closeout sources cannot produce a passed handoff package.
 
 `operationsHandoffPackage.enterpriseAuthSmokeSnapshot` is also a reduced summary only: it exposes `passed` or accepted `scope-out` result, execution mode, requirement booleans, counts, and scope-out reference/reason, and `operationsHandoffPackage.confirmations.enterpriseAuthSmokeSnapshotReviewed` records the operator review confirmation; it does not expose raw identity claims, OIDC codes/states/tokens, LDAP/admin passwords, or client secrets.
 `operationsHandoffPackage.dataFlowQueryRetentionBudgetSnapshot` is reduced summary only: it exposes result, storage-plan result, candidate store, target/observed p95 query latency, retention budget seconds, failure/check counts, and confirmations, but not raw SQL, raw EXPLAIN JSON, object keys, raw event messages, credentials, or full benchmark/retention job output.
@@ -7487,13 +7733,22 @@ retention 기간이 지난 soft-deleted object purge를 수동 실행한다. `AD
 
 ### GET /api/admin/object-lifecycle/rules
 
-List object lifecycle rules. `ADMIN` required.
+List object lifecycle rules. `ADMIN` required. Status, target type, cursor, ordering, and limit are applied in the repository before rows are returned.
+
+Query:
+
+- `status`: `ALL` (default), `ENABLED`, or `DISABLED`.
+- `targetType`: `ALL` (default), `TRASH_OBJECT`, or `OBJECT_VERSION`.
+- `cursor`: opaque URL-safe cursor returned by the previous page. Clients must not construct or parse it.
+- `limit`: default `50`, minimum `1`, maximum `200`.
+
+Rows are ordered by `priority ASC, createdAt ASC, ruleId ASC`. The response overfetches one row to determine whether `nextCursor` is present.
 
 Response:
 
 ```json
 {
-  "data": [
+  "items": [
     {
       "ruleId": "b4c5...",
       "name": "raw-video-version-retention",
@@ -7510,13 +7765,16 @@ Response:
       "createdAt": "2026-06-13T11:45:00Z",
       "updatedAt": "2026-06-13T11:45:00Z"
     }
-  ]
+  ],
+  "nextCursor": "opaque-priority-created-at-rule-id"
 }
 ```
 
+`nextCursor` is `null` on the final page.
+
 ### GET /api/admin/object-lifecycle/conflicts
 
-Analyze enabled lifecycle rules for overlapping scopes. `ADMIN` required.
+Analyze enabled lifecycle rules for overlapping scopes. `ADMIN` required. The query loads enabled `TRASH_OBJECT` and `OBJECT_VERSION` rules separately, then compares only rules within the same target type.
 
 Overlap rules:
 
@@ -7564,7 +7822,7 @@ Mapping:
 - `TRASH_OBJECT` -> `Expiration/Days`
 - `prefix` and `tags` -> `Filter` with `Prefix`, `Tag`, or `And`
 - `priority`, `batchSize`, and `bucketName` are OSMU-only fields and are not represented in S3 XML.
-- Admin export includes all lifecycle rules. Use bucket lifecycle API for bucket-scoped XML.
+- Admin export intentionally uses the explicit full-snapshot repository contract and includes all lifecycle rules. It is not the paged inventory endpoint. Use bucket lifecycle API for bucket-scoped XML.
 
 ### POST /api/admin/object-lifecycle/s3-xml
 

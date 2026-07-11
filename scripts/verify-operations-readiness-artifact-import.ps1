@@ -1793,6 +1793,11 @@ Write-JsonEvidence (Join-Path $chargebackCloseoutSource "latest-chargeback-close
         requiredEvidenceRefCount = 14
         providedEvidenceRefCount = 14
         chargebackCloseoutSnapshotValid = $true
+        chargebackCloseoutSnapshotReady = $true
+        chargebackCloseoutSnapshotBlockerCount = 0
+        chargebackCloseoutSnapshotScanLimit = 500
+        chargebackCloseoutSnapshotSourceTruncated = $false
+        chargebackCloseoutSnapshotTruncationBlockerCount = 0
         paymentProviderAdapterReadinessSnapshotValid = $true
         paymentProviderAdapterReadinessReviewed = $true
         commercialEvidenceReviewed = $true
@@ -1845,6 +1850,13 @@ Write-JsonEvidence (Join-Path $chargebackCloseoutSource "latest-chargeback-close
         integersValid = $true
         booleansValid = $true
         failureCountZero = $true
+        blockerCountZero = $true
+        scanLimitPositive = $true
+        sourceTruncated = $false
+        sourceComplete = $true
+        truncationBlockerCountZero = $true
+        closeoutReady = $true
+        readinessBooleansClosed = $true
         noRawDataStored = $true
         counts = @{
             invoiceDraftCount = 4
@@ -1852,8 +1864,11 @@ Write-JsonEvidence (Join-Path $chargebackCloseoutSource "latest-chargeback-close
             paymentRequestedCount = 4
             paymentHandoffCount = 4
             paidInvoiceCount = 4
+            scanLimit = 500
+            truncationBlockerCount = 0
             reconciliationDifferenceMinorUnits = 0
             failureCount = 0
+            blockerCount = 0
         }
         rawDataFlags = @{
             rawCustomerPaymentDataStored = $false
@@ -2342,7 +2357,7 @@ Assert-True ($commercialApprovalEntry.Count -eq 1) "Commercial approval import e
 Assert-True (([string] $commercialApprovalEntry[0].detail).Contains("productVersion=v0.1.0-rc.1") -and ([string] $commercialApprovalEntry[0].detail).Contains("commercialApproved=1") -and ([string] $commercialApprovalEntry[0].detail).Contains("checkCount=14")) "Commercial approval import entry should include target approval metadata and validation detail."
 $chargebackCloseoutEntry = @($report.entries | Where-Object { $_.group -eq "chargeback-closeout" -and $_.fileName -eq "latest-chargeback-closeout-evidence.json" })
 Assert-True ($chargebackCloseoutEntry.Count -eq 1) "Chargeback closeout import entry missing."
-Assert-True (([string] $chargebackCloseoutEntry[0].detail).Contains("billingPeriod=2026-06") -and ([string] $chargebackCloseoutEntry[0].detail).Contains("refs=14/14") -and ([string] $chargebackCloseoutEntry[0].detail).Contains("failures=0")) "Chargeback closeout import entry should include billing period, refs, and validation detail."
+Assert-True (([string] $chargebackCloseoutEntry[0].detail).Contains("billingPeriod=2026-06") -and ([string] $chargebackCloseoutEntry[0].detail).Contains("refs=14/14") -and ([string] $chargebackCloseoutEntry[0].detail).Contains("failures=0") -and ([string] $chargebackCloseoutEntry[0].detail).Contains("scanLimit=500") -and ([string] $chargebackCloseoutEntry[0].detail).Contains("sourceTruncated=False")) "Chargeback closeout import entry should include billing period, refs, scan completeness, and validation detail."
 $promotedEnterpriseAuth = Read-Utf8Text (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json") | ConvertFrom-Json
 Assert-True ($promotedEnterpriseAuth.result -eq "scope-out") "Promoted enterprise auth scope-out evidence should be preserved."
 $enterpriseAuthImportEntry = @($report.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })

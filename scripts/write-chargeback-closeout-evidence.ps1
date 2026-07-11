@@ -219,7 +219,7 @@ function Parse-ChargebackCloseoutSnapshot([string] $PathValue) {
     $snapshotBillingPeriod = Get-PropertyText $data "billingPeriod"
     $resultText = Get-PropertyText $data "result"
     if ([string]::IsNullOrWhiteSpace($resultText)) { $resultText = Get-PropertyText $data "closeoutStatus" }
-    $intNames = @("invoiceDraftCount", "finalInvoiceCount", "paymentRequestedCount", "paymentHandoffCount", "paidInvoiceCount", "reconciliationDifferenceMinorUnits", "failureCount", "blockerCount", "missingFinalInvoiceBlockerCount", "missingPaymentRequestBlockerCount", "unpaidInvoiceBlockerCount", "openHandoffBlockerCount", "openNotificationBlockerCount", "reconciliationBlockerCount")
+    $intNames = @("invoiceDraftCount", "finalInvoiceCount", "paymentRequestedCount", "paymentHandoffCount", "paidInvoiceCount", "scanLimit", "truncationBlockerCount", "reconciliationDifferenceMinorUnits", "failureCount", "blockerCount", "missingFinalInvoiceBlockerCount", "missingPaymentRequestBlockerCount", "unpaidInvoiceBlockerCount", "openHandoffBlockerCount", "openNotificationBlockerCount", "reconciliationBlockerCount")
     $counts = [ordered]@{}
     $intInvalid = 0
     foreach ($name in $intNames) {
@@ -227,7 +227,7 @@ function Parse-ChargebackCloseoutSnapshot([string] $PathValue) {
         $counts[$name] = $parsed.value
         if (-not $parsed.valid) { $intInvalid++ }
     }
-    $boolNames = @("closeoutReady", "invoiceFinalizationComplete", "paymentRequestsComplete", "paymentsSettled", "paymentHandoffsClosed", "notificationDeliveriesClosed", "reconciliationBalanced", "rawCustomerPaymentDataStored", "rawProviderResponseStored", "rawSecretValuesStored")
+    $boolNames = @("sourceTruncated", "closeoutReady", "invoiceFinalizationComplete", "paymentRequestsComplete", "paymentsSettled", "paymentHandoffsClosed", "notificationDeliveriesClosed", "reconciliationBalanced", "rawCustomerPaymentDataStored", "rawProviderResponseStored", "rawSecretValuesStored")
     $bools = [ordered]@{}
     $boolInvalid = 0
     foreach ($name in $boolNames) {
@@ -240,13 +240,17 @@ function Parse-ChargebackCloseoutSnapshot([string] $PathValue) {
     $noRawDataStored = (-not $bools["rawCustomerPaymentDataStored"]) -and (-not $bools["rawProviderResponseStored"]) -and (-not $bools["rawSecretValuesStored"])
     $failureCountZero = $counts["failureCount"] -eq 0
     $blockerCountZero = $counts["blockerCount"] -eq 0
+    $scanLimitPositive = $counts["scanLimit"] -gt 0
+    $sourceTruncated = [bool] $bools["sourceTruncated"]
+    $sourceComplete = -not $sourceTruncated
+    $truncationBlockerCountZero = $counts["truncationBlockerCount"] -eq 0
     $closeoutReady = [bool] $bools["closeoutReady"]
     $readinessBooleansClosed = ([bool] $bools["invoiceFinalizationComplete"]) -and ([bool] $bools["paymentRequestsComplete"]) -and ([bool] $bools["paymentsSettled"]) -and ([bool] $bools["paymentHandoffsClosed"]) -and ([bool] $bools["notificationDeliveriesClosed"]) -and ([bool] $bools["reconciliationBalanced"])
-    $valid = $readResult.parsed -and (-not [string]::IsNullOrWhiteSpace($snapshotBillingPeriod)) -and $billingPeriodMatches -and $statusClosed -and ($intInvalid -eq 0) -and ($boolInvalid -eq 0) -and $noRawDataStored -and $failureCountZero -and $blockerCountZero -and $closeoutReady -and $readinessBooleansClosed
+    $valid = $readResult.parsed -and (-not [string]::IsNullOrWhiteSpace($snapshotBillingPeriod)) -and $billingPeriodMatches -and $statusClosed -and ($intInvalid -eq 0) -and ($boolInvalid -eq 0) -and $noRawDataStored -and $failureCountZero -and $blockerCountZero -and $scanLimitPositive -and $sourceComplete -and $truncationBlockerCountZero -and $closeoutReady -and $readinessBooleansClosed
     return [pscustomobject][ordered]@{
         provided = $true; parsed = $readResult.parsed; valid = $valid; path = $readResult.path; billingPeriod = $snapshotBillingPeriod; result = $resultText
-        statusClosed = $statusClosed; billingPeriodMatches = $billingPeriodMatches; integersValid = ($intInvalid -eq 0); booleansValid = ($boolInvalid -eq 0); failureCountZero = $failureCountZero; blockerCountZero = $blockerCountZero; closeoutReady = $closeoutReady; readinessBooleansClosed = $readinessBooleansClosed; noRawDataStored = $noRawDataStored
-        counts = $counts; readinessFlags = $bools; rawDataFlags = $bools; detail = "result=$resultText; billingPeriod=$snapshotBillingPeriod; failures=$($counts['failureCount']); blockers=$($counts['blockerCount']); ready=$closeoutReady; reconciliationDifferenceMinorUnits=$($counts['reconciliationDifferenceMinorUnits'])"
+        statusClosed = $statusClosed; billingPeriodMatches = $billingPeriodMatches; integersValid = ($intInvalid -eq 0); booleansValid = ($boolInvalid -eq 0); failureCountZero = $failureCountZero; blockerCountZero = $blockerCountZero; scanLimitPositive = $scanLimitPositive; sourceTruncated = $sourceTruncated; sourceComplete = $sourceComplete; truncationBlockerCountZero = $truncationBlockerCountZero; closeoutReady = $closeoutReady; readinessBooleansClosed = $readinessBooleansClosed; noRawDataStored = $noRawDataStored
+        counts = $counts; readinessFlags = $bools; rawDataFlags = $bools; detail = "result=$resultText; billingPeriod=$snapshotBillingPeriod; failures=$($counts['failureCount']); blockers=$($counts['blockerCount']); scanLimit=$($counts['scanLimit']); sourceTruncated=$sourceTruncated; truncationBlockers=$($counts['truncationBlockerCount']); ready=$closeoutReady; reconciliationDifferenceMinorUnits=$($counts['reconciliationDifferenceMinorUnits'])"
     }
 }
 
@@ -270,7 +274,14 @@ $hasTargetInput = $hasReferenceInput -or $hasSwitchInput -or $hasSnapshotInput -
 $paymentSnapshot = Parse-PaymentProviderAdapterReadinessSnapshot $PaymentProviderAdapterReadinessJsonPath
 $closeoutSnapshot = Parse-ChargebackCloseoutSnapshot $ChargebackCloseoutSnapshotJsonPath
 $closeoutSnapshotBlockerCount = $null
-if ($null -ne $closeoutSnapshot.counts) { $closeoutSnapshotBlockerCount = $closeoutSnapshot.counts["blockerCount"] }
+$closeoutSnapshotScanLimit = $null
+$closeoutSnapshotTruncationBlockerCount = $null
+if ($null -ne $closeoutSnapshot.counts) {
+    $closeoutSnapshotBlockerCount = $closeoutSnapshot.counts["blockerCount"]
+    $closeoutSnapshotScanLimit = $closeoutSnapshot.counts["scanLimit"]
+    $closeoutSnapshotTruncationBlockerCount = $closeoutSnapshot.counts["truncationBlockerCount"]
+}
+$closeoutSnapshotSourceTruncated = $closeoutSnapshot.sourceTruncated
 
 if (-not $hasTargetInput) {
     Add-PlannedCheck "target-closeout-planned" "Target chargeback closeout evidence planned" "Run this writer after a target billing period has been closed."
@@ -348,11 +359,14 @@ $summaryInfo = [pscustomobject][ordered]@{
     chargebackCloseoutSnapshotValid = $closeoutSnapshot.valid
     chargebackCloseoutSnapshotReady = $closeoutSnapshot.closeoutReady
     chargebackCloseoutSnapshotBlockerCount = $closeoutSnapshotBlockerCount
+    chargebackCloseoutSnapshotScanLimit = $closeoutSnapshotScanLimit
+    chargebackCloseoutSnapshotSourceTruncated = $closeoutSnapshotSourceTruncated
+    chargebackCloseoutSnapshotTruncationBlockerCount = $closeoutSnapshotTruncationBlockerCount
     paymentProviderAdapterReadinessSnapshotValid = $paymentSnapshot.valid
     paymentProviderAdapterReadinessReviewed = [bool] $ConfirmPaymentProviderAdapterReadinessReviewed
     commercialEvidenceReviewed = (([bool] $ConfirmCommercialIntegrationReviewed) -and ([bool] $ConfirmCommercialApprovalReviewed))
 }
-$decisionRule = "Production/B2B chargeback closeout readiness requires result=passed from the target environment after pricing policy/proposal, usage window, preview/trend exports, draft/final invoice, payment request, payment-provider handoff, notification delivery, adapter retry, reconciliation, commercial integration, and commercial approval evidence are all reviewed; the sanitized closeout snapshot must be typed, closeoutReady=true, blockerCount=0, reconciled, and free of raw customer/payment/provider data."
+$decisionRule = "Production/B2B chargeback closeout readiness requires result=passed from the target environment after pricing policy/proposal, usage window, preview/trend exports, draft/final invoice, payment request, payment-provider handoff, notification delivery, adapter retry, reconciliation, commercial integration, and commercial approval evidence are all reviewed; the sanitized closeout snapshot must be typed, scanLimit>0, sourceTruncated=false, truncationBlockerCount=0, closeoutReady=true, blockerCount=0, reconciled, and free of raw customer/payment/provider data."
 $scopePolicy = "OSMU tenant billing/chargeback closeout evidence only. This proves internal chargeback and handoff readiness for the target billing period, including sanitized payment-provider adapter/native-bridge readiness; it does not claim vendor-specific fixed SDK/schema card, bank, tax, ERP, or external payment processor implementation."
 $secretPolicy = "Evidence stores target labels, timestamps, external references, booleans, typed counts, and reduced readiness metadata only; it must not contain passwords, bearer tokens, private keys, endpoint URLs with credentials, raw customer data, raw payment data, raw price tables, invoices, contracts, provider responses, or provider credentials."
 $report = New-Object psobject

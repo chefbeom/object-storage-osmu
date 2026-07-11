@@ -1,6 +1,8 @@
 package com.example.osmu.bucket.repository;
 
+import com.example.osmu.bucket.BucketOwnerUsageSummary;
 import com.example.osmu.bucket.BucketRecord;
+import com.example.osmu.bucket.BucketUsageSummary;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
 import java.sql.Connection;
@@ -53,6 +55,252 @@ public class MariaDbBucketRepository implements BucketRepository {
                 buckets.add(mapRow(resultSet));
             }
             return buckets;
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<BucketRecord> findAccessible(long userId, Long organizationId, List<Long> explicitBucketIds) {
+        ensureSchema();
+        List<Long> bucketIds = explicitBucketIds == null
+                ? List.of()
+                : explicitBucketIds.stream().distinct().toList();
+        StringBuilder sql = new StringBuilder("""
+                SELECT id, name, owner_type, owner_id, quota_bytes, used_bytes, object_count, created_at
+                FROM buckets
+                WHERE (owner_type = 'USER' AND owner_id = ?)
+                """);
+        if (organizationId != null) {
+            sql.append(" OR (owner_type = 'ORG' AND owner_id = ?)");
+        }
+        if (!bucketIds.isEmpty()) {
+            sql.append(" OR id IN (")
+                    .append(String.join(", ", java.util.Collections.nCopies(bucketIds.size(), "?")))
+                    .append(")");
+        }
+        sql.append(" ORDER BY name");
+
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            statement.setLong(parameterIndex++, userId);
+            if (organizationId != null) {
+                statement.setLong(parameterIndex++, organizationId);
+            }
+            for (Long bucketId : bucketIds) {
+                statement.setLong(parameterIndex++, bucketId);
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<BucketRecord> buckets = new ArrayList<>();
+                while (resultSet.next()) {
+                    buckets.add(mapRow(resultSet));
+                }
+                return buckets;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<BucketRecord> findByIds(List<Long> bucketIds) {
+        ensureSchema();
+        List<Long> ids = bucketIds == null
+                ? List.of()
+                : bucketIds.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        String sql = """
+                SELECT id, name, owner_type, owner_id, quota_bytes, used_bytes, object_count, created_at
+                FROM buckets
+                WHERE id IN (%s)
+                ORDER BY id
+                """.formatted(String.join(", ", java.util.Collections.nCopies(ids.size(), "?")));
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (int index = 0; index < ids.size(); index += 1) {
+                statement.setLong(index + 1, ids.get(index));
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<BucketRecord> buckets = new ArrayList<>();
+                while (resultSet.next()) {
+                    buckets.add(mapRow(resultSet));
+                }
+                return buckets;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<BucketRecord> findByOwners(String ownerType, List<Long> ownerIds) {
+        ensureSchema();
+        List<Long> ids = ownerIds == null
+                ? List.of()
+                : ownerIds.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        String sql = """
+                SELECT id, name, owner_type, owner_id, quota_bytes, used_bytes, object_count, created_at
+                FROM buckets
+                WHERE owner_type = ? AND owner_id IN (%s)
+                ORDER BY id
+                """.formatted(String.join(", ", java.util.Collections.nCopies(ids.size(), "?")));
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, ownerType);
+            for (int index = 0; index < ids.size(); index += 1) {
+                statement.setLong(index + 2, ids.get(index));
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<BucketRecord> records = new ArrayList<>();
+                while (resultSet.next()) {
+                    records.add(mapRow(resultSet));
+                }
+                return records;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public BucketUsageSummary summarizeUsage() {
+        ensureSchema();
+        String sql = """
+                SELECT COUNT(*) AS bucket_count,
+                       COALESCE(SUM(quota_bytes), 0) AS total_quota_bytes,
+                       COALESCE(SUM(used_bytes), 0) AS total_used_bytes,
+                       COALESCE(SUM(object_count), 0) AS total_object_count
+                FROM buckets
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet resultSet = statement.executeQuery()) {
+            if (resultSet.next()) {
+                return new BucketUsageSummary(
+                        resultSet.getLong("bucket_count"),
+                        resultSet.getLong("total_quota_bytes"),
+                        resultSet.getLong("total_used_bytes"),
+                        resultSet.getLong("total_object_count")
+                );
+            }
+            return new BucketUsageSummary(0L, 0L, 0L, 0L);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public long sumUsedBytesByOwner(String ownerType, long ownerId) {
+        ensureSchema();
+        String sql = """
+                SELECT COALESCE(SUM(used_bytes), 0) AS total_used_bytes
+                FROM buckets
+                WHERE owner_type = ? AND owner_id = ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, ownerType);
+            statement.setLong(2, ownerId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? resultSet.getLong("total_used_bytes") : 0L;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<BucketOwnerUsageSummary> summarizeUsageByOwners(String ownerType, List<Long> ownerIds) {
+        ensureSchema();
+        List<Long> ids = ownerIds == null
+                ? List.of()
+                : ownerIds.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        String sql = """
+                SELECT owner_id,
+                       COUNT(*) AS bucket_count,
+                       COALESCE(SUM(quota_bytes), 0) AS total_quota_bytes,
+                       COALESCE(SUM(used_bytes), 0) AS total_used_bytes,
+                       COALESCE(SUM(object_count), 0) AS total_object_count
+                FROM buckets
+                WHERE owner_type = ? AND owner_id IN (%s)
+                GROUP BY owner_id
+                ORDER BY owner_id
+                """.formatted(String.join(", ", java.util.Collections.nCopies(ids.size(), "?")));
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, ownerType);
+            for (int index = 0; index < ids.size(); index += 1) {
+                statement.setLong(index + 2, ids.get(index));
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<BucketOwnerUsageSummary> summaries = new ArrayList<>();
+                while (resultSet.next()) {
+                    summaries.add(new BucketOwnerUsageSummary(
+                            resultSet.getLong("owner_id"),
+                            resultSet.getLong("bucket_count"),
+                            resultSet.getLong("total_quota_bytes"),
+                            resultSet.getLong("total_used_bytes"),
+                            resultSet.getLong("total_object_count")
+                    ));
+                }
+                return summaries;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public boolean existsByOwner(String ownerType, long ownerId) {
+        ensureSchema();
+        String sql = "SELECT 1 FROM buckets WHERE owner_type = ? AND owner_id = ? LIMIT 1";
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, ownerType);
+            statement.setLong(2, ownerId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public Optional<BucketRecord> findById(long bucketId) {
+        ensureSchema();
+        String sql = """
+                SELECT id, name, owner_type, owner_id, quota_bytes, used_bytes, object_count, created_at
+                FROM buckets
+                WHERE id = ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, bucketId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return Optional.of(mapRow(resultSet));
+                }
+                return Optional.empty();
+            }
         } catch (SQLException exception) {
             throw databaseException(exception);
         }

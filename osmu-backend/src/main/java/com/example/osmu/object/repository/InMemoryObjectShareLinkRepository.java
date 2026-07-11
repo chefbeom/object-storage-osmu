@@ -1,6 +1,7 @@
 package com.example.osmu.object.repository;
 
 import com.example.osmu.object.ObjectShareLink;
+import com.example.osmu.object.ObjectShareLinkAnalytics;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -49,11 +50,42 @@ public class InMemoryObjectShareLinkRepository implements ObjectShareLinkReposit
                 .toList();
     }
 
+
     @Override
-    public List<ObjectShareLink> findAll() {
-        return linksById.values().stream()
-                .sorted(Comparator.comparing(ObjectShareLink::id).reversed())
+    public ObjectShareLinkAnalytics analytics(String bucketName, String status, int recentLimit) {
+        if (recentLimit < 1) {
+            throw new IllegalArgumentException("recentLimit must be positive.");
+        }
+        String bucketFilter = bucketName == null ? "" : bucketName;
+        String statusFilter = status == null ? "" : status;
+        List<ObjectShareLink> matchingLinks = linksById.values().stream()
+                .filter(link -> bucketFilter.isBlank() || bucketFilter.equals(link.bucketName()))
+                .filter(link -> statusFilter.isBlank() || statusFilter.equals(link.status()))
                 .toList();
+        List<ObjectShareLink> recentLinks = matchingLinks.stream()
+                .sorted(Comparator.comparing(ObjectShareLink::id).reversed())
+                .limit(recentLimit)
+                .toList();
+        return new ObjectShareLinkAnalytics(
+                matchingLinks.size(),
+                countStatus(matchingLinks, "ACTIVE"),
+                countStatus(matchingLinks, "EXPIRED"),
+                countStatus(matchingLinks, "REVOKED"),
+                countStatus(matchingLinks, "LIMIT_REACHED"),
+                matchingLinks.stream().filter(ObjectShareLink::passwordProtected).count(),
+                matchingLinks.stream().filter(ObjectShareLink::ipRestricted).count(),
+                matchingLinks.stream().mapToLong(ObjectShareLink::downloadCount).sum(),
+                matchingLinks.stream()
+                        .map(ObjectShareLink::lastAccessedAt)
+                        .filter(value -> value != null)
+                        .max(OffsetDateTime::compareTo)
+                        .orElse(null),
+                recentLinks
+        );
+    }
+
+    private long countStatus(List<ObjectShareLink> links, String status) {
+        return links.stream().filter(link -> status.equals(link.status())).count();
     }
 
     @Override

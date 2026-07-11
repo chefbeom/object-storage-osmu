@@ -16,8 +16,10 @@ import com.example.osmu.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +34,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/admin/teams")
 public class AdminTeamController {
+
+    private static final int DEFAULT_LIST_LIMIT = 50;
+    private static final int MAX_LIST_LIMIT = 200;
 
     private final TeamRepository teamRepository;
     private final OrganizationRepository organizationRepository;
@@ -62,15 +67,40 @@ public class AdminTeamController {
     @GetMapping
     public ListResponse<TeamResponse> list(
             @RequestParam(value = "organizationId", required = false) Long organizationId,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "cursor", required = false) String cursor,
             HttpServletRequest request
     ) {
         AuthenticatedUser actor = authContext.currentUser(request);
-        List<TeamResponse> teams = teamRepository.findAll().stream()
-                .filter(team -> canView(actor, team))
-                .filter(team -> organizationId == null || team.organizationId() == organizationId)
-                .map(this::toResponse)
+        Long scopedOrganizationId = listOrganizationId(actor, organizationId);
+        if (scopedOrganizationId != null
+                && actor.isOrgAdmin()
+                && organizationId != null
+                && organizationId.longValue() != scopedOrganizationId) {
+            return ListResponse.of(List.of());
+        }
+        int pageSize = normalizeLimit(limit);
+        List<TeamRecord> matchedTeams = teamRepository.findPage(
+                scopedOrganizationId,
+                cursorId(cursor),
+                pageSize + 1
+        );
+        boolean hasNextPage = matchedTeams.size() > pageSize;
+        List<TeamRecord> teamRecords = hasNextPage
+                ? matchedTeams.subList(0, pageSize)
+                : matchedTeams;
+        Map<Long, List<Long>> memberIdsByTeam = teamRecords.isEmpty()
+                ? Map.of()
+                : teamRepository.findMemberIdsByTeamIds(
+                        teamRecords.stream().map(TeamRecord::id).toList()
+                );
+        List<TeamResponse> teams = teamRecords.stream()
+                .map(team -> TeamResponse.of(team, memberIdsByTeam.getOrDefault(team.id(), List.of())))
                 .toList();
-        return ListResponse.of(teams);
+        String nextCursor = hasNextPage
+                ? String.valueOf(teamRecords.get(teamRecords.size() - 1).id())
+                : null;
+        return ListResponse.of(teams, nextCursor);
     }
 
     @PostMapping
@@ -85,6 +115,7 @@ public class AdminTeamController {
         if (teamRepository.existsByOrganizationIdAndName(organizationId, name)) {
             throw new ApiException(ApiErrorCode.CONFLICT, "Team already exists.");
         }
+        List<Long> memberIds = validateMemberIds(actor, organizationId, request.memberIds());
 
         OffsetDateTime now = OffsetDateTime.now();
         TeamRecord team = teamRepository.save(new TeamRecord(
@@ -95,7 +126,6 @@ public class AdminTeamController {
                 now,
                 now
         ));
-        List<Long> memberIds = validateMemberIds(actor, team, request.memberIds());
         teamRepository.replaceMembers(team.id(), memberIds);
         TeamResponse response = TeamResponse.of(team, memberIds);
         auditLogService.record("TEAM_CREATE", actor.loginId(), "TEAM", team.name(), "SUCCESS", "Team created", httpRequest);
@@ -111,7 +141,7 @@ public class AdminTeamController {
         AuthenticatedUser actor = authContext.currentUser(httpRequest);
         TeamRecord team = findManagedTeam(actor, teamId);
         List<Long> previousMemberIds = teamRepository.findMemberIds(team.id());
-        List<Long> memberIds = validateMemberIds(actor, team, request.memberIds());
+        List<Long> memberIds = validateMemberIds(actor, team.organizationId(), request.memberIds());
         teamRepository.replaceMembers(team.id(), memberIds);
         accessKeyService.reconcileActiveKeysForOwners(mergeMemberIds(previousMemberIds, memberIds));
         auditLogService.record("TEAM_MEMBERS_UPDATE", actor.loginId(), "TEAM", String.valueOf(team.id()), "SUCCESS", "Team members updated", httpRequest);
@@ -138,8 +168,40 @@ public class AdminTeamController {
         return ResponseEntity.noContent().build();
     }
 
-    private TeamResponse toResponse(TeamRecord team) {
-        return TeamResponse.of(team, teamRepository.findMemberIds(team.id()));
+
+    private Long listOrganizationId(AuthenticatedUser actor, Long requestedOrganizationId) {
+        if (actor.isAdmin()) {
+            return requestedOrganizationId;
+        }
+        if (actor.isOrgAdmin() && actor.organizationId() != null) {
+            return actor.organizationId();
+        }
+        throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Team access denied.");
+    }
+
+    private int normalizeLimit(Integer limit) {
+        if (limit == null) {
+            return DEFAULT_LIST_LIMIT;
+        }
+        if (limit < 1 || limit > MAX_LIST_LIMIT) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Team list limit must be between 1 and 200.");
+        }
+        return limit;
+    }
+
+    private Long cursorId(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            long parsed = Long.parseLong(cursor.trim());
+            if (parsed < 1) {
+                throw new NumberFormatException("cursor must be positive");
+            }
+            return parsed;
+        } catch (NumberFormatException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Team list cursor is invalid.");
+        }
     }
 
     private TeamRecord findManagedTeam(AuthenticatedUser actor, long teamId) {
@@ -191,26 +253,38 @@ public class AdminTeamController {
         return name;
     }
 
-    private List<Long> validateMemberIds(AuthenticatedUser actor, TeamRecord team, List<Long> rawMemberIds) {
+    private List<Long> validateMemberIds(AuthenticatedUser actor, long organizationId, List<Long> rawMemberIds) {
         if (rawMemberIds == null || rawMemberIds.isEmpty()) {
             return List.of();
         }
-        LinkedHashSet<Long> memberIds = new LinkedHashSet<>();
+        LinkedHashSet<Long> requestedMemberIds = new LinkedHashSet<>();
         for (Long rawMemberId : rawMemberIds) {
-            if (rawMemberId == null) {
-                continue;
+            if (rawMemberId != null) {
+                requestedMemberIds.add(rawMemberId);
             }
-            UserAccount user = userRepository.findById(rawMemberId)
-                    .orElseThrow(() -> new ApiException(ApiErrorCode.VALIDATION_ERROR, "Team member user not found."));
-            if (user.organizationId() == null || user.organizationId() != team.organizationId()) {
+        }
+        if (requestedMemberIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> memberIds = List.copyOf(requestedMemberIds);
+        Map<Long, UserAccount> usersById = new HashMap<>();
+        for (UserAccount user : userRepository.findByIds(memberIds)) {
+            usersById.put(user.id(), user);
+        }
+        for (Long memberId : memberIds) {
+            UserAccount user = usersById.get(memberId);
+            if (user == null) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Team member user not found.");
+            }
+            if (user.organizationId() == null || user.organizationId() != organizationId) {
                 throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Team member organization denied.");
             }
             if (actor.isOrgAdmin() && ("ADMIN".equals(user.role()) || "AUDITOR".equals(user.role()))) {
                 throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Team member role denied.");
             }
-            memberIds.add(user.id());
         }
-        return List.copyOf(memberIds);
+        return memberIds;
     }
 
     private List<Long> mergeMemberIds(List<Long> first, List<Long> second) {

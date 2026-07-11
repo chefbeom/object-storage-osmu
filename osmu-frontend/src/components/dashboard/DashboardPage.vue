@@ -7,6 +7,9 @@
         <small data-testid="dashboard-layout-sync">{{ dashboardLayoutSyncLabel }}</small>
       </div>
       <span class="panel-head-actions">
+        <button data-testid="dashboard-operations-toggle" type="button" class="ghost" @click="dashboardOperationsOpen = !dashboardOperationsOpen">
+          {{ dashboardOperationsOpen ? 'Hide operations' : 'Open operations' }}
+        </button>
         <button data-testid="dashboard-edit-mode-toggle" type="button" class="ghost" :disabled="dashboardLayoutPending" @click="$emit('toggle-dashboard-edit-mode')">
           {{ dashboardEditMode ? 'View mode' : 'Edit mode' }}
         </button>
@@ -16,6 +19,10 @@
     <p v-if="!dashboardEditMode" class="dashboard-view-mode-summary" data-testid="dashboard-view-mode-summary">
       View mode / {{ visibleDashboardWidgets.length }} visible panels / {{ dashboardLayoutSyncLabel }}
     </p>
+    <div v-if="!dashboardOperationsOpen && !dashboardEditMode" class="dashboard-operations-summary" data-testid="dashboard-operations-summary">
+      <span><b>Operations</b> Detailed readiness, recovery, data flow, governance, and audit tools stay out of the overview until needed.</span>
+      <button type="button" class="ghost" @click="dashboardOperationsOpen = true">Review details</button>
+    </div>
     <div v-if="dashboardLoading" class="dashboard-state-panel dashboard-loading-state" data-testid="dashboard-loading-state" role="status" aria-live="polite">
       <strong>Dashboard loading</strong>
       <small>Loading the latest layout, bucket, access key, and readiness state.</small>
@@ -420,12 +427,12 @@
         <small data-testid="dashboard-access-key-risk">{{ accessKeySummary.expiredCount }} expired / {{ accessKeySummary.expiringSoonCount }} expiring / {{ accessKeySummary.unusedCount }} unused</small>
       </template>
       <template v-else-if="widget.id === 'identity'">
-        <strong>{{ users.length }} / {{ organizations.length }}</strong>
+        <strong>{{ users.length }}{{ usersNextCursor ? '+' : '' }} / {{ organizations.length }}</strong>
         <small>users / organizations</small>
       </template>
       <template v-else-if="widget.id === 'lifecycle'">
         <strong>{{ lifecycleRuleConflicts.conflictCount || 0 }}</strong>
-        <small>{{ lifecycleRules.length }} rules / {{ lifecycleRuleConflicts.ruleCount || 0 }} checked</small>
+        <small>{{ lifecycleRules.length }}{{ lifecycleRulesNextCursor ? '+' : '' }} rules / {{ lifecycleRuleConflicts.ruleCount || 0 }} checked</small>
       </template>
       <template v-else-if="widget.id === 'selected'">
         <strong>{{ selectedBucket || '-' }}</strong>
@@ -448,7 +455,7 @@
     </section>
   </section>
 
-  <section class="ops-grid">
+  <section v-if="dashboardOperationsOpen" class="ops-grid" data-testid="dashboard-operations-workspace">
     <article class="panel readiness-panel" data-testid="dashboard-readiness-panel">
       <div class="panel-head">
         <div>
@@ -482,6 +489,50 @@
           <dd>{{ formatDateTime(dashboardReadiness.generatedAt) || '-' }}</dd>
         </div>
       </dl>
+      <section class="readiness-overview" data-testid="dashboard-readiness-overview">
+        <div class="readiness-decision">
+          <p class="eyebrow">Deployment decision</p>
+          <strong>{{ dashboardReadiness.blockerCount > 0 ? 'Resolve blockers before deployment' : (dashboardReadiness.warningCount > 0 ? 'Deployment is possible after warning review' : 'Ready for deployment review') }}</strong>
+          <small>{{ dashboardReadiness.blockerCount > 0 ? (operationsReadinessPrimaryMessage || 'Open the detailed diagnosis to review the next action.') : (dashboardReadiness.warningCount > 0 ? `${dashboardReadiness.warningCount} warnings need an impact review.` : 'The latest checks have no blockers or warnings.') }}</small>
+        </div>
+        <dl class="readiness-glance" aria-label="Readiness summary">
+          <div>
+            <dt>Operations</dt>
+            <dd>{{ readinessPassedCount }} / {{ readinessTotalCount || '-' }}</dd>
+            <small>checks passed</small>
+          </div>
+          <div>
+            <dt>Blockers</dt>
+            <dd>{{ dashboardReadiness.blockerCount }}</dd>
+            <small>must resolve</small>
+          </div>
+          <div>
+            <dt>Warnings</dt>
+            <dd>{{ dashboardReadiness.warningCount }}</dd>
+            <small>need review</small>
+          </div>
+        </dl>
+        <div class="readiness-overview-actions">
+          <button
+            v-if="operationsReadinessItems.length > 0"
+            type="button"
+            class="ghost"
+            @click="$emit('update-readiness-category-filter', 'OPERATIONS')"
+          >
+            Operations items
+          </button>
+          <button
+            data-testid="dashboard-readiness-details-toggle"
+            type="button"
+            class="ghost"
+            :aria-expanded="readinessDetailsOpen"
+            @click="readinessDetailsOpen = !readinessDetailsOpen"
+          >
+            {{ readinessDetailsOpen ? 'Close detailed diagnosis' : 'Open detailed diagnosis' }}
+          </button>
+        </div>
+      </section>
+      <div v-if="readinessDetailsOpen" class="readiness-detail-stack" data-testid="dashboard-readiness-details">
       <div v-if="operationsReadinessItems.length > 0" class="readiness-operations-summary" data-testid="readiness-operations-summary">
         <div>
           <strong>{{ operationsReadinessItems.length }} operations evidence gaps</strong>
@@ -1946,6 +1997,9 @@
           period {{ operationsHandoffPackageChargebackCloseoutSnapshot.billingPeriod || '-' }} /
           invoices {{ operationsHandoffPackageChargebackCloseoutSnapshot.finalInvoiceCount || 0 }} /
           paid {{ operationsHandoffPackageChargebackCloseoutSnapshot.paidInvoiceCount || 0 }} /
+          scan-limit {{ operationsHandoffPackageChargebackCloseoutSnapshot.scanLimit || 0 }} /
+          source-complete {{ operationsHandoffPackageChargebackCloseoutSnapshot.sourceComplete && !operationsHandoffPackageChargebackCloseoutSnapshot.sourceTruncated ? 'yes' : 'no' }} /
+          truncation-blockers {{ operationsHandoffPackageChargebackCloseoutSnapshot.truncationBlockerCount || 0 }} /
           diff {{ operationsHandoffPackageChargebackCloseoutSnapshot.reconciliationDifferenceMinorUnits || 0 }} /
           no-raw-data {{ operationsHandoffPackageChargebackCloseoutSnapshot.noRawDataStored ? 'yes' : 'no' }}
         </small>
@@ -3498,6 +3552,7 @@
           </button>
         </li>
       </ul>
+      </div>
     </article>
 
     <article id="backup-status-panel" class="panel backup-panel" data-testid="backup-status-panel">
@@ -3983,7 +4038,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import DashboardActivityPanel from './DashboardActivityPanel.vue'
 import DashboardQuotaPanel from './DashboardQuotaPanel.vue'
 import DashboardSharePanel from './DashboardSharePanel.vue'
@@ -4033,8 +4088,10 @@ const props = defineProps({
   dashboardQuota: { type: Object, required: true },
   accessKeys: { type: Array, required: true },
   users: { type: Array, required: true },
+  usersNextCursor: { type: String, default: '' },
   organizations: { type: Array, required: true },
   lifecycleRules: { type: Array, required: true },
+  lifecycleRulesNextCursor: { type: String, default: '' },
   lifecycleRuleConflicts: { type: Object, required: true },
   runtimeReadinessLabel: { type: String, required: true },
   dashboardReadiness: { type: Object, required: true },
@@ -4303,11 +4360,15 @@ const storageExpansionExecutionCount = computed(() => (
   storageExpansionHasSummary.value ? Number(props.storageExpansionSummary.executionCount || 0) : props.storageExpansionExecutions.length
 ))
 
+const dashboardOperationsOpen = ref(false)
+const readinessDetailsOpen = ref(false)
+const readinessSummary = computed(() => props.dashboardReadiness.operationsReadinessSummary || {})
+const readinessPassedCount = computed(() => Number(readinessSummary.value.passedCount || 0))
+const readinessTotalCount = computed(() => Number(readinessSummary.value.totalCount || 0))
 const operationsReadinessItems = computed(() => {
   const items = Array.isArray(props.dashboardReadiness.items) ? props.dashboardReadiness.items : []
   return items.filter((item) => String(item.category || '').toUpperCase() === 'OPERATIONS')
 })
-
 const operationsReadinessPrimaryMessage = computed(() => (
   operationsReadinessItems.value[0]?.message || 'Operations readiness evidence is ready.'
 ))

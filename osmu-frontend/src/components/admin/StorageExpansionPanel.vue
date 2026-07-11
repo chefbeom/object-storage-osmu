@@ -67,6 +67,31 @@
         <li v-if="(storageExpansionRunnerPreflight.checks || []).length === 0" class="empty">No runner preflight result</li>
       </ul>
     </section>
+    <div class="inline-form storage-expansion-list-controls">
+      <select
+        data-testid="storage-expansion-status-filter"
+        aria-label="Storage expansion request status"
+        :value="storageExpansionStatusFilter"
+        @change="$emit('update-storage-expansion-status-filter', $event.target.value)"
+      >
+        <option value="OPEN">Open</option>
+        <option value="ALL">All</option>
+        <option value="PLANNED">Planned</option>
+        <option value="APPROVED">Approved</option>
+        <option value="APPLIED">Applied</option>
+        <option value="REJECTED">Rejected</option>
+      </select>
+      <button
+        v-if="storageExpansionNextCursor"
+        data-testid="storage-expansion-load-more-button"
+        type="button"
+        class="ghost"
+        :disabled="storageExpansionRequestsLoading"
+        @click="$emit('load-more-storage-expansion-requests')"
+      >
+        {{ storageExpansionRequestsLoading ? 'Loading...' : 'Load more' }}
+      </button>
+    </div>
     <ul class="compact-list" data-testid="storage-expansion-list">
       <li v-for="request in storageExpansionRequests" :key="request.id">
         <span class="list-main">
@@ -303,6 +328,17 @@
         </li>
         <li v-if="storageExpansionExecutions.length === 0" class="empty">No execution history</li>
       </ul>
+      <div v-if="storageExpansionExecutionNextCursor" class="inline-form">
+        <button
+          data-testid="storage-expansion-execution-load-more-button"
+          type="button"
+          class="ghost"
+          :disabled="storageExpansionExecutionsLoading"
+          @click="$emit('load-more-storage-expansion-executions')"
+        >
+          {{ storageExpansionExecutionsLoading ? 'Loading...' : 'Load more' }}
+        </button>
+      </div>
     </section>
   </article>
 </template>
@@ -312,10 +348,15 @@ defineProps({
   isAdmin: { type: Boolean, required: true },
   storageExpansionForm: { type: Object, required: true },
   storageExpansionRequests: { type: Array, required: true },
+  storageExpansionStatusFilter: { type: String, required: true },
+  storageExpansionNextCursor: { type: String, default: '' },
+  storageExpansionRequestsLoading: { type: Boolean, required: true },
   storageExpansionManifest: { type: Object, default: null },
   storageExpansionExecutionPlan: { type: Object, default: null },
   storageExpansionGitOpsPlan: { type: Object, default: null },
   storageExpansionExecutions: { type: Array, required: true },
+  storageExpansionExecutionNextCursor: { type: String, default: '' },
+  storageExpansionExecutionsLoading: { type: Boolean, required: true },
   storageExpansionExecutionForm: { type: Object, required: true },
   storageExpansionApplyEvidence: { type: String, required: true },
   storageExpansionRunnerPreflight: { type: Object, required: true },
@@ -325,6 +366,8 @@ defineProps({
 
 defineEmits([
   'create-storage-expansion-request',
+  'update-storage-expansion-status-filter',
+  'load-more-storage-expansion-requests',
   'preview-storage-expansion-manifest',
   'download-storage-expansion-manifest',
   'download-storage-expansion-gitops-bundle',
@@ -337,6 +380,7 @@ defineEmits([
   'run-storage-expansion-gitops-pr-execution',
   'record-storage-expansion-gitops-pr-execution',
   'load-storage-expansion-executions',
+  'load-more-storage-expansion-executions',
   'create-storage-expansion-execution-record',
   'apply-storage-expansion-from-execution',
   'update-storage-expansion-apply-evidence',

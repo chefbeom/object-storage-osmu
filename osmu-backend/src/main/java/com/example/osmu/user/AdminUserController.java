@@ -14,7 +14,6 @@ import com.example.osmu.organization.repository.OrganizationRepository;
 import com.example.osmu.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -70,18 +69,17 @@ public class AdminUserController {
         AuthenticatedUser actor = authContext.currentUser(httpRequest);
         int pageSize = normalizeLimit(limit);
         Long cursorId = cursorId(cursor);
-        List<UserProfile> matchedUsers = userRepository.findAll().stream()
-                .filter(user -> canView(actor, user))
-                .filter(user -> matchesKeyword(user, keyword))
-                .filter(user -> matchesStatus(user, status))
-                .filter(user -> cursorId == null || user.id() < cursorId)
-                .sorted(Comparator.comparingLong(UserAccount::id).reversed())
-                .limit(pageSize + 1L)
-                .map(UserAccount::toProfile)
-                .toList();
+        List<UserAccount> matchedUsers = userRepository.findPage(
+                organizationScope(actor),
+                normalizeFilter(keyword),
+                normalizeStatus(status),
+                cursorId,
+                pageSize + 1
+        );
         boolean hasNextPage = matchedUsers.size() > pageSize;
-        List<UserProfile> users = hasNextPage ? matchedUsers.subList(0, pageSize) : matchedUsers;
-        String nextCursor = hasNextPage ? String.valueOf(users.get(users.size() - 1).id()) : null;
+        List<UserAccount> page = hasNextPage ? matchedUsers.subList(0, pageSize) : matchedUsers;
+        List<UserProfile> users = page.stream().map(UserAccount::toProfile).toList();
+        String nextCursor = hasNextPage ? String.valueOf(page.get(page.size() - 1).id()) : null;
         return ListResponse.of(users, nextCursor);
     }
 
@@ -176,34 +174,25 @@ public class AdminUserController {
         }
     }
 
-    private boolean canView(AuthenticatedUser actor, UserAccount user) {
+    private Long organizationScope(AuthenticatedUser actor) {
         if (actor.isAdmin()) {
-            return true;
+            return null;
         }
-        return actor.isOrgAdmin()
-                && actor.organizationId() != null
-                && user.organizationId() != null
-                && actor.organizationId().equals(user.organizationId());
-    }
-
-    private boolean matchesKeyword(UserAccount user, String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return true;
+        if (actor.isOrgAdmin() && actor.organizationId() != null) {
+            return actor.organizationId();
         }
-        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
-        return containsIgnoreCase(user.loginId(), normalized)
-                || containsIgnoreCase(user.email(), normalized)
-                || containsIgnoreCase(user.name(), normalized);
+        throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "User management denied.");
     }
 
-    private boolean matchesStatus(UserAccount user, String status) {
-        return status == null
-                || status.isBlank()
-                || user.status().equalsIgnoreCase(status.trim());
+    private String normalizeFilter(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
-
-    private boolean containsIgnoreCase(String value, String normalizedKeyword) {
-        return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedKeyword);
+    private String normalizeStatus(String value) {
+        String normalized = normalizeFilter(value);
+        return normalized == null ? null : normalized.toUpperCase(Locale.ROOT);
     }
 
     private int normalizeLimit(Integer limit) {

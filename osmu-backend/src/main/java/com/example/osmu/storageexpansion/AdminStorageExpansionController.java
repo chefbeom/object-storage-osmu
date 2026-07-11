@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -37,9 +38,14 @@ public class AdminStorageExpansionController {
     }
 
     @GetMapping("/requests")
-    public ListResponse<StorageExpansionRequestResponse> list(HttpServletRequest request) {
+    public ListResponse<StorageExpansionRequestResponse> list(
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        return ListResponse.of(storageExpansionService.list(user));
+        return storageExpansionService.list(user, status, cursor, limit);
     }
 
     @GetMapping("/summary")
@@ -227,10 +233,12 @@ public class AdminStorageExpansionController {
     @GetMapping("/requests/{requestId}/executions")
     public ListResponse<StorageExpansionExecutionResponse> executions(
             @PathVariable long requestId,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", required = false) Integer limit,
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        return ListResponse.of(storageExpansionService.listExecutions(user, requestId));
+        return storageExpansionService.listExecutions(user, requestId, cursor, limit);
     }
 
     @PostMapping("/requests/{requestId}/executions")

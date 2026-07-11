@@ -108,10 +108,7 @@ public class BucketLifecycleService {
     }
 
     private List<ObjectLifecycleRule> bucketRules(String bucketName) {
-        return lifecycleRuleRepository.findAll()
-                .stream()
-                .filter(rule -> bucketName.equals(rule.bucketName()))
-                .toList();
+        return lifecycleRuleRepository.findByBucketName(bucketName);
     }
 
     private void deleteBucketRules(String bucketName) {

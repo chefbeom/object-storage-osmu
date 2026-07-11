@@ -5,6 +5,7 @@
         <p class="eyebrow">Quota</p>
         <h3>쿼터 정책</h3>
       </div>
+      <span class="bucket-label">{{ quotaPolicies.length }}{{ quotaPoliciesNextCursor ? '+' : '' }} policies</span>
     </div>
     <form class="quota-form" data-testid="quota-policy-form" @submit.prevent="$emit('save-quota-policy')">
       <select data-testid="quota-policy-target-type" v-model="quotaPolicyForm.targetType" @change="$emit('reset-quota-policy-target')">
@@ -37,6 +38,16 @@
       </li>
       <li v-if="quotaPolicies.length === 0" class="empty">쿼터 정책 없음</li>
     </ul>
+    <button
+      v-if="quotaPoliciesNextCursor"
+      data-testid="quota-policy-load-more-button"
+      type="button"
+      class="ghost"
+      :disabled="quotaPoliciesLoading"
+      @click="$emit('load-more-quota-policies')"
+    >
+      {{ quotaPoliciesLoading ? 'Loading...' : 'Load more' }}
+    </button>
     <ul class="compact-list history-list" data-testid="quota-policy-history-list">
       <li v-for="entry in quotaPolicyHistory" :key="entry.id">
         <span>{{ entry.action || entry.eventType || '-' }} / {{ entry.targetType }} #{{ entry.targetId }}</span>
@@ -53,6 +64,8 @@ defineProps({
   quotaPolicyForm: { type: Object, required: true },
   quotaPolicyTargetOptions: { type: Array, required: true },
   quotaPolicies: { type: Array, required: true },
+  quotaPoliciesNextCursor: { type: String, default: '' },
+  quotaPoliciesLoading: { type: Boolean, required: true },
   quotaPolicyHistory: { type: Array, required: true },
   formatBytes: { type: Function, required: true },
 })
@@ -63,5 +76,6 @@ defineEmits([
   'reset-quota-policy-form',
   'edit-quota-policy',
   'delete-quota-policy',
+  'load-more-quota-policies',
 ])
 </script>

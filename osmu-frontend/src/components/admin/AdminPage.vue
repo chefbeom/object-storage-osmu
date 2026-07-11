@@ -1,6 +1,15 @@
 <template>
   <section id="admin-workbench" class="management-grid lower">
+  <header class="workspace-page-header admin-workspace-header">
+    <div>
+      <p class="eyebrow">Administration</p>
+      <h2>Admin workspace</h2>
+      <small>Open one operational area at a time to keep the review surface focused.</small>
+    </div>
+    <WorkspaceSectionTabs v-model="activeAdminArea" :items="adminWorkspaceAreas" label="Admin workspace areas" />
+  </header>
     <AccessKeyPanel
+      v-if="activeAdminArea === 'access'"
       id="admin-access-keys"
       :access-key-form="accessKeyForm"
       :buckets="buckets"
@@ -16,7 +25,7 @@
       @bulk-disable-access-keys="$emit('bulk-disable-access-keys', $event)"
     />
 
-    <article v-if="isLoggedIn && !selectedBucket" class="panel empty-state-panel" data-testid="admin-bucket-empty-state">
+    <article v-if="activeAdminArea === 'access' && isLoggedIn && !selectedBucket" class="panel empty-state-panel" data-testid="admin-bucket-empty-state">
       <div class="panel-head">
         <div>
           <p class="eyebrow">Bucket Context</p>
@@ -29,7 +38,7 @@
       </div>
     </article>
 
-    <article v-if="!isAdmin" class="panel empty-state-panel" data-testid="admin-role-empty-state">
+    <article v-if="activeAdminArea === 'overview' && !isAdmin" class="panel empty-state-panel" data-testid="admin-role-empty-state">
       <div class="panel-head">
         <div>
           <p class="eyebrow">Admin Controls</p>
@@ -47,7 +56,7 @@
       </div>
     </article>
 
-    <article v-if="isAdmin" class="panel approval-workflow-panel" data-testid="admin-approval-workflow-panel">
+    <article v-if="activeAdminArea === 'overview' && isAdmin" class="panel approval-workflow-panel" data-testid="admin-approval-workflow-panel">
       <div class="panel-head">
         <div>
           <p class="eyebrow">Approval Workflow</p>
@@ -100,7 +109,8 @@
               v-if="item.status === 'APPROVED'"
               data-testid="admin-approval-profile-apply-button"
               type="button"
-              @click="$emit('apply-storage-profile-request', item.source)"
+              :disabled="!selectedStorageLayoutPlanId(item.source)"
+              @click="$emit('apply-storage-profile-request', { request: item.source, storageLayoutPlanId: selectedStorageLayoutPlanId(item.source) })"
             >
               Apply
             </button>
@@ -147,7 +157,7 @@
       </ul>
     </article>
 
-    <article v-if="isAdmin" class="panel security-audit-policy-panel" data-testid="admin-security-audit-policy-panel">
+    <article v-if="activeAdminArea === 'overview' && isAdmin" class="panel security-audit-policy-panel" data-testid="admin-security-audit-policy-panel">
       <div class="panel-head">
         <div>
           <p class="eyebrow">Security & Audit</p>
@@ -184,6 +194,7 @@
     </article>
 
     <BucketPermissionsPanel
+      v-if="activeAdminArea === 'access'"
       id="admin-bucket-permissions"
       :is-logged-in="isLoggedIn"
       :selected-bucket="selectedBucket"
@@ -198,6 +209,7 @@
     />
 
     <BucketMetadataPanel
+      v-if="activeAdminArea === 'access'"
       id="admin-bucket-metadata"
       :is-logged-in="isLoggedIn"
       :selected-bucket="selectedBucket"
@@ -232,6 +244,8 @@
       :quota-policy-form="quotaPolicyForm"
       :quota-policy-target-options="quotaPolicyTargetOptions"
       :quota-policies="quotaPolicies"
+      :quota-policies-next-cursor="quotaPoliciesNextCursor"
+      :quota-policies-loading="quotaPoliciesLoading"
       :quota-policy-history="quotaPolicyHistory"
       :format-bytes="formatBytes"
       @save-quota-policy="$emit('save-quota-policy')"
@@ -239,6 +253,7 @@
       @reset-quota-policy-form="$emit('reset-quota-policy-form')"
       @edit-quota-policy="$emit('edit-quota-policy', $event)"
       @delete-quota-policy="$emit('delete-quota-policy', $event)"
+      @load-more-quota-policies="$emit('load-more-quota-policies')"
     />
 
     <BillingChargebackPanel
@@ -286,22 +301,46 @@
       @record-chargeback-invoice-payment="$emit('record-chargeback-invoice-payment', $event)"
     />
 
-    <article v-if="isAdmin" id="admin-storage-profiles" class="panel" data-testid="admin-storage-profile-panel">
+    <article v-if="activeAdminArea === 'storage' && isAdmin" id="admin-storage-profiles" class="panel" data-testid="admin-storage-profile-panel">
       <div class="panel-head">
         <div>
           <p class="eyebrow">Storage Profiles</p>
           <h3>Profile approval queue</h3>
         </div>
-        <span class="bucket-label">{{ storageProfileRequests.length }} requests</span>
+        <span class="bucket-label">{{ storageProfileRequests.length }}{{ storageProfileNextCursor ? '+' : '' }} requests</span>
       </div>
 
       <form class="inline-form" @submit.prevent>
+        <select
+          data-testid="storage-profile-status-filter"
+          aria-label="Storage profile request status"
+          :value="storageProfileStatusFilter"
+          :disabled="storageProfileRequestsLoading"
+          @change="$emit('update-storage-profile-status-filter', $event.target.value)"
+        >
+          <option value="OPEN">Open</option>
+          <option value="ALL">All</option>
+          <option value="PENDING">Pending</option>
+          <option value="APPROVED">Approved</option>
+          <option value="APPLIED">Applied</option>
+          <option value="REJECTED">Rejected</option>
+        </select>
         <input
           data-testid="storage-profile-admin-note-input"
           :value="storageProfileAdminNote"
           placeholder="Admin note"
           @input="$emit('update-storage-profile-admin-note', $event.target.value)"
         />
+        <button
+          v-if="storageProfileNextCursor"
+          data-testid="storage-profile-load-more-button"
+          type="button"
+          class="ghost"
+          :disabled="storageProfileRequestsLoading"
+          @click="$emit('load-more-storage-profile-requests')"
+        >
+          {{ storageProfileRequestsLoading ? 'Loading...' : 'Load more' }}
+        </button>
       </form>
 
       <div class="table-wrap">
@@ -340,7 +379,19 @@
                 <button data-testid="admin-storage-profile-reject-button" type="button" class="danger" :disabled="request.status !== 'PENDING'" @click="$emit('update-storage-profile-request-status', { request, status: 'REJECTED' })">
                   Reject
                 </button>
-                <button data-testid="admin-storage-profile-apply-button" type="button" :disabled="request.status !== 'APPROVED'" @click="$emit('apply-storage-profile-request', request)">
+                <select
+                  v-if="request.status === 'APPROVED'"
+                  data-testid="admin-storage-profile-layout-select"
+                  aria-label="Approved storage layout plan"
+                  :value="selectedStorageLayoutPlanIds[request.id] || ''"
+                  @change="selectedStorageLayoutPlanIds[request.id] = Number($event.target.value || 0)"
+                >
+                  <option value="">Select layout plan</option>
+                  <option v-for="plan in compatibleStorageLayoutPlans(request)" :key="plan.id" :value="plan.id">
+                    {{ plan.poolName }} / {{ plan.layout?.code }}
+                  </option>
+                </select>
+                <button data-testid="admin-storage-profile-apply-button" type="button" :disabled="request.status !== 'APPROVED' || !selectedStorageLayoutPlanId(request)" @click="$emit('apply-storage-profile-request', { request, storageLayoutPlanId: selectedStorageLayoutPlanId(request) })">
                   Apply
                 </button>
               </td>
@@ -359,16 +410,23 @@
       :is-admin="isAdmin"
       :storage-expansion-form="storageExpansionForm"
       :storage-expansion-requests="storageExpansionRequests"
+      :storage-expansion-status-filter="storageExpansionStatusFilter"
+      :storage-expansion-next-cursor="storageExpansionNextCursor"
+      :storage-expansion-requests-loading="storageExpansionRequestsLoading"
       :storage-expansion-manifest="storageExpansionManifest"
       :storage-expansion-execution-plan="storageExpansionExecutionPlan"
       :storage-expansion-git-ops-plan="storageExpansionGitOpsPlan"
       :storage-expansion-executions="storageExpansionExecutions"
+      :storage-expansion-execution-next-cursor="storageExpansionExecutionNextCursor"
+      :storage-expansion-executions-loading="storageExpansionExecutionsLoading"
       :storage-expansion-execution-form="storageExpansionExecutionForm"
       :storage-expansion-apply-evidence="storageExpansionApplyEvidence"
       :storage-expansion-runner-preflight="storageExpansionRunnerPreflight"
       :format-bytes="formatBytes"
       :format-date-time="formatDateTime"
       @create-storage-expansion-request="$emit('create-storage-expansion-request')"
+      @update-storage-expansion-status-filter="$emit('update-storage-expansion-status-filter', $event)"
+      @load-more-storage-expansion-requests="$emit('load-more-storage-expansion-requests')"
       @preview-storage-expansion-manifest="$emit('preview-storage-expansion-manifest', $event)"
       @download-storage-expansion-manifest="$emit('download-storage-expansion-manifest', $event)"
       @download-storage-expansion-gitops-bundle="$emit('download-storage-expansion-gitops-bundle')"
@@ -381,11 +439,32 @@
       @run-storage-expansion-gitops-pr-execution="$emit('run-storage-expansion-gitops-pr-execution')"
       @record-storage-expansion-gitops-pr-execution="$emit('record-storage-expansion-gitops-pr-execution')"
       @load-storage-expansion-executions="$emit('load-storage-expansion-executions', $event)"
+      @load-more-storage-expansion-executions="$emit('load-more-storage-expansion-executions')"
       @create-storage-expansion-execution-record="$emit('create-storage-expansion-execution-record')"
       @apply-storage-expansion-from-execution="$emit('apply-storage-expansion-from-execution', $event)"
       @update-storage-expansion-apply-evidence="$emit('update-storage-expansion-apply-evidence', $event)"
       @refresh-storage-expansion-runner-preflight="$emit('refresh-storage-expansion-runner-preflight')"
       @update-storage-expansion-status="$emit('update-storage-expansion-status', $event)"
+    />
+
+    <StorageLayoutPanel
+      v-if="isAdmin"
+      id="admin-storage-layouts"
+      :is-admin="isAdmin"
+      :storage-layout-catalog="storageLayoutCatalog"
+      :storage-layout-form="storageLayoutForm"
+      :storage-layout-plans="storageLayoutPlans"
+      :storage-layout-status-filter="storageLayoutStatusFilter"
+      :storage-layout-next-cursor="storageLayoutNextCursor"
+      :storage-layout-plans-loading="storageLayoutPlansLoading"
+      :storage-layout-simulation="storageLayoutSimulation"
+      :format-bytes="formatBytes"
+      @update-storage-layout-form="$emit('update-storage-layout-form', $event)"
+      @create-storage-layout-plan="$emit('create-storage-layout-plan')"
+      @update-storage-layout-status-filter="$emit('update-storage-layout-status-filter', $event)"
+      @load-more-storage-layout-plans="$emit('load-more-storage-layout-plans')"
+      @update-storage-layout-plan-status="$emit('update-storage-layout-plan-status', $event)"
+      @simulate-storage-layout-plan="$emit('simulate-storage-layout-plan', $event)"
     />
 
     <LifecycleRulesPanel
@@ -394,6 +473,10 @@
       :is-admin="isAdmin"
       :lifecycle-rule-form="lifecycleRuleForm"
       :lifecycle-rules="lifecycleRules"
+      :lifecycle-rule-status-filter="lifecycleRuleStatusFilter"
+      :lifecycle-rule-target-filter="lifecycleRuleTargetFilter"
+      :lifecycle-rules-next-cursor="lifecycleRulesNextCursor"
+      :lifecycle-rules-loading="lifecycleRulesLoading"
       :lifecycle-rule-preview="lifecycleRulePreview"
       :lifecycle-rule-conflicts="lifecycleRuleConflicts"
       :lifecycle-xml="lifecycleXml"
@@ -403,6 +486,9 @@
       @dry-run-object-lifecycle-rule="$emit('dry-run-object-lifecycle-rule', $event)"
       @edit-lifecycle-rule="$emit('edit-lifecycle-rule', $event)"
       @delete-object-lifecycle-rule="$emit('delete-object-lifecycle-rule', $event)"
+      @update-lifecycle-rule-status-filter="$emit('update-lifecycle-rule-status-filter', $event)"
+      @update-lifecycle-rule-target-filter="$emit('update-lifecycle-rule-target-filter', $event)"
+      @load-more-lifecycle-rules="$emit('load-more-lifecycle-rules')"
       @refresh-lifecycle-rule-conflicts="$emit('refresh-lifecycle-rule-conflicts')"
       @export-lifecycle-xml="$emit('export-lifecycle-xml')"
       @import-lifecycle-xml="$emit('import-lifecycle-xml')"
@@ -415,9 +501,14 @@
       :organization-form="organizationForm"
       :organization-usages="organizationUsages"
       :team-form="teamForm"
+      :team-organization-filter="teamOrganizationFilter"
       :teams="teams"
+      :teams-next-cursor="teamsNextCursor"
+      :teams-loading="teamsLoading"
       :user-form="userForm"
       :users="users"
+      :users-next-cursor="usersNextCursor"
+      :users-loading="usersLoading"
       :organizations="organizations"
       :is-logged-in="isLoggedIn"
       :is-admin="isAdmin"
@@ -426,14 +517,18 @@
       @create-organization="$emit('create-organization')"
       @create-team="$emit('create-team')"
       @delete-team="$emit('delete-team', $event)"
+      @update-team-organization-filter="$emit('update-team-organization-filter', $event)"
+      @load-more-teams="$emit('load-more-teams')"
       @create-user="$emit('create-user')"
       @toggle-user-status="$emit('toggle-user-status', $event)"
+      @load-more-users="$emit('load-more-users')"
     />
   </section>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import WorkspaceSectionTabs from '../common/WorkspaceSectionTabs.vue'
 import AccessKeyPanel from './AccessKeyPanel.vue'
 import BillingChargebackPanel from './BillingChargebackPanel.vue'
 import BucketMetadataPanel from './BucketMetadataPanel.vue'
@@ -443,6 +538,7 @@ import LifecycleRulesPanel from './LifecycleRulesPanel.vue'
 import ObjectSharePanel from './ObjectSharePanel.vue'
 import QuotaPolicyPanel from './QuotaPolicyPanel.vue'
 import StorageExpansionPanel from './StorageExpansionPanel.vue'
+import StorageLayoutPanel from './StorageLayoutPanel.vue'
 
 const props = defineProps({
   accessKeyForm: { type: Object, required: true },
@@ -455,8 +551,13 @@ const props = defineProps({
   canShowBucketPermissions: { type: Boolean, required: true },
   bucketPermissionForm: { type: Object, required: true },
   users: { type: Array, required: true },
+  usersNextCursor: { type: String, default: '' },
+  usersLoading: { type: Boolean, required: true },
   organizations: { type: Array, required: true },
   teams: { type: Array, required: true },
+  teamOrganizationFilter: { type: String, default: '' },
+  teamsNextCursor: { type: String, default: '' },
+  teamsLoading: { type: Boolean, required: true },
   bucketPermissions: { type: Array, required: true },
   canUseBucketLifecycle: { type: Boolean, required: true },
   bucketLifecycleXml: { type: Object, required: true },
@@ -483,20 +584,41 @@ const props = defineProps({
   quotaPolicyForm: { type: Object, required: true },
   quotaPolicyTargetOptions: { type: Array, required: true },
   quotaPolicies: { type: Array, required: true },
+  quotaPoliciesNextCursor: { type: String, default: '' },
+  quotaPoliciesLoading: { type: Boolean, required: true },
   quotaPolicyHistory: { type: Array, required: true },
   storageExpansionForm: { type: Object, required: true },
   storageExpansionRequests: { type: Array, required: true },
+  storageExpansionStatusFilter: { type: String, required: true },
+  storageExpansionNextCursor: { type: String, default: '' },
+  storageExpansionRequestsLoading: { type: Boolean, required: true },
   storageExpansionManifest: { type: Object, default: null },
   storageExpansionExecutionPlan: { type: Object, default: null },
   storageExpansionGitOpsPlan: { type: Object, default: null },
   storageExpansionExecutions: { type: Array, required: true },
+  storageExpansionExecutionNextCursor: { type: String, default: '' },
+  storageExpansionExecutionsLoading: { type: Boolean, required: true },
   storageExpansionExecutionForm: { type: Object, required: true },
   storageExpansionApplyEvidence: { type: String, required: true },
   storageExpansionRunnerPreflight: { type: Object, required: true },
+  storageLayoutCatalog: { type: Array, required: true },
+  storageLayoutForm: { type: Object, required: true },
+  storageLayoutPlans: { type: Array, required: true },
+  storageLayoutStatusFilter: { type: String, required: true },
+  storageLayoutNextCursor: { type: String, default: '' },
+  storageLayoutPlansLoading: { type: Boolean, required: true },
+  storageLayoutSimulation: { type: Object, default: null },
   storageProfileRequests: { type: Array, required: true },
+  storageProfileStatusFilter: { type: String, required: true },
+  storageProfileNextCursor: { type: String, default: '' },
+  storageProfileRequestsLoading: { type: Boolean, required: true },
   storageProfileAdminNote: { type: String, required: true },
   lifecycleRuleForm: { type: Object, required: true },
   lifecycleRules: { type: Array, required: true },
+  lifecycleRuleStatusFilter: { type: String, required: true },
+  lifecycleRuleTargetFilter: { type: String, required: true },
+  lifecycleRulesNextCursor: { type: String, default: '' },
+  lifecycleRulesLoading: { type: Boolean, required: true },
   lifecycleRulePreview: { type: Object, required: true },
   lifecycleRuleConflicts: { type: Object, required: true },
   lifecycleXml: { type: Object, required: true },
@@ -511,6 +633,36 @@ const props = defineProps({
   formatBytes: { type: Function, required: true },
   statusClass: { type: Function, required: true },
 })
+
+const activeAdminArea = ref('overview')
+const adminWorkspaceAreas = [
+  { id: 'overview', label: 'Overview', hint: 'Approvals and health' },
+  { id: 'access', label: 'Access', hint: 'Keys and buckets' },
+  { id: 'policy', label: 'Policies', hint: 'Lifecycle and quota' },
+  { id: 'storage', label: 'Storage', hint: 'Layouts and expansion' },
+  { id: 'billing', label: 'Billing', hint: 'Chargeback' },
+  { id: 'identity', label: 'Identity', hint: 'Teams and users' },
+]
+const selectedStorageLayoutPlanIds = reactive({})
+
+function compatibleStorageLayoutPlans(request) {
+  const compatibility = {
+    PERFORMANCE: ['JBOD', 'RAID0'],
+    STANDARD: ['RAID5', 'RAID10'],
+    DURABLE: ['RAID1', 'RAID6'],
+  }
+  const requestedProfile = request?.requestedProfile?.code
+  const allowedLayouts = compatibility[requestedProfile] || []
+  return props.storageLayoutPlans.filter((plan) => (
+    plan.status === 'APPROVED'
+    && plan.simulatedAt
+    && allowedLayouts.includes(plan.layout?.code)
+  ))
+}
+
+function selectedStorageLayoutPlanId(request) {
+  return Number(selectedStorageLayoutPlanIds[request?.id] || 0)
+}
 
 const approvalWorkflowProfileItems = computed(() => props.storageProfileRequests
   .filter((request) => ['PENDING', 'APPROVED'].includes(request.status))
@@ -705,7 +857,10 @@ defineEmits([
   'reset-quota-policy-form',
   'edit-quota-policy',
   'delete-quota-policy',
+  'load-more-quota-policies',
   'create-storage-expansion-request',
+  'update-storage-expansion-status-filter',
+  'load-more-storage-expansion-requests',
   'preview-storage-expansion-manifest',
   'download-storage-expansion-manifest',
   'download-storage-expansion-gitops-bundle',
@@ -718,11 +873,20 @@ defineEmits([
   'run-storage-expansion-gitops-pr-execution',
   'record-storage-expansion-gitops-pr-execution',
   'load-storage-expansion-executions',
+  'load-more-storage-expansion-executions',
   'create-storage-expansion-execution-record',
   'apply-storage-expansion-from-execution',
   'update-storage-expansion-apply-evidence',
   'refresh-storage-expansion-runner-preflight',
   'update-storage-expansion-status',
+  'update-storage-layout-form',
+  'create-storage-layout-plan',
+  'update-storage-layout-status-filter',
+  'load-more-storage-layout-plans',
+  'update-storage-layout-plan-status',
+  'simulate-storage-layout-plan',
+  'update-storage-profile-status-filter',
+  'load-more-storage-profile-requests',
   'update-storage-profile-admin-note',
   'update-storage-profile-request-status',
   'apply-storage-profile-request',
@@ -731,13 +895,19 @@ defineEmits([
   'dry-run-object-lifecycle-rule',
   'edit-lifecycle-rule',
   'delete-object-lifecycle-rule',
+  'update-lifecycle-rule-status-filter',
+  'update-lifecycle-rule-target-filter',
+  'load-more-lifecycle-rules',
   'refresh-lifecycle-rule-conflicts',
   'export-lifecycle-xml',
   'import-lifecycle-xml',
   'create-organization',
   'create-team',
   'delete-team',
+  'update-team-organization-filter',
+  'load-more-teams',
   'create-user',
   'toggle-user-status',
+  'load-more-users',
 ])
 </script>

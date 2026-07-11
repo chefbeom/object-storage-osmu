@@ -124,10 +124,7 @@ public class OidcClaimPreviewService {
         if (!hasText(email)) {
             return null;
         }
-        Optional<UserAccount> user = userRepository.findByEmail(email)
-                .or(() -> userRepository.findAll().stream()
-                        .filter(account -> email.equalsIgnoreCase(account.email()))
-                        .findFirst());
+        Optional<UserAccount> user = userRepository.findByEmail(email);
         return user.filter(account -> "ACTIVE".equals(account.status()))
                 .map(account -> new ExistingUser(account.id(), account.loginId(), account.role(), account.status()))
                 .orElse(null);

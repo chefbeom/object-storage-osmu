@@ -835,6 +835,12 @@ class BucketObjectFlowTest {
                 .getContentAsString();
         int readPermissionId = JsonPath.read(readGrantResponse, "$.items[0].id");
 
+        mockMvc.perform(get("/api/buckets")
+                        .header("Authorization", "Bearer " + targetToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].name", hasItem("permission-bucket-1")))
+                .andExpect(jsonPath("$.items[*].name", not(hasItem("permission-write-bucket-1"))));
+
         mockMvc.perform(get("/api/buckets/{bucketName}/objects", "permission-bucket-1")
                         .header("Authorization", "Bearer " + targetToken))
                 .andExpect(status().isOk())
@@ -922,6 +928,12 @@ class BucketObjectFlowTest {
                         .header("Authorization", "Bearer " + targetToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(get("/api/buckets")
+                        .header("Authorization", "Bearer " + targetToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].name", not(hasItem("permission-bucket-1"))))
+                .andExpect(jsonPath("$.items[*].name", hasItem("permission-write-bucket-1")));
 
         mockMvc.perform(get("/api/access-keys")
                         .header("Authorization", "Bearer " + targetToken))
@@ -1033,6 +1045,16 @@ class BucketObjectFlowTest {
                 .getContentAsString();
         int permissionId = JsonPath.read(permissionResponse, "$.items[0].id");
 
+        mockMvc.perform(get("/api/buckets")
+                        .header("Authorization", "Bearer " + memberToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].name", hasItem("team-permission-bucket")));
+
+        mockMvc.perform(get("/api/buckets")
+                        .header("Authorization", "Bearer " + outsiderToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].name", not(hasItem("team-permission-bucket"))));
+
         mockMvc.perform(get("/api/buckets/{bucketName}/objects", "team-permission-bucket")
                         .header("Authorization", "Bearer " + memberToken))
                 .andExpect(status().isOk())
@@ -1064,6 +1086,11 @@ class BucketObjectFlowTest {
                         .header("Authorization", "Bearer " + memberToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(get("/api/buckets")
+                        .header("Authorization", "Bearer " + memberToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].name", not(hasItem("team-permission-bucket"))));
 
         mockMvc.perform(get("/api/access-keys")
                         .header("Authorization", "Bearer " + memberToken))

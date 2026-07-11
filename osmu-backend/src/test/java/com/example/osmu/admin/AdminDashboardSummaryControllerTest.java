@@ -1666,6 +1666,13 @@ class AdminDashboardSummaryControllerTest {
                                 "integersValid": true,
                                 "booleansValid": true,
                                 "failureCountZero": true,
+                                "blockerCountZero": true,
+                                "scanLimitPositive": true,
+                                "sourceTruncated": false,
+                                "sourceComplete": true,
+                                "truncationBlockerCountZero": true,
+                                "closeoutReady": true,
+                                "readinessBooleansClosed": true,
                                 "noRawDataStored": true,
                                 "counts": {
                                   "invoiceDraftCount": 3,
@@ -1673,6 +1680,9 @@ class AdminDashboardSummaryControllerTest {
                                   "paymentRequestedCount": 3,
                                   "paymentHandoffCount": 3,
                                   "paidInvoiceCount": 3,
+                                  "scanLimit": 500,
+                                  "truncationBlockerCount": 0,
+                                  "blockerCount": 0,
                                   "reconciliationDifferenceMinorUnits": 0,
                                   "failureCount": 0
                                 },
@@ -4173,6 +4183,11 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.result").value("passed"));
         readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.billingPeriod").value("2026-06"));
         readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.closeoutSnapshotValid").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.scanLimit").value(500));
+        readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.sourceTruncated").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.sourceComplete").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.truncationBlockerCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.closeoutReady").value(true));
         readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.reconciliationDifferenceMinorUnits").value(0));
         readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.finalInvoiceCount").value(3));
         readiness.andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.paidInvoiceCount").value(3));

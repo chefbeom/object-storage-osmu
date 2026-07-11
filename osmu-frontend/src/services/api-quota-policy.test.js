@@ -38,12 +38,12 @@ test('quota policy wrappers use admin quota policy endpoints', async () => {
   ])
 
   try {
-    await getQuotaPolicies()
+    await getQuotaPolicies({ limit: 25, cursor: 'cursor-1' })
     await getQuotaPolicyHistory(25)
     await saveQuotaPolicy('USER', 7, 1024, 'pilot quota')
     await deleteQuotaPolicy('USER', 7, 'pilot cleanup')
 
-    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/quota-policies')
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/quota-policies?cursor=cursor-1&limit=25')
 
     assert.equal(fetchMock.calls[1].url, 'http://localhost:8080/api/admin/quota-policies/history?limit=25')
 
@@ -139,7 +139,7 @@ test('storage expansion wrappers use admin request endpoints', async () => {
     assert.match(tenantYaml, /kind: Tenant/)
     assert.equal(gitOpsBundle.type, 'application/zip')
 
-    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/storage-expansion/requests')
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/storage-expansion/requests?status=OPEN&limit=50')
     assert.equal(fetchMock.calls[0].options.method, undefined)
 
     assert.equal(fetchMock.calls[1].url, 'http://localhost:8080/api/admin/storage-expansion/requests')
@@ -181,7 +181,7 @@ test('storage expansion wrappers use admin request endpoints', async () => {
     assert.equal(fetchMock.calls[11].url, 'http://localhost:8080/api/admin/storage-expansion/requests/1/gitops-artifacts/bundle')
     assert.equal(fetchMock.calls[11].options.method, undefined)
 
-    assert.equal(fetchMock.calls[12].url, 'http://localhost:8080/api/admin/storage-expansion/requests/1/executions')
+    assert.equal(fetchMock.calls[12].url, 'http://localhost:8080/api/admin/storage-expansion/requests/1/executions?limit=50')
     assert.equal(fetchMock.calls[12].options.method, undefined)
 
     assert.equal(fetchMock.calls[13].url, 'http://localhost:8080/api/admin/storage-expansion/requests/1/executions')

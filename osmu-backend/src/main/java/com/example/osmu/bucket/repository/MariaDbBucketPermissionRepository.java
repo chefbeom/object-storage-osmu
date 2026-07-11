@@ -62,6 +62,49 @@ public class MariaDbBucketPermissionRepository implements BucketPermissionReposi
     }
 
     @Override
+    public List<Long> findBucketIdsBySubjects(long userId, Long organizationId, List<Long> teamIds) {
+        ensureSchema();
+        List<Long> normalizedTeamIds = teamIds == null
+                ? List.of()
+                : teamIds.stream().distinct().toList();
+        StringBuilder sql = new StringBuilder("""
+                SELECT DISTINCT bucket_id
+                FROM bucket_permissions
+                WHERE (subject_type = 'USER' AND subject_id = ?)
+                """);
+        if (organizationId != null) {
+            sql.append(" OR (subject_type = 'ORGANIZATION' AND subject_id = ?)");
+        }
+        if (!normalizedTeamIds.isEmpty()) {
+            sql.append(" OR (subject_type = 'TEAM' AND subject_id IN (")
+                    .append(String.join(", ", java.util.Collections.nCopies(normalizedTeamIds.size(), "?")))
+                    .append("))");
+        }
+        sql.append(" ORDER BY bucket_id");
+
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            statement.setLong(parameterIndex++, userId);
+            if (organizationId != null) {
+                statement.setLong(parameterIndex++, organizationId);
+            }
+            for (Long teamId : normalizedTeamIds) {
+                statement.setLong(parameterIndex++, teamId);
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<Long> bucketIds = new ArrayList<>();
+                while (resultSet.next()) {
+                    bucketIds.add(resultSet.getLong("bucket_id"));
+                }
+                return bucketIds;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public Optional<BucketPermissionRecord> findById(long id) {
         ensureSchema();
         String sql = """

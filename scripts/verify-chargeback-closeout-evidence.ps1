@@ -92,6 +92,9 @@ $failedJsonPath = Join-Path $resolvedOutputDirectory "failed-chargeback-closeout
 $failedMarkdownPath = Join-Path $resolvedOutputDirectory "failed-chargeback-closeout-evidence.md"
 $invalidWindowJsonPath = Join-Path $resolvedOutputDirectory "invalid-window-chargeback-closeout-evidence.json"
 $invalidWindowMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-window-chargeback-closeout-evidence.md"
+$truncatedCloseoutJsonPath = Join-Path $resolvedOutputDirectory "truncated-chargeback-closeout-summary.json"
+$truncatedJsonPath = Join-Path $resolvedOutputDirectory "truncated-chargeback-closeout-evidence.json"
+$truncatedMarkdownPath = Join-Path $resolvedOutputDirectory "truncated-chargeback-closeout-evidence.md"
 
 $readinessFixture = [ordered]@{
     success = $true
@@ -125,6 +128,9 @@ $closeoutFixture = [ordered]@{
     paymentRequestedCount = 4
     paymentHandoffCount = 4
     paidInvoiceCount = 4
+    scanLimit = 500
+    sourceTruncated = $false
+    truncationBlockerCount = 0
     reconciliationDifferenceMinorUnits = 0
     failureCount = 0
     closeoutReady = $true
@@ -167,6 +173,9 @@ Assert-True ($report.summary.providedEvidenceRefCount -eq 14) "Expected fourteen
 Assert-True ($report.summary.chargebackCloseoutSnapshotValid) "Expected valid closeout snapshot."
 Assert-True ($report.summary.chargebackCloseoutSnapshotReady) "Expected closeout snapshot readiness flag."
 Assert-True ($report.summary.chargebackCloseoutSnapshotBlockerCount -eq 0) "Expected zero closeout blockers."
+Assert-True ($report.summary.chargebackCloseoutSnapshotScanLimit -eq 500) "Expected closeout scan limit summary."
+Assert-True (-not $report.summary.chargebackCloseoutSnapshotSourceTruncated) "Expected complete closeout source summary."
+Assert-True ($report.summary.chargebackCloseoutSnapshotTruncationBlockerCount -eq 0) "Expected zero truncation blockers in summary."
 Assert-True ($report.summary.paymentProviderAdapterReadinessSnapshotValid) "Expected valid payment adapter readiness snapshot."
 Assert-True ($report.summary.commercialEvidenceReviewed) "Expected commercial evidence review."
 Assert-True ($report.confirmations.noRawCustomerPaymentData) "Expected no raw customer/payment confirmation."
@@ -174,9 +183,13 @@ Assert-True ($report.confirmations.noRawProviderResponses) "Expected no raw prov
 Assert-True ($report.confirmations.noSecretValues) "Expected no secret values confirmation."
 Assert-True ($report.chargebackCloseoutSnapshot.valid) "Expected closeout snapshot valid flag."
 Assert-True ($report.chargebackCloseoutSnapshot.closeoutReady) "Expected closeout snapshot ready flag."
+Assert-True ($report.chargebackCloseoutSnapshot.sourceComplete) "Expected closeout snapshot source completeness flag."
+Assert-True (-not $report.chargebackCloseoutSnapshot.sourceTruncated) "Expected untruncated closeout snapshot."
 Assert-True ($report.chargebackCloseoutSnapshot.readinessBooleansClosed) "Expected all closeout readiness booleans closed."
 Assert-True ($report.chargebackCloseoutSnapshot.counts.failureCount -eq 0) "Expected zero closeout snapshot failures."
 Assert-True ($report.chargebackCloseoutSnapshot.counts.blockerCount -eq 0) "Expected zero closeout snapshot blockers."
+Assert-True ($report.chargebackCloseoutSnapshot.counts.scanLimit -eq 500) "Expected closeout snapshot scan limit."
+Assert-True ($report.chargebackCloseoutSnapshot.counts.truncationBlockerCount -eq 0) "Expected zero closeout snapshot truncation blockers."
 Assert-True ($report.chargebackCloseoutSnapshot.counts.reconciliationDifferenceMinorUnits -eq 0) "Expected zero reconciliation difference."
 Assert-True ($report.paymentProviderAdapterReadiness.valid) "Expected payment provider readiness snapshot valid flag."
 Assert-True ($report.paymentProviderAdapterReadiness.profileCoverageValid) "Expected payment provider profile coverage."
@@ -190,6 +203,8 @@ Assert-Contains $markdown "Record Passed Target Evidence" "chargeback closeout e
 Assert-Contains $report.scopePolicy "does not claim vendor-specific fixed SDK/schema card, bank, tax, ERP, or external payment processor implementation" "chargeback closeout evidence JSON"
 Assert-Contains $report.secretPolicy "raw customer data" "chargeback closeout evidence JSON"
 Assert-Contains $report.decisionRule "Production/B2B chargeback closeout readiness requires result=passed" "chargeback closeout evidence JSON"
+Assert-Contains $report.decisionRule "sourceTruncated=false" "chargeback closeout evidence JSON"
+Assert-Contains $report.decisionRule "truncationBlockerCount=0" "chargeback closeout evidence JSON"
 Assert-Contains $report.decisionRule "closeoutReady=true" "chargeback closeout evidence JSON"
 foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "customer@example.com", "cardNumber")) {
     Assert-NotContains $reportText $unexpected "chargeback closeout evidence JSON"
@@ -201,6 +216,24 @@ if ($LASTEXITCODE -ne 0) { throw "planned write-chargeback-closeout-evidence.ps1
 $plannedReport = Read-Utf8Text $plannedJsonPath | ConvertFrom-Json
 Assert-True ($plannedReport.result -eq "planned") "Expected no-input result=planned."
 Assert-True ($plannedReport.summary.plannedCount -ge 1) "Expected planned checks for no-input run."
+
+$truncatedFixture = $closeoutFixture | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$truncatedFixture.sourceTruncated = $true
+$truncatedFixture.truncationBlockerCount = 1
+$truncatedFixture | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $truncatedCloseoutJsonPath -Encoding UTF8
+$truncatedArgs = @(New-CommonArgs "2026-06-30T01:00:00Z" "2026-06-30T01:45:00Z" $true)
+$closeoutPathArgIndex = [Array]::IndexOf($truncatedArgs, "-ChargebackCloseoutSnapshotJsonPath")
+Assert-True ($closeoutPathArgIndex -ge 0) "Expected closeout snapshot path argument."
+$truncatedArgs[$closeoutPathArgIndex + 1] = $truncatedCloseoutJsonPath
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath @truncatedArgs -JsonOutputPath $truncatedJsonPath -MarkdownOutputPath $truncatedMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) { throw "truncated closeout write should generate failed evidence without exiting nonzero." }
+$truncatedReport = Read-Utf8Text $truncatedJsonPath | ConvertFrom-Json
+Assert-True ($truncatedReport.result -eq "failed") "Expected truncated closeout result=failed."
+Assert-True (-not $truncatedReport.chargebackCloseoutSnapshot.valid) "Expected truncated closeout snapshot to be invalid."
+Assert-True (-not $truncatedReport.chargebackCloseoutSnapshot.sourceComplete) "Expected truncated closeout source completeness to fail."
+Assert-True ($truncatedReport.summary.chargebackCloseoutSnapshotSourceTruncated) "Expected truncated source summary flag."
+Assert-True ($truncatedReport.summary.chargebackCloseoutSnapshotTruncationBlockerCount -eq 1) "Expected one truncation blocker in summary."
+Assert-True (@($truncatedReport.checks | Where-Object { $_.id -eq "chargeback-closeout-snapshot-valid" -and -not $_.passed }).Count -eq 1) "Expected truncated closeout snapshot validation check to fail."
 
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"

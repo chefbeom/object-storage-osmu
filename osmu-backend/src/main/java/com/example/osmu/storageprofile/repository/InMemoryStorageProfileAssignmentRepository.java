@@ -1,8 +1,6 @@
 package com.example.osmu.storageprofile.repository;
 
 import com.example.osmu.storageprofile.StorageProfileAssignmentRecord;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -15,12 +13,6 @@ public class InMemoryStorageProfileAssignmentRepository implements StorageProfil
 
     private final ConcurrentMap<String, StorageProfileAssignmentRecord> assignments = new ConcurrentHashMap<>();
 
-    @Override
-    public List<StorageProfileAssignmentRecord> findAll() {
-        return assignments.values().stream()
-                .sorted(Comparator.comparing(StorageProfileAssignmentRecord::bucketName))
-                .toList();
-    }
 
     @Override
     public Optional<StorageProfileAssignmentRecord> findByBucketName(String bucketName) {

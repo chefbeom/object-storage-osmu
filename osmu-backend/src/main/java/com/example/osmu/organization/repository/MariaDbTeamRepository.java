@@ -12,7 +12,9 @@ import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -38,21 +40,56 @@ public class MariaDbTeamRepository implements TeamRepository {
     }
 
     @Override
-    public List<TeamRecord> findAll() {
+    public List<TeamRecord> findPage(Long organizationId, Long cursorId, int limit) {
         ensureSchema();
-        String sql = """
+        StringBuilder sql = new StringBuilder("""
                 SELECT id, organization_id, name, description, created_at, updated_at
                 FROM teams
-                ORDER BY id
-                """;
+                WHERE 1 = 1
+                """);
+        if (organizationId != null) {
+            sql.append(" AND organization_id = ?");
+        }
+        if (cursorId != null) {
+            sql.append(" AND id > ?");
+        }
+        sql.append(" ORDER BY id ASC LIMIT ?");
         try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            List<TeamRecord> teams = new ArrayList<>();
-            while (resultSet.next()) {
-                teams.add(mapRow(resultSet));
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            if (organizationId != null) {
+                statement.setLong(parameterIndex++, organizationId);
             }
-            return teams;
+            if (cursorId != null) {
+                statement.setLong(parameterIndex++, cursorId);
+            }
+            statement.setInt(parameterIndex, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<TeamRecord> teams = new ArrayList<>();
+                while (resultSet.next()) {
+                    teams.add(mapRow(resultSet));
+                }
+                return teams;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<Long> findIdsByMember(long userId) {
+        ensureSchema();
+        String sql = "SELECT team_id FROM team_members WHERE user_id = ? ORDER BY team_id";
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, userId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<Long> teamIds = new ArrayList<>();
+                while (resultSet.next()) {
+                    teamIds.add(resultSet.getLong("team_id"));
+                }
+                return teamIds;
+            }
         } catch (SQLException exception) {
             throw databaseException(exception);
         }
@@ -88,6 +125,21 @@ public class MariaDbTeamRepository implements TeamRepository {
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, organizationId);
             statement.setString(2, name);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public boolean existsByOrganizationId(long organizationId) {
+        ensureSchema();
+        String sql = "SELECT 1 FROM teams WHERE organization_id = ? LIMIT 1";
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, organizationId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
@@ -180,6 +232,43 @@ public class MariaDbTeamRepository implements TeamRepository {
     }
 
     @Override
+    public Map<Long, List<Long>> findMemberIdsByTeamIds(List<Long> teamIds) {
+        ensureSchema();
+        List<Long> ids = teamIds == null
+                ? List.of()
+                : teamIds.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        String sql = """
+                SELECT team_id, user_id
+                FROM team_members
+                WHERE team_id IN (%s)
+                ORDER BY team_id, user_id
+                """.formatted(String.join(", ", java.util.Collections.nCopies(ids.size(), "?")));
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (int index = 0; index < ids.size(); index += 1) {
+                statement.setLong(index + 1, ids.get(index));
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                Map<Long, List<Long>> membersByTeamId = new LinkedHashMap<>();
+                while (resultSet.next()) {
+                    long teamId = resultSet.getLong("team_id");
+                    membersByTeamId.computeIfAbsent(teamId, ignored -> new ArrayList<>())
+                            .add(resultSet.getLong("user_id"));
+                }
+                return membersByTeamId;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public void replaceMembers(long teamId, List<Long> userIds) {
         ensureSchema();
         try (Connection connection = connect()) {
@@ -262,9 +351,14 @@ public class MariaDbTeamRepository implements TeamRepository {
                          PRIMARY KEY (team_id, user_id),
                          INDEX idx_team_members_user (user_id)
                      )
+                     """);
+             PreparedStatement teamCursorIndexStatement = connection.prepareStatement("""
+                     CREATE INDEX IF NOT EXISTS idx_teams_organization_cursor
+                     ON teams (organization_id, id)
                      """)) {
             teamsStatement.executeUpdate();
             membersStatement.executeUpdate();
+            teamCursorIndexStatement.executeUpdate();
             schemaReady = true;
         } catch (SQLException exception) {
             throw databaseException(exception);

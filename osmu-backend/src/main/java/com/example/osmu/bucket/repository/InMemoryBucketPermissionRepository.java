@@ -26,6 +26,23 @@ public class InMemoryBucketPermissionRepository implements BucketPermissionRepos
     }
 
     @Override
+    public List<Long> findBucketIdsBySubjects(long userId, Long organizationId, List<Long> teamIds) {
+        java.util.Set<Long> teamIdSet = teamIds == null
+                ? java.util.Set.of()
+                : new java.util.HashSet<>(teamIds);
+        return permissions.values().stream()
+                .filter(permission -> ("USER".equals(permission.subjectType()) && permission.subjectId() == userId)
+                        || ("ORGANIZATION".equals(permission.subjectType())
+                        && organizationId != null
+                        && permission.subjectId() == organizationId)
+                        || ("TEAM".equals(permission.subjectType()) && teamIdSet.contains(permission.subjectId())))
+                .map(BucketPermissionRecord::bucketId)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    @Override
     public Optional<BucketPermissionRecord> findById(long id) {
         return Optional.ofNullable(permissions.get(id));
     }

@@ -3,8 +3,10 @@ package com.example.osmu.billing.repository;
 import com.example.osmu.billing.ChargebackPaymentProviderHandoffRecord;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -49,6 +51,24 @@ public class InMemoryChargebackPaymentProviderHandoffRepository implements Charg
     }
 
     @Override
+    public List<ChargebackPaymentProviderHandoffRecord> findForCloseout(
+            List<Long> finalInvoiceIds,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    ) {
+        Set<Long> invoiceIds = new HashSet<>(finalInvoiceIds == null ? List.of() : finalInvoiceIds);
+        invoiceIds.remove(null);
+        return records.stream()
+                .filter(record -> invoiceIds.isEmpty()
+                        ? timestampWithinWindow(record.createdAt(), from, to)
+                        : invoiceIds.contains(record.finalInvoiceId()))
+                .sorted(Comparator.comparing(ChargebackPaymentProviderHandoffRecord::createdAt).reversed())
+                .limit(Math.max(1, limit))
+                .toList();
+    }
+
+    @Override
     public List<ChargebackPaymentProviderHandoffRecord> findDueAdapterRetries(OffsetDateTime now, int limit) {
         return records.stream()
                 .filter(record -> isRetryCandidate(record.status()))
@@ -68,6 +88,23 @@ public class InMemoryChargebackPaymentProviderHandoffRepository implements Charg
             }
         }
         throw new IllegalArgumentException("Chargeback payment handoff not found: " + updated.id());
+    }
+
+    private static boolean timestampWithinWindow(
+            OffsetDateTime timestamp,
+            OffsetDateTime from,
+            OffsetDateTime to
+    ) {
+        if (from == null && to == null) {
+            return true;
+        }
+        if (timestamp == null) {
+            return true;
+        }
+        if (from != null && timestamp.isBefore(from)) {
+            return false;
+        }
+        return to == null || timestamp.isBefore(to);
     }
 
     private static int normalizeLimit(int limit) {

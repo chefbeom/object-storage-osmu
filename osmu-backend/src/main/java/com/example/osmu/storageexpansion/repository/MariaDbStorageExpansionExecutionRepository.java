@@ -38,28 +38,6 @@ public class MariaDbStorageExpansionExecutionRepository implements StorageExpans
     }
 
     @Override
-    public List<StorageExpansionExecutionRecord> findAll() {
-        ensureSchema();
-        String sql = """
-                SELECT id, request_id, execution_type, result, command_text, output_text,
-                       external_url, artifact_sha256, exit_code, timed_out, notes, created_by, created_at
-                FROM storage_expansion_executions
-                ORDER BY id DESC
-                """;
-        try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            List<StorageExpansionExecutionRecord> executions = new ArrayList<>();
-            while (resultSet.next()) {
-                executions.add(mapRow(resultSet));
-            }
-            return executions;
-        } catch (SQLException exception) {
-            throw databaseException(exception);
-        }
-    }
-
-    @Override
     public long countAll() {
         return count("SELECT COUNT(*) AS value FROM storage_expansion_executions");
     }
@@ -116,18 +94,26 @@ public class MariaDbStorageExpansionExecutionRepository implements StorageExpans
     }
 
     @Override
-    public List<StorageExpansionExecutionRecord> findByRequestId(long requestId) {
+    public List<StorageExpansionExecutionRecord> findPageByRequestId(long requestId, Long cursorId, int limit) {
         ensureSchema();
-        String sql = """
+        StringBuilder sql = new StringBuilder("""
                 SELECT id, request_id, execution_type, result, command_text, output_text,
                        external_url, artifact_sha256, exit_code, timed_out, notes, created_by, created_at
                 FROM storage_expansion_executions
                 WHERE request_id = ?
-                ORDER BY id DESC
-                """;
+                """);
+        if (cursorId != null) {
+            sql.append(" AND id < ?");
+        }
+        sql.append(" ORDER BY id DESC LIMIT ?");
         try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
             statement.setLong(1, requestId);
+            int parameterIndex = 2;
+            if (cursorId != null) {
+                statement.setLong(parameterIndex++, cursorId);
+            }
+            statement.setInt(parameterIndex, limit);
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<StorageExpansionExecutionRecord> executions = new ArrayList<>();
                 while (resultSet.next()) {

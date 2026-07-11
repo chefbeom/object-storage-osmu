@@ -19,13 +19,6 @@ public class InMemoryStorageExpansionExecutionRepository implements StorageExpan
     private final ConcurrentMap<Long, StorageExpansionExecutionRecord> executions = new ConcurrentHashMap<>();
 
     @Override
-    public List<StorageExpansionExecutionRecord> findAll() {
-        return executions.values().stream()
-                .sorted(Comparator.comparingLong(StorageExpansionExecutionRecord::id).reversed())
-                .toList();
-    }
-
-    @Override
     public long countAll() {
         return executions.size();
     }
@@ -59,10 +52,12 @@ public class InMemoryStorageExpansionExecutionRepository implements StorageExpan
     }
 
     @Override
-    public List<StorageExpansionExecutionRecord> findByRequestId(long requestId) {
+    public List<StorageExpansionExecutionRecord> findPageByRequestId(long requestId, Long cursorId, int limit) {
         return executions.values().stream()
                 .filter(execution -> execution.requestId() == requestId)
+                .filter(execution -> cursorId == null || execution.id() < cursorId)
                 .sorted(Comparator.comparingLong(StorageExpansionExecutionRecord::id).reversed())
+                .limit(limit)
                 .toList();
     }
 

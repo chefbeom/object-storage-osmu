@@ -12,6 +12,7 @@ import com.example.osmu.auth.AuthContext;
 import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.auth.repository.RefreshTokenRepository;
 import com.example.osmu.bucket.BucketService;
+import com.example.osmu.bucket.BucketUsageSummary;
 import com.example.osmu.bucket.repository.BucketRepository;
 import com.example.osmu.common.api.ApiResponse;
 import com.example.osmu.common.api.ListResponse;
@@ -22,8 +23,6 @@ import com.example.osmu.object.DeletedObjectCandidate;
 import com.example.osmu.object.ObjectLifecycleRule;
 import com.example.osmu.object.ObjectRetentionPolicy;
 import com.example.osmu.object.ObjectRetentionPurgeJob;
-import com.example.osmu.object.ObjectShareLink;
-import com.example.osmu.object.ObjectShareLinkResponse;
 import com.example.osmu.object.ObjectSharePolicyService;
 import com.example.osmu.object.ObjectVersionRetentionPurgeJob;
 import com.example.osmu.object.repository.ObjectMetadataRepository;
@@ -614,14 +613,15 @@ public class AdminController {
     }
 
     private UsageResponse usageSnapshot() {
-        long quotaBytes = bucketService.totalQuotaBytes();
-        long usedBytes = bucketService.totalUsedBytes();
+        BucketUsageSummary bucketUsage = bucketService.usageSummary();
+        long quotaBytes = bucketUsage.totalQuotaBytes();
+        long usedBytes = bucketUsage.totalUsedBytes();
         return new UsageResponse(
                 quotaBytes,
                 usedBytes,
                 Math.max(0L, quotaBytes - usedBytes),
-                bucketService.list().size(),
-                bucketService.totalObjectCount()
+                bucketUsage.bucketCount(),
+                bucketUsage.totalObjectCount()
         );
     }
 
@@ -684,10 +684,11 @@ public class AdminController {
         String normalizedMetadataMode = mode(metadataMode);
         boolean storageHealthy = storageAdapter.isHealthy();
         boolean accessKeyProvisionerHealthy = policyProvisioner.isHealthy();
-        long quotaBytes = bucketService.totalQuotaBytes();
-        long usedBytes = bucketService.totalUsedBytes();
-        long bucketCount = bucketRepository.findAll().size();
-        long objectCount = bucketService.totalObjectCount();
+        BucketUsageSummary bucketUsage = bucketService.usageSummary();
+        long quotaBytes = bucketUsage.totalQuotaBytes();
+        long usedBytes = bucketUsage.totalUsedBytes();
+        long bucketCount = bucketUsage.bucketCount();
+        long objectCount = bucketUsage.totalObjectCount();
         StorageBackendMetricsSnapshot directMetrics = storageBackendMetricsProvider.snapshot();
         boolean directMetricsReady = directMetrics.ready();
         boolean minioMode = "minio".equals(normalizedStorageMode);
@@ -852,32 +853,11 @@ public class AdminController {
     }
 
     private ObjectShareAnalyticsResponse shareAnalyticsSnapshot(int limit) {
-        List<ObjectShareLink> links = shareLinkRepository.findAll();
-        List<ObjectShareLinkResponse> recentLinks = links.stream()
-                .sorted(Comparator.comparing(ObjectShareLink::id).reversed())
-                .limit(limit)
-                .map(link -> ObjectShareLinkResponse.of(link, null, null))
-                .toList();
-        return new ObjectShareAnalyticsResponse(
-                links.size(),
-                countStatus(links, "ACTIVE"),
-                countStatus(links, "EXPIRED"),
-                countStatus(links, "REVOKED"),
-                countStatus(links, "LIMIT_REACHED"),
-                links.stream().filter(ObjectShareLink::passwordProtected).count(),
-                links.stream().filter(ObjectShareLink::ipRestricted).count(),
-                links.stream().mapToLong(ObjectShareLink::downloadCount).sum(),
-                links.stream()
-                        .map(ObjectShareLink::lastAccessedAt)
-                        .filter(value -> value != null)
-                        .max(OffsetDateTime::compareTo)
-                        .orElse(null),
-                recentLinks
-        );
+        return ObjectShareAnalyticsResponse.of(shareLinkRepository.analytics("", "", limit));
     }
 
     private DashboardQuotaSummaryResponse quotaSummarySnapshot() {
-        List<QuotaPolicyResponse> policies = quotaPolicyService.list();
+        List<QuotaPolicyResponse> policies = quotaPolicyService.listAllForDashboardSummary();
         List<QuotaPolicyResponse> topPolicies = policies.stream()
                 .sorted(Comparator.comparingDouble(this::quotaUsageRatio).reversed()
                         .thenComparingLong(QuotaPolicyResponse::remainingBytes))
@@ -1027,33 +1007,6 @@ public class AdminController {
         return ApiResponse.of(retentionStatus());
     }
 
-    @GetMapping("/object-lifecycle/rules")
-    public ApiResponse<List<ObjectLifecycleRule>> objectLifecycleRules() {
-        return ApiResponse.of(lifecycleRuleRepository.findAll());
-    }
-
-    @GetMapping("/object-lifecycle/conflicts")
-    public ApiResponse<ObjectLifecycleRuleConflictReportResponse> objectLifecycleRuleConflicts() {
-        List<ObjectLifecycleRule> enabledRules = lifecycleRuleRepository.findAll()
-                .stream()
-                .filter(ObjectLifecycleRule::enabled)
-                .toList();
-        List<ObjectLifecycleRuleConflictResponse> conflicts = lifecycleRuleConflicts(enabledRules);
-        return ApiResponse.of(new ObjectLifecycleRuleConflictReportResponse(
-                enabledRules.size(),
-                conflicts.size(),
-                conflicts
-        ));
-    }
-
-    @GetMapping("/object-lifecycle/s3-xml")
-    public ApiResponse<ObjectLifecycleS3XmlResponse> exportObjectLifecycleS3Xml() {
-        List<ObjectLifecycleRule> rules = lifecycleRuleRepository.findAll();
-        return ApiResponse.of(new ObjectLifecycleS3XmlResponse(
-                rules.size(),
-                lifecycleS3XmlService.exportRules(rules)
-        ));
-    }
 
     @PostMapping("/object-lifecycle/s3-xml")
     public ApiResponse<ObjectLifecycleS3XmlImportResponse> importObjectLifecycleS3Xml(
@@ -1256,59 +1209,6 @@ public class AdminController {
         );
     }
 
-    private List<ObjectLifecycleRuleConflictResponse> lifecycleRuleConflicts(List<ObjectLifecycleRule> rules) {
-        List<ObjectLifecycleRuleConflictResponse> conflicts = new java.util.ArrayList<>();
-        for (int firstIndex = 0; firstIndex < rules.size(); firstIndex++) {
-            for (int secondIndex = firstIndex + 1; secondIndex < rules.size(); secondIndex++) {
-                ObjectLifecycleRule first = rules.get(firstIndex);
-                ObjectLifecycleRule second = rules.get(secondIndex);
-                if (!first.targetType().equals(second.targetType())) {
-                    continue;
-                }
-                if (!prefixesOverlap(first.prefix(), second.prefix()) || !tagsCompatible(first.tags(), second.tags())) {
-                    continue;
-                }
-                conflicts.add(toLifecycleRuleConflict(first, second));
-            }
-        }
-        return conflicts;
-    }
-
-    private ObjectLifecycleRuleConflictResponse toLifecycleRuleConflict(ObjectLifecycleRule first, ObjectLifecycleRule second) {
-        boolean samePriority = first.priority() == second.priority();
-        boolean differentRetention = first.retentionDays() != second.retentionDays();
-        String conflictType = samePriority ? "SAME_PRIORITY_OVERLAP" : "OVERLAPPING_SCOPE";
-        String severity = samePriority || differentRetention ? "WARNING" : "INFO";
-        String reason = samePriority
-                ? "Rules have the same priority and overlapping scope; createdAt/ruleId decides final order."
-                : "Earlier priority rule can purge shared candidates before later rule.";
-        return new ObjectLifecycleRuleConflictResponse(
-                conflictType,
-                severity,
-                first.targetType(),
-                first,
-                second,
-                reason
-        );
-    }
-
-    private boolean prefixesOverlap(String firstPrefix, String secondPrefix) {
-        String first = firstPrefix == null ? "" : firstPrefix;
-        String second = secondPrefix == null ? "" : secondPrefix;
-        return first.startsWith(second) || second.startsWith(first);
-    }
-
-    private boolean tagsCompatible(Map<String, String> firstTags, Map<String, String> secondTags) {
-        Map<String, String> first = firstTags == null ? Map.of() : firstTags;
-        Map<String, String> second = secondTags == null ? Map.of() : secondTags;
-        for (Map.Entry<String, String> entry : first.entrySet()) {
-            String otherValue = second.get(entry.getKey());
-            if (otherValue != null && !otherValue.equals(entry.getValue())) {
-                return false;
-            }
-        }
-        return true;
-    }
 
     @PutMapping("/object-retention/policy")
     public ApiResponse<ObjectRetentionStatusResponse> updateObjectRetentionPolicy(
@@ -1474,11 +1374,6 @@ public class AdminController {
         return value;
     }
 
-    private long countStatus(List<ObjectShareLink> links, String status) {
-        return links.stream()
-                .filter(link -> status.equals(link.status()))
-                .count();
-    }
 
     private int normalizeObjectShareAnalyticsLimit(int limit) {
         if (limit < 1 || limit > 50) {
@@ -3739,6 +3634,11 @@ public class AdminController {
                 jsonBoolean(closeoutSnapshot, "valid"),
                 jsonBoolean(closeoutSnapshot, "statusClosed"),
                 jsonBoolean(closeoutSnapshot, "billingPeriodMatches"),
+                jsonInt(closeoutCounts, "scanLimit"),
+                jsonBoolean(closeoutSnapshot, "sourceTruncated"),
+                jsonBoolean(closeoutSnapshot, "sourceComplete"),
+                jsonInt(closeoutCounts, "truncationBlockerCount"),
+                jsonBoolean(closeoutSnapshot, "closeoutReady"),
                 jsonBoolean(report, "noRawDataStored") || jsonBoolean(closeoutSnapshot, "noRawDataStored"),
                 Math.max(jsonLong(report, "reconciliationDifferenceMinorUnits"), jsonLong(closeoutCounts, "reconciliationDifferenceMinorUnits")),
                 jsonInt(closeoutCounts, "invoiceDraftCount"),

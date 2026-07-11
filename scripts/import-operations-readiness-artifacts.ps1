@@ -2562,11 +2562,25 @@ function Test-ChargebackCloseoutEvidenceJson([string] $Path) {
         return [pscustomobject]@{ passed = $false; detail = "summary incomplete checks=$($checkCount.value) failures=$($failureCount.value) planned=$($plannedCount.value) refs=$($providedRefCount.value)/$($requiredRefCount.value)" }
     }
 
-    foreach ($summaryBoolName in @("chargebackCloseoutSnapshotValid", "paymentProviderAdapterReadinessSnapshotValid", "paymentProviderAdapterReadinessReviewed", "commercialEvidenceReviewed")) {
+    foreach ($summaryBoolName in @("chargebackCloseoutSnapshotValid", "chargebackCloseoutSnapshotReady", "paymentProviderAdapterReadinessSnapshotValid", "paymentProviderAdapterReadinessReviewed", "commercialEvidenceReviewed")) {
         $summaryBool = Get-RequiredJsonBool $summary $summaryBoolName
         if (-not $summaryBool.valid -or -not $summaryBool.value) {
             return [pscustomobject]@{ passed = $false; detail = "summary.$summaryBoolName=$($summaryBool.raw) expected boolean true" }
         }
+    }
+
+    $summaryScanLimit = Get-RequiredJsonInt $summary "chargebackCloseoutSnapshotScanLimit"
+    $summaryBlockerCount = Get-RequiredJsonInt $summary "chargebackCloseoutSnapshotBlockerCount"
+    $summaryTruncationBlockerCount = Get-RequiredJsonInt $summary "chargebackCloseoutSnapshotTruncationBlockerCount"
+    $summarySourceTruncated = Get-RequiredJsonBool $summary "chargebackCloseoutSnapshotSourceTruncated"
+    if (-not $summaryScanLimit.valid -or $summaryScanLimit.value -le 0) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.chargebackCloseoutSnapshotScanLimit=$($summaryScanLimit.raw) expected positive integer" }
+    }
+    if (-not $summaryBlockerCount.valid -or $summaryBlockerCount.value -ne 0 -or -not $summaryTruncationBlockerCount.valid -or $summaryTruncationBlockerCount.value -ne 0) {
+        return [pscustomobject]@{ passed = $false; detail = "summary closeout blockers=$($summaryBlockerCount.raw) truncationBlockers=$($summaryTruncationBlockerCount.raw) expected integer zero" }
+    }
+    if (-not $summarySourceTruncated.valid -or $summarySourceTruncated.value) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.chargebackCloseoutSnapshotSourceTruncated=$($summarySourceTruncated.raw) expected boolean false" }
     }
 
     $evidenceRefs = Get-JsonProperty $json "evidenceRefs"
@@ -2590,14 +2604,24 @@ function Test-ChargebackCloseoutEvidenceJson([string] $Path) {
     if (-not $closeoutSnapshotValid.valid -or -not $closeoutSnapshotValid.value) {
         return [pscustomobject]@{ passed = $false; detail = "chargebackCloseoutSnapshot.valid=$($closeoutSnapshotValid.raw) expected boolean true" }
     }
+    foreach ($fieldName in @("sourceComplete", "scanLimitPositive", "truncationBlockerCountZero", "blockerCountZero", "closeoutReady", "readinessBooleansClosed")) {
+        $field = Get-RequiredJsonBool $closeoutSnapshot $fieldName
+        if (-not $field.valid -or -not $field.value) {
+            return [pscustomobject]@{ passed = $false; detail = "chargebackCloseoutSnapshot.$fieldName=$($field.raw) expected boolean true" }
+        }
+    }
+    $sourceTruncated = Get-RequiredJsonBool $closeoutSnapshot "sourceTruncated"
+    if (-not $sourceTruncated.valid -or $sourceTruncated.value) {
+        return [pscustomobject]@{ passed = $false; detail = "chargebackCloseoutSnapshot.sourceTruncated=$($sourceTruncated.raw) expected boolean false" }
+    }
     $closeoutCounts = Get-JsonProperty $closeoutSnapshot "counts"
-    foreach ($countName in @("invoiceDraftCount", "finalInvoiceCount", "paymentRequestedCount", "paymentHandoffCount", "paidInvoiceCount")) {
+    foreach ($countName in @("invoiceDraftCount", "finalInvoiceCount", "paymentRequestedCount", "paymentHandoffCount", "paidInvoiceCount", "scanLimit")) {
         $count = Get-RequiredJsonInt $closeoutCounts $countName
         if (-not $count.valid -or $count.value -le 0) {
             return [pscustomobject]@{ passed = $false; detail = "chargebackCloseoutSnapshot.counts.$countName=$($count.raw) expected positive integer" }
         }
     }
-    foreach ($countName in @("failureCount", "reconciliationDifferenceMinorUnits")) {
+    foreach ($countName in @("failureCount", "blockerCount", "truncationBlockerCount", "reconciliationDifferenceMinorUnits")) {
         $count = Get-RequiredJsonInt $closeoutCounts $countName
         if (-not $count.valid -or $count.value -ne 0) {
             return [pscustomobject]@{ passed = $false; detail = "chargebackCloseoutSnapshot.counts.$countName=$($count.raw) expected integer zero" }
@@ -2635,7 +2659,7 @@ function Test-ChargebackCloseoutEvidenceJson([string] $Path) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result billingPeriod=$($target.billingPeriod) environmentName=$($target.environmentName) targetCluster=$($target.targetCluster) refs=$($providedRefCount.value)/$($requiredRefCount.value) failures=$($failureCount.value) planned=$($plannedCount.value) checkCount=$($checks.Count)"
+        detail = "formatVersion=$formatVersion result=$result billingPeriod=$($target.billingPeriod) environmentName=$($target.environmentName) targetCluster=$($target.targetCluster) refs=$($providedRefCount.value)/$($requiredRefCount.value) failures=$($failureCount.value) planned=$($plannedCount.value) scanLimit=$($summaryScanLimit.value) sourceTruncated=$($summarySourceTruncated.value) truncationBlockers=$($summaryTruncationBlockerCount.value) checkCount=$($checks.Count)"
     }
 }
 function Test-EnterpriseAuthEvidenceJson([string] $Path) {

@@ -12,6 +12,7 @@ import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,26 +38,97 @@ public class MariaDbStorageProfileRequestRepository implements StorageProfileReq
         this.password = password;
     }
 
+
     @Override
-    public List<StorageProfileRequestRecord> findAll() {
+    public List<StorageProfileRequestRecord> findPage(List<String> statuses, Long cursorId, int limit) {
         ensureSchema();
-        String sql = selectSql() + " ORDER BY id DESC";
+        List<String> statusFilter = statuses == null
+                ? List.of()
+                : statuses.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList();
+        StringBuilder sql = new StringBuilder(selectSql()).append(" WHERE 1 = 1");
+        if (!statusFilter.isEmpty()) {
+            sql.append(" AND status IN (")
+                    .append(String.join(", ", java.util.Collections.nCopies(statusFilter.size(), "?")))
+                    .append(")");
+        }
+        if (cursorId != null) {
+            sql.append(" AND id < ?");
+        }
+        sql.append(" ORDER BY id DESC LIMIT ?");
+
         try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            return collect(resultSet);
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            for (String status : statusFilter) {
+                statement.setString(parameterIndex++, status);
+            }
+            if (cursorId != null) {
+                statement.setLong(parameterIndex++, cursorId);
+            }
+            statement.setInt(parameterIndex, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return collect(resultSet);
+            }
         } catch (SQLException exception) {
             throw databaseException(exception);
         }
     }
 
     @Override
-    public List<StorageProfileRequestRecord> findByBucketName(String bucketName) {
+    public List<StorageProfileRequestRecord> findPageByBucketName(
+            String bucketName,
+            Long cursorId,
+            int limit
+    ) {
         ensureSchema();
-        String sql = selectSql() + " WHERE bucket_name = ? ORDER BY id DESC";
+        String sql = selectSql() + " WHERE bucket_name = ?"
+                + (cursorId == null ? "" : " AND id < ?")
+                + " ORDER BY id DESC LIMIT ?";
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, bucketName);
+            int parameterIndex = 1;
+            statement.setString(parameterIndex++, bucketName);
+            if (cursorId != null) {
+                statement.setLong(parameterIndex++, cursorId);
+            }
+            statement.setInt(parameterIndex, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return collect(resultSet);
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<StorageProfileRequestRecord> findPageByBucketNames(
+            List<String> bucketNames,
+            Long cursorId,
+            int limit
+    ) {
+        ensureSchema();
+        LinkedHashSet<String> uniqueBucketNames = new LinkedHashSet<>(bucketNames == null ? List.of() : bucketNames);
+        uniqueBucketNames.remove(null);
+        if (uniqueBucketNames.isEmpty()) {
+            return List.of();
+        }
+        String placeholders = String.join(", ", java.util.Collections.nCopies(uniqueBucketNames.size(), "?"));
+        String sql = selectSql() + " WHERE bucket_name IN (" + placeholders + ")"
+                + (cursorId == null ? "" : " AND id < ?")
+                + " ORDER BY id DESC LIMIT ?";
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            int parameterIndex = 1;
+            for (String bucketName : uniqueBucketNames) {
+                statement.setString(parameterIndex++, bucketName);
+            }
+            if (cursorId != null) {
+                statement.setLong(parameterIndex++, cursorId);
+            }
+            statement.setInt(parameterIndex, limit);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return collect(resultSet);
             }
@@ -122,9 +194,10 @@ public class MariaDbStorageProfileRequestRepository implements StorageProfileReq
         String sql = """
                 INSERT INTO storage_profile_requests
                     (id, bucket_name, current_profile_code, requested_profile_code, status, reason,
-                     requested_by, approved_by, approved_at, applied_by, applied_at, admin_note,
+                     requested_by, approved_by, approved_at, applied_by, applied_at,
+                     storage_layout_plan_id, storage_pool_name, storage_layout_code, admin_note,
                      created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     current_profile_code = VALUES(current_profile_code),
                     requested_profile_code = VALUES(requested_profile_code),
@@ -134,6 +207,9 @@ public class MariaDbStorageProfileRequestRepository implements StorageProfileReq
                     approved_at = VALUES(approved_at),
                     applied_by = VALUES(applied_by),
                     applied_at = VALUES(applied_at),
+                    storage_layout_plan_id = VALUES(storage_layout_plan_id),
+                    storage_pool_name = VALUES(storage_pool_name),
+                    storage_layout_code = VALUES(storage_layout_code),
                     admin_note = VALUES(admin_note),
                     updated_at = VALUES(updated_at)
                 """;
@@ -150,9 +226,12 @@ public class MariaDbStorageProfileRequestRepository implements StorageProfileReq
             statement.setTimestamp(9, timestamp(request.approvedAt()));
             statement.setString(10, request.appliedBy());
             statement.setTimestamp(11, timestamp(request.appliedAt()));
-            statement.setString(12, request.adminNote());
-            statement.setTimestamp(13, timestamp(request.createdAt()));
-            statement.setTimestamp(14, timestamp(request.updatedAt()));
+            statement.setObject(12, request.storageLayoutPlanId());
+            statement.setString(13, request.storagePoolName());
+            statement.setString(14, request.storageLayoutCode());
+            statement.setString(15, request.adminNote());
+            statement.setTimestamp(16, timestamp(request.createdAt()));
+            statement.setTimestamp(17, timestamp(request.updatedAt()));
             statement.executeUpdate();
             return request;
         } catch (SQLException exception) {
@@ -189,6 +268,9 @@ public class MariaDbStorageProfileRequestRepository implements StorageProfileReq
                     applied_by VARCHAR(128) NULL,
                     applied_at TIMESTAMP NULL,
                     admin_note VARCHAR(512) NULL,
+                    storage_layout_plan_id BIGINT NULL,
+                    storage_pool_name VARCHAR(128) NULL,
+                    storage_layout_code VARCHAR(32) NULL,
                     created_at TIMESTAMP NOT NULL,
                     updated_at TIMESTAMP NOT NULL,
                     INDEX idx_storage_profile_requests_bucket (bucket_name, id),
@@ -207,7 +289,8 @@ public class MariaDbStorageProfileRequestRepository implements StorageProfileReq
     private String selectSql() {
         return """
                 SELECT id, bucket_name, current_profile_code, requested_profile_code, status, reason,
-                       requested_by, approved_by, approved_at, applied_by, applied_at, admin_note,
+                       requested_by, approved_by, approved_at, applied_by, applied_at,
+                       storage_layout_plan_id, storage_pool_name, storage_layout_code, admin_note,
                        created_at, updated_at
                 FROM storage_profile_requests
                 """;
@@ -238,6 +321,9 @@ public class MariaDbStorageProfileRequestRepository implements StorageProfileReq
                 toOffset(resultSet.getTimestamp("approved_at")),
                 resultSet.getString("applied_by"),
                 toOffset(resultSet.getTimestamp("applied_at")),
+                nullableLong(resultSet, "storage_layout_plan_id"),
+                resultSet.getString("storage_pool_name"),
+                resultSet.getString("storage_layout_code"),
                 resultSet.getString("admin_note"),
                 toOffset(resultSet.getTimestamp("created_at")),
                 toOffset(resultSet.getTimestamp("updated_at"))
@@ -250,6 +336,11 @@ public class MariaDbStorageProfileRequestRepository implements StorageProfileReq
 
     private OffsetDateTime toOffset(Timestamp value) {
         return value == null ? null : value.toInstant().atOffset(ZoneOffset.UTC);
+    }
+
+    private Long nullableLong(ResultSet resultSet, String column) throws SQLException {
+        long value = resultSet.getLong(column);
+        return resultSet.wasNull() ? null : value;
     }
 
     private ApiException databaseException(SQLException exception) {

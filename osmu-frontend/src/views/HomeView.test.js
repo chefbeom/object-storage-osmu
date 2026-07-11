@@ -27,10 +27,59 @@ const sourceFiles = [
   '../assets/main.css',
   '../router/index.js',
   '../utils/accessKeys.js',
+  '../utils/dashboardReadiness.js',
 ]
 const dashboardSource = sourceFiles
   .map((path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8'))
   .join('\n')
+const homeViewSource = readFileSync(fileURLToPath(new URL('./HomeView.vue', import.meta.url)), 'utf8')
+const routerSource = readFileSync(fileURLToPath(new URL('../router/index.js', import.meta.url)), 'utf8')
+const dashboardReadinessSource = readFileSync(
+  fileURLToPath(new URL('../utils/dashboardReadiness.js', import.meta.url)),
+  'utf8',
+)
+
+test('routes and page shells are loaded lazily', () => {
+  assert.ok(routerSource.includes("const HomeView = () => import('../views/HomeView.vue')"))
+  assert.ok(routerSource.includes("const LoginView = () => import('../views/LoginView.vue')"))
+
+  const lazyPages = [
+    ['AdminPage', '@/components/admin/AdminPage.vue'],
+    ['AuditPage', '@/components/audit/AuditPage.vue'],
+    ['DashboardPage', '@/components/dashboard/DashboardPage.vue'],
+    ['DeveloperPage', '@/components/developer/DeveloperPage.vue'],
+    ['ObjectPage', '@/components/objects/ObjectPage.vue'],
+    ['StoragePage', '@/components/storage/StoragePage.vue'],
+  ]
+
+  for (const [componentName, componentPath] of lazyPages) {
+    assert.ok(
+      homeViewSource.includes("const " + componentName + " = defineAsyncComponent(() => import('" + componentPath + "'))"),
+      componentName + ' should be loaded lazily',
+    )
+  }
+})
+
+test('dashboard readiness normalization is loaded only for the dashboard route', () => {
+  assert.ok(homeViewSource.includes("canUseAuditTools.value && isDashboardPage"))
+  assert.ok(homeViewSource.includes("import('@/utils/dashboardReadiness')"))
+  assert.match(homeViewSource, /await applyDashboardReadiness\(result\.data\.readiness\)/)
+  assert.doesNotMatch(homeViewSource, /function normalizeOperationsEvidencePlanSummary/)
+  assert.match(dashboardReadinessSource, /export function normalizeDashboardReadiness/)
+  assert.match(dashboardReadinessSource, /function normalizeOperationsEvidencePlanSummary/)
+})
+
+test('HomeView scopes API loading and selected bucket details to the active page', () => {
+  assert.match(homeViewSource, /await loadDashboard\(\{ page \}\)/)
+  assert.match(homeViewSource, /const page = options\?\.page \|\| activePage\.value/)
+  assert.match(homeViewSource, /const needsAccessKeys = isDashboardPage \|\| isDeveloperPage \|\| isAdminPage/)
+  assert.match(homeViewSource, /if \(isDashboardPage\) \{\s+await loadDashboardWidgetCatalog\(\)/)
+  assert.match(homeViewSource, /if \(isDeveloperPage\) \{\s+await loadS3ClientConfig\(\)/)
+  assert.match(homeViewSource, /if \(isAuditPage && canUseAuditTools\.value\) \{\s+await handleLoadAuditLogs\(\)/)
+  assert.match(homeViewSource, /if \(page === 'dashboard' \|\| page === 'objects'\) \{\s+await loadObjects\(\)/)
+  assert.match(homeViewSource, /if \(page === 'storage'\) \{\s+await loadStorageProfileDetails\(\)/)
+  assert.match(homeViewSource, /if \(page === 'admin'\) \{\s+await Promise\.all\(\[\s+loadBucketPermissions\(\),\s+loadBucketLifecycleXml\(\),\s+loadBucketTags\(\),/)
+})
 
 test('HomeView exposes stable selectors for browser E2E flows', () => {
   const requiredTestIds = [
@@ -268,6 +317,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'storage-profile-request-table',
     'storage-profile-request-row',
     'storage-profile-request-status',
+    'storage-profile-history-load-more-button',
     'object-panel',
     'object-empty-state',
     'object-filter-form',
@@ -452,6 +502,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'quota-policy-save-button',
     'quota-policy-cancel-edit-button',
     'quota-policy-edit-button',
+    'quota-policy-load-more-button',
     'quota-policy-history-list',
     'billing-chargeback-panel',
     'chargeback-scan-count',
@@ -1023,6 +1074,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /readiness-handoff-package-commercial-approval-snapshot-summary/)
   assert.match(dashboardSource, /operationsHandoffPackageChargebackCloseoutSnapshot/)
   assert.match(dashboardSource, /readiness-handoff-package-chargeback-closeout-snapshot-summary/)
+  assert.match(dashboardSource, /operationsHandoffPackageChargebackCloseoutSnapshot\.sourceTruncated/)
+  assert.match(dashboardSource, /operationsHandoffPackageChargebackCloseoutSnapshot\.truncationBlockerCount/)
   assert.match(dashboardSource, /operationsHandoffPackageEnterpriseAuthSmokeSnapshot/)
   assert.match(dashboardSource, /readiness-handoff-package-enterprise-auth-snapshot-summary/)
   assert.match(dashboardSource, /operationsHandoffPackageEnterpriseAuthJitRollbackSnapshot/)
@@ -1510,6 +1563,31 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /id="admin-quota-policies"/)
   assert.match(dashboardSource, /id="admin-storage-expansion"/)
   assert.match(dashboardSource, /getStorageExpansionRequests/)
+  assert.match(dashboardSource, /storageExpansionStatusFilter/)
+  assert.match(dashboardSource, /storageExpansionNextCursor/)
+  assert.match(dashboardSource, /loadStorageExpansionRequests\(\{ append: true \}\)/)
+  assert.match(dashboardSource, /storage-expansion-status-filter/)
+  assert.match(dashboardSource, /storage-expansion-load-more-button/)
+  assert.match(dashboardSource, /getAdminStorageProfileRequests/)
+  assert.match(dashboardSource, /adminStorageProfileRequests/)
+  assert.match(dashboardSource, /storageProfileHistoryNextCursor/)
+  assert.match(dashboardSource, /storage-profile-history-load-more-button/)
+  assert.match(dashboardSource, /storageProfileStatusFilter/)
+  assert.match(dashboardSource, /storageProfileNextCursor/)
+  assert.match(dashboardSource, /loadStorageProfileRequests\(\{ append: true \}\)/)
+  assert.match(dashboardSource, /storage-profile-status-filter/)
+  assert.match(dashboardSource, /storage-profile-load-more-button/)
+  assert.match(dashboardSource, /lifecycleRuleStatusFilter/)
+  assert.match(dashboardSource, /lifecycleRuleTargetFilter/)
+  assert.match(dashboardSource, /lifecycleRulesNextCursor/)
+  assert.match(dashboardSource, /refreshLifecycleRules\(\{ append: true \}\)/)
+  assert.match(dashboardSource, /refreshLifecycleRules\(\{ status: 'ALL', targetType: 'ALL' \}\)/)
+  assert.match(dashboardSource, /lifecycle-rule-status-filter/)
+  assert.match(dashboardSource, /lifecycle-rule-target-filter/)
+  assert.match(dashboardSource, /lifecycle-rule-load-more-button/)
+  assert.match(dashboardSource, /storageExpansionExecutionNextCursor/)
+  assert.match(dashboardSource, /handleLoadMoreStorageExpansionExecutions/)
+  assert.match(dashboardSource, /storage-expansion-execution-load-more-button/)
   assert.match(dashboardSource, /createStorageExpansionRequest/)
   assert.match(dashboardSource, /getStorageExpansionRequestManifest/)
   assert.match(dashboardSource, /downloadStorageExpansionManifestArtifact/)
@@ -1570,6 +1648,14 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /<LifecycleRulesPanel\s+v-if="isAdmin"/)
   assert.match(dashboardSource, /<IdentityAdminPanel\s+v-if="canUseAdminTools"/)
   assert.match(dashboardSource, /getTeams/)
+  assert.match(dashboardSource, /usersNextCursor/)
+  assert.match(dashboardSource, /teamsNextCursor/)
+  assert.match(dashboardSource, /teamOrganizationFilter/)
+  assert.match(dashboardSource, /team-organization-filter/)
+  assert.match(dashboardSource, /team-load-more-button/)
+  assert.match(dashboardSource, /user-load-more-button/)
+  assert.match(dashboardSource, /loadUsers\(\{ append: true \}\)/)
+  assert.match(dashboardSource, /loadTeams\(\{ append: true \}\)/)
   assert.match(dashboardSource, /getEnterpriseAuthPlan/)
   assert.match(dashboardSource, /createTeam/)
   assert.match(dashboardSource, /deleteTeam/)
@@ -1623,7 +1709,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /admin/)
   assert.match(dashboardSource, /developer/)
   assert.match(dashboardSource, /session-expired/)
-  assert.match(dashboardSource, /RAID 0-9/)
+  assert.match(dashboardSource, /RAID 0\/1\/5\/6\/10-like/)
   assert.match(dashboardSource, /JBOD/)
   assert.match(dashboardSource, /IAM User/)
   assert.match(dashboardSource, /API Key/)

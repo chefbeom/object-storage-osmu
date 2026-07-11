@@ -11,7 +11,14 @@
 - `V32__object_share_policy.sql` adds global object share policy storage for password/IP requirements plus expiry/download caps.
 - `V33__storage_expansion_requests.sql` adds MinIO pool expansion request plans plus applied evidence.
 - `V40__storage_profile_requests.sql` adds bucket Storage Profile assignments plus request/approval/apply history.
+- `V65__storage_layout_plans.sql` adds simulation-only Kubernetes PVC storage layout plans with status and cursor index.
 - `V41__data_flow_events.sql` adds persisted admin data-flow monitoring events.
+- `V60__object_share_analytics_indexes.sql` adds bucket/id, status/id, and bucket/status/id indexes for aggregate filters plus bounded recent-link reads.
+- `V61__object_lifecycle_rule_query_indexes.sql` adds enabled-target and bucket priority-order indexes for purge jobs and bucket lifecycle operations.
+- `V62__chargeback_closeout_query_indexes.sql` adds invoice-window and created-at indexes for bounded, fail-closed closeout evidence queries.
+- `V63__object_lifecycle_rule_inventory_indexes.sql` adds unfiltered, enabled-status, and target-type priority cursor indexes for bounded admin lifecycle inventory pages.
+- `V64__team_cursor_index.sql` adds the `(organization_id, id)` index for bounded organization-scoped team cursor pages.
+
 # OSMU Database Design
 
 이 문서는 MariaDB 기준 OSMU 메타데이터 DB 설계를 정의한다.
@@ -60,6 +67,7 @@ MariaDB는 실제 파일 데이터를 저장하지 않는다.
 | `storage_expansion_executions` | MinIO pool 증설 dry-run/GitOps/Helm/Kubernetes 실행 이력 |
 | `bucket_storage_profile_assignments` | 버킷별 활성 Storage Profile 할당 |
 | `storage_profile_requests` | 버킷 Storage Profile 요청/승인/적용 이력 |
+| `storage_layout_plans` | Kubernetes PVC 및 MinIO Pool 레이아웃 계획/승인/시뮬레이션 이력 |
 | `quota_policy_history` | 쿼터 정책 변경 이력 |
 | `object_metadata` | 오브젝트 목록/검색/tag index |
 | `object_metadata_tags` | tag exact filter용 inverted index |
@@ -122,6 +130,8 @@ CREATE TABLE users (
 
 - `V4__organizations.sql`에서 `organizations` table과 `users.organization_id`를 추가한다.
 - in-memory repository도 동일하게 `organizationId`를 사용자 profile에 포함한다.
+- LDAP/OIDC email mapping은 `UserRepository.findByEmail` 단건 조회를 사용한다. in-memory 저장소는 email key를 소문자로 정규화하고 MariaDB는 `users.email` unique index 조회를 사용해 대소문자 보정용 전체 사용자 scan을 피한다.
+- 조직 단위 Access Key policy 재동기화는 organization index로 user id만 조회하고 `idx_access_keys_owner_id` 기반 IN query로 해당 owner들의 key를 한 번에 읽는다.
 - 현재 FK는 문서 목표이며 MVP migration은 기존 데이터 호환을 우선해 nullable column과 index부터 제공한다.
 
 ## 5.1 teams / team_members
@@ -135,7 +145,8 @@ CREATE TABLE teams (
   created_at DATETIME(6) NOT NULL,
   updated_at DATETIME(6) NOT NULL,
   UNIQUE KEY uk_teams_org_name (organization_id, name),
-  KEY idx_teams_organization (organization_id)
+  KEY idx_teams_organization (organization_id),
+  KEY idx_teams_organization_cursor (organization_id, id)
 );
 
 CREATE TABLE team_members (
@@ -150,10 +161,11 @@ CREATE TABLE team_members (
 현재 구현:
 
 - Flyway `V47__teams.sql`에서 `teams`, `team_members`를 생성한다.
+- `V64__team_cursor_index.sql` adds `(organization_id, id)` so organization-scoped team pages apply the ascending id cursor before the bounded limit.
 - `teams.organization_id`는 조직 범위를 나타낸다. `ORG_ADMIN`은 자기 조직 팀만 조회/생성/수정/삭제할 수 있다.
 - `team_members.user_id`는 같은 조직 사용자만 허용한다.
 - `bucket_permissions.subject_type = TEAM`이면 `subject_id`는 `teams.id`를 의미한다.
-- 팀 멤버 변경이나 팀 삭제로 권한이 사라진 사용자의 활성 Access Key는 현재 bucket scope 기준으로 재동기화한다.
+- 팀 멤버 변경이나 팀 삭제로 권한이 사라진 사용자의 활성 Access Key는 현재 bucket scope 기준으로 재동기화한다. 영향받은 member id를 bulk 조회하고 해당 owner들의 Access Key도 한 번의 IN query로 읽는다.
 
 ## 6. refresh_tokens
 
@@ -231,6 +243,9 @@ CREATE TABLE bucket_tags (
 - `owner_type = USER`이면 `owner_id`는 users.id를 의미한다.
 - `owner_type = ORG`이면 `owner_id`는 organizations.id를 의미한다.
 - 현재 구현은 단일 `owner_type/owner_id` 모델로 user bucket과 organization bucket을 구분한다.
+- non-admin bucket list는 owner, permission subject, team membership indexes를 사용하는 bulk query로 접근 가능한 bucket만 조회한다.
+- Organization usage and quota policy list resolve bucket counts/quota/used bytes/object counts with owner GROUP BY queries and bucket-id IN queries; chargeback preview/daily rollup read only visible ORG-owned buckets through one owner-id IN query and reuse the daily result for usage plus bucket mapping; organization delete uses indexed bucket/user/team existence checks instead of loading full collections.
+- Team list applies organization scope, ascending id cursor, and a bounded limit in the repository with idx_teams_organization_cursor, then loads memberships only for the returned page through one team_id IN query over the team_members primary-key prefix.
 
 ## 8. bucket_permissions
 
@@ -335,6 +350,7 @@ CREATE TABLE quota_policies (
 - `ORGANIZATION`
 - `BUCKET`
 
+The admin quota policy list orders by target_type and target_id, applies an opaque composite cursor before its bounded limit, and uses uk_quota_target for that path. Dashboard quota totals intentionally use an explicit full snapshot instead of a UI list page.
 ## 11. quota_policy_history
 
 ```sql
@@ -386,6 +402,8 @@ CREATE TABLE storage_expansion_requests (
 );
 ```
 
+Request listing uses a bounded `status IN (...)`, `id < cursor`, `ORDER BY id DESC`, `LIMIT` query. `idx_storage_expansion_status (status, id)` supports filtered cursor pages; the primary key supports `ALL` pages.
+
 정책:
 
 - `status`는 `PLANNED`, `APPROVED`, `REJECTED`, `APPLIED`를 사용한다.
@@ -421,6 +439,8 @@ CREATE TABLE storage_expansion_executions (
   KEY idx_storage_expansion_execution_timeout (timed_out, id)
 );
 ```
+
+Request execution history uses `request_id = ?`, optional `id < cursor`, `ORDER BY id DESC`, and `LIMIT`. `idx_storage_expansion_execution_request (request_id, id)` keeps each request page bounded without reading all execution output rows.
 
 정책:
 
@@ -470,8 +490,37 @@ Policy:
 - `status` uses `PENDING`, `APPROVED`, `REJECTED`, or `APPLIED`.
 - If a bucket has no assignment row, backend returns default `STANDARD`.
 - Bucket deletion removes the active assignment. Request history can remain as audit history.
+- General request history is bounded by an ID cursor and `LIMIT`. The Storage page sends the selected `bucketName` and uses `idx_storage_profile_requests_bucket (bucket_name, id)`; an unfiltered non-admin page resolves accessible bucket names once and applies the same cursor/limit to one bucket-name IN query.
+- The admin approval queue uses `idx_storage_profile_requests_status (status, id)` with status filtering, an `id < cursor` boundary, descending ID order, and `LIMIT`; it never loads global request history as one unbounded result.
 - The MVP stores the control-plane profile only. Live object movement between MinIO pools is a later runner/migration step.
 
+## 12.2. storage_layout_plans
+
+Storage Layout is an administrator-only planning record for Kubernetes PVC topology and a future MinIO pool handoff. It is not a node-local RAID controller and its simulation mode cannot create Kubernetes resources.
+
+    CREATE TABLE storage_layout_plans (
+      id BIGINT NOT NULL PRIMARY KEY,
+      layout_code VARCHAR(32) NOT NULL,
+      storage_class_name VARCHAR(128) NOT NULL,
+      server_count INT NOT NULL,
+      volumes_per_server INT NOT NULL,
+      volume_size_gib BIGINT NOT NULL,
+      status VARCHAR(32) NOT NULL,
+      reason VARCHAR(512) NULL,
+      created_by VARCHAR(128) NOT NULL,
+      approved_by VARCHAR(128) NULL,
+      approved_at TIMESTAMP NULL,
+      simulated_by VARCHAR(128) NULL,
+      simulated_at TIMESTAMP NULL,
+      admin_note VARCHAR(512) NULL,
+      created_at TIMESTAMP NOT NULL,
+      updated_at TIMESTAMP NOT NULL,
+      KEY idx_storage_layout_plans_status (status, id)
+    );
+
+- status is PLANNED, APPROVED, or REJECTED.
+- The plan response derives a pool name from its ID and calculates a theoretical usable capacity estimate. It is not a claim about the target CSI driver or MinIO parity configuration.
+- The administrator queue filters by status and continues with id < cursor, descending ID order, and LIMIT through idx_storage_layout_plans_status.
 ## 13. backup_restore_drill_evidence
 
 백업/복구 드릴 evidence 상세 이력을 저장한다. Audit log는 이벤트 추적용으로 유지하고, 이 테이블은 RPO/RTO, row/object count, manifest checksum, evidence URI, gap history를 운영 조회와 대시보드 readiness 판단에 사용한다.
@@ -542,7 +591,7 @@ CREATE TABLE object_metadata (
 - `checksums`는 검증된 S3 checksum response header map을 JSON object 문자열로 저장한다.
 - `deleted_at`이 있으면 soft-deleted object이며 active list/download/presigned download에서 숨긴다.
 - `user_metadata` stores S3 `x-amz-meta-*` response header map as a JSON object string.
-- Temporary object share links are stored in `object_share_links`; only `token_hash`, optional `password_hash`, and optional `allowed_ip_cidrs` are persisted, while raw token is returned once on create. Usage policy fields include `max_downloads`, `download_count`, and `last_accessed_at`. Global admin share policy is stored in `object_share_policy`.
+- Temporary object share links are stored in `object_share_links`; only `token_hash`, optional `password_hash`, and optional `allowed_ip_cidrs` are persisted, while raw token is returned once on create. Usage policy fields include `max_downloads`, `download_count`, and `last_accessed_at`. Global admin share policy is stored in `object_share_policy`. Admin/dashboard analytics execute status/protection/download totals as an aggregate query and load only bounded recent rows; bucket-only, status-only, and combined filters use the V60 indexes.
 - retention purge scheduler는 `deleted_at <= now - osmu.object.retention.days`인 object를 purge 후보로 조회한다.
 - Backend upload/delete/tag update/presigned complete는 index를 즉시 갱신한다.
 - Backend를 거치지 않은 S3 직접 변경은 `POST /api/buckets/{bucketName}/sync`로 storage 실제 상태를 읽어 index를 재생성한다.
@@ -851,20 +900,28 @@ erDiagram
 - Flyway 또는 Liquibase 중 하나를 사용한다.
 - 마이그레이션 파일은 수정하지 않는다.
 - 변경은 새 마이그레이션으로 추가한다.
-- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V58__data_flow_monthly_rollups.sql`까지의 Flyway migration을 제공한다.
+- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V64__team_cursor_index.sql`까지의 Flyway migration을 제공한다.
 - `V52__billing_pricing_policy_proposals.sql`은 ADMIN-only 내부 chargeback 가격 정책 제안/승인 기록을 저장한다. `PENDING_APPROVAL` 제안은 활성 정책을 바꾸지 않고, 승인 시 `APPROVED_APPLIED`로 전환되어 내부 계산 정책에만 적용된다. `V55__billing_pricing_policy_price_list_approval.sql`은 `approved_price_list`, commercial approval reference/note/actor/effective timestamps를 추가해 내부 승인 이후 `PRICE_LIST_APPROVED` 가격표 승인 참조를 기록한다.
 - `V53__chargeback_final_invoices.sql`은 승인된 chargeback invoice draft에서 생성한 final invoice와 `FINALIZED` -> `PAYMENT_REQUESTED` -> `PAID` payment 상태, 수동 payment reference를 저장한다. 외부 payment provider secret이나 provider response 원문은 저장하지 않는다.
 - `V54__chargeback_payment_provider_handoffs.sql`은 `PAYMENT_REQUESTED` final invoice를 payment provider handoff adapter에 넘기기 전 검토할 handoff outbox를 저장한다. `PENDING_PAYMENT_PROVIDER_ADAPTER`, adapter retry/block/success 상태, attempt count, next attempt time, sanitized last error, payload JSON을 저장하며, configured native-bridge-or-webhook handoff send/retry worker가 사용해도 secret 값, endpoint URL, provider 응답 원문은 저장하지 않는다. Notification delivery outbox도 기존 `V50__chargeback_notification_deliveries.sql`의 status/attempt/next-at/last-error 컬럼으로 같은 adapter result retry state를 기록한다.
 - `V56__data_flow_daily_rollups.sql`은 장기 analytics/time-series 전환 전 단계로 daily rollup aggregate 저장소를 추가한다.
 - `V57__data_flow_daily_rollup_dimensions.sql`은 materialized rollup primary key에 actor/status filter dimension을 추가해 scoped refresh와 unscoped refresh를 분리한다.
 - `V58__data_flow_monthly_rollups.sql`은 daily rollup에서 compact한 UTC-month aggregate 저장소를 추가해 장기 조회가 전용 aggregate table을 사용할 수 있게 한다.
+- `V59__user_list_indexes.sql`은 (organization_id, id)와 (status, id) 복합 인덱스를 추가해 관리자 사용자 목록의 scope/status cursor pagination과 조직별 user id 조회를 저장소에서 처리한다.
+- `V60__object_share_analytics_indexes.sql`은 (bucket_name, id), (status, id), (bucket_name, status, id) 인덱스를 추가해 Object Share analytics 필터와 최근 N건 조회를 저장소에서 처리한다.
+- `V61__object_lifecycle_rule_query_indexes.sql`은 (enabled, target_type, priority, created_at, rule_id)와 (bucket_name, priority, created_at, rule_id) 인덱스를 추가해 purge job과 bucket lifecycle 규칙 조회를 저장소에서 처리한다.
+- `V62__chargeback_closeout_query_indexes.sql`은 invoice draft/final의 billing window와 handoff/notification의 created-at 범위를 limit 전에 적용하도록 closeout 전용 인덱스를 추가한다.
+- `V63__object_lifecycle_rule_inventory_indexes.sql` adds (priority, created_at, rule_id), (enabled, priority, created_at, rule_id), and (target_type, priority, created_at, rule_id) indexes so admin lifecycle inventory filters and the opaque composite cursor execute before the bounded limit.
+- `V64__team_cursor_index.sql` adds `(organization_id, id)` so organization-scoped team pages execute the cursor and bounded limit before member bulk lookup.
 - repository의 `CREATE TABLE IF NOT EXISTS`는 local fallback이다.
 
 ## 16.1 Index Coverage Gate
-
+- Team cursor pagination requires idx_teams_organization_cursor with the leading `(organization_id, id)` prefix.
 - `scripts/verify-metadata-index-coverage.ps1`는 migration SQL을 정적으로 읽어 high-volume metadata query path의 leading-column index coverage를 검증한다.
-- 현재 gate는 object list/tag/version/trash scan, audit request/result lookup, data-flow event/day/month aggregate windows, storage expansion summary/timeout, chargeback notification/payment retry worker index를 검사한다.
+- 현재 gate는 bucket access subject/team membership, bucket owner quota/organization usage/chargeback/delete existence aggregate, user/team organization delete existence, user organization/status cursor pagination, access key owner reconciliation, storage profile visible request lookup, object share aggregate/recent lookup, lifecycle enabled-target/bucket-order/admin-inventory lookup, object list/tag/version/trash scan, audit request/result lookup, data-flow event/day/month aggregate windows, storage expansion summary/timeout, chargeback closeout window, notification/payment retry worker index를 검사한다.
 - 이 gate는 migration-backed index가 존재하는지 확인하는 정적 검증이다. 실제 MariaDB `EXPLAIN`, cardinality, slow query log 검토는 target-scale 데이터가 준비된 뒤 별도 evidence로 남긴다.
+
+Storage Layout admin plan pages use idx_storage_layout_plans_status with status and descending ID cursor filtering before LIMIT; the metadata index coverage gate checks this migration-backed prefix.
 
 ## 16.2 Migration Rollback Plan
 

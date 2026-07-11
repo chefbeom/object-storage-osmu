@@ -14,6 +14,8 @@ public interface AccessKeyRepository {
 
     List<AccessKeyRecord> findRecordsByOwnerId(long ownerId);
 
+    List<AccessKeyRecord> findRecordsByOwnerIds(List<Long> ownerIds);
+
     Optional<AccessKeyRecord> findRecordById(long id);
 
     Optional<AccessKeyCredential> findCredentialByAccessKey(String accessKey);

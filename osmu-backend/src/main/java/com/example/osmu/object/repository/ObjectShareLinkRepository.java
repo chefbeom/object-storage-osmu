@@ -1,6 +1,7 @@
 package com.example.osmu.object.repository;
 
 import com.example.osmu.object.ObjectShareLink;
+import com.example.osmu.object.ObjectShareLinkAnalytics;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -15,7 +16,8 @@ public interface ObjectShareLinkRepository {
 
     List<ObjectShareLink> findByBucketAndKey(String bucketName, String objectKey, int limit);
 
-    List<ObjectShareLink> findAll();
+
+    ObjectShareLinkAnalytics analytics(String bucketName, String status, int recentLimit);
 
     long nextId();
 

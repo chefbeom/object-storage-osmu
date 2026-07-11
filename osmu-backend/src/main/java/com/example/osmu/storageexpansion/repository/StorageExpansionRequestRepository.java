@@ -7,7 +7,7 @@ import java.util.Optional;
 
 public interface StorageExpansionRequestRepository {
 
-    List<StorageExpansionRequestRecord> findAll();
+    List<StorageExpansionRequestRecord> findPage(List<String> statuses, Long cursorId, int limit);
 
     StorageExpansionRequestAggregate aggregate();
 

@@ -1,0 +1,1197 @@
+export function normalizeDashboardReadiness(data = {}) {
+  const source = data || {}
+  return {
+    status: source.status || 'UNKNOWN',
+    runtimeProfile: source.runtimeProfile || '-',
+    blockerCount: Number(source.blockerCount || 0),
+    warningCount: Number(source.warningCount || 0),
+    blockers: Array.isArray(source.blockers) ? source.blockers : [],
+    warnings: Array.isArray(source.warnings) ? source.warnings : [],
+    severitySummaries: Array.isArray(source.severitySummaries) ? source.severitySummaries : [],
+    categorySummaries: Array.isArray(source.categorySummaries) ? source.categorySummaries : [],
+    items: Array.isArray(source.items) ? source.items : [],
+    operationsReadinessSummary: normalizeOperationsReadinessSummary(source.operationsReadinessSummary),
+    operationsEvidencePlan: normalizeOperationsEvidencePlan(source.operationsEvidencePlan),
+    operationsEvidenceInvocation: normalizeOperationsEvidenceInvocation(source.operationsEvidenceInvocation),
+    operationsInvocationUnblockPlan: normalizeOperationsInvocationUnblockPlan(source.operationsInvocationUnblockPlan),
+    operationsDispatchPreflight: normalizeOperationsDispatchPreflight(source.operationsDispatchPreflight),
+    operationsWorkflowRunIdPlan: normalizeOperationsWorkflowRunIdPlan(source.operationsWorkflowRunIdPlan),
+    operationsArtifactCollectionPlan: normalizeOperationsArtifactCollectionPlan(source.operationsArtifactCollectionPlan),
+    operationsReadinessArtifactImport: normalizeOperationsReadinessArtifactImport(source.operationsReadinessArtifactImport),
+    operationsReadinessFinalize: normalizeOperationsReadinessFinalize(source.operationsReadinessFinalize),
+    operationsHandoffPackage: normalizeOperationsHandoffPackage(source.operationsHandoffPackage),
+    storageExpansionFinalize: normalizeStorageExpansionFinalize(source.storageExpansionFinalize),
+    kubernetesHaDrReadiness: normalizeKubernetesHaDrReadiness(source.kubernetesHaDrReadiness),
+    kubernetesDrFinalize: normalizeKubernetesDrFinalize(source.kubernetesDrFinalize),
+    iamRbacEvidence: normalizeIamRbacEvidence(source.iamRbacEvidence),
+    securityEvidence: normalizeSecurityEvidence(source.securityEvidence),
+    secretRotationEvidence: normalizeSecretRotationEvidence(source.secretRotationEvidence),
+    commercialIntegrationEvidence: normalizeCommercialIntegrationEvidence(source.commercialIntegrationEvidence),
+    commercialApprovalEvidence: normalizeCommercialApprovalEvidence(source.commercialApprovalEvidence),
+    enterpriseAuthSmokeEvidence: normalizeEnterpriseAuthSmokeEvidence(source.enterpriseAuthSmokeEvidence),
+    enterpriseAuthJitRollbackEvidence: normalizeEnterpriseAuthJitRollbackEvidence(source.enterpriseAuthJitRollbackEvidence),
+    dataFlowStoragePlan: normalizeDataFlowStoragePlan(source.dataFlowStoragePlan),
+    dataFlowQueryRetentionBudget: normalizeDataFlowQueryRetentionBudget(source.dataFlowQueryRetentionBudget),
+    dataFlowStorageTransitionRunbook: normalizeDataFlowStorageTransitionRunbook(source.dataFlowStorageTransitionRunbook),
+    storageBackendTelemetryEvidence: normalizeStorageBackendTelemetryEvidence(source.storageBackendTelemetryEvidence),
+    monitoringThresholdEvidence: normalizeMonitoringThresholdEvidence(source.monitoringThresholdEvidence),
+    clusterNetworkAccessReviewEvidence: normalizeHardeningEvidence(source.clusterNetworkAccessReviewEvidence),
+    helmValuesHardeningEvidence: normalizeHardeningEvidence(source.helmValuesHardeningEvidence),
+    supportEscalationHandoffEvidence: normalizeSupportEscalationHandoffEvidence(source.supportEscalationHandoffEvidence),
+    minioBucketCorsVerification: normalizeMinioBucketCorsVerification(source.minioBucketCorsVerification),
+    operationsEvidenceHandoff: normalizeOperationsEvidenceHandoff(source.operationsEvidenceHandoff),
+    operationsReadinessConvergence: normalizeOperationsReadinessConvergence(source.operationsReadinessConvergence),
+    kubernetesOperationsReportSync: normalizeKubernetesOperationsReportSync(source.kubernetesOperationsReportSync),
+    generatedAt: source.generatedAt || '',
+  }
+}
+
+function normalizeOperationsEvidencePlanSummary(summary = {}) {
+  return {
+    totalActions: Number(summary?.totalActions || 0),
+    kubernetesLiveActions: Number(summary?.kubernetesLiveActions || 0),
+    securityCiActions: Number(summary?.securityCiActions || 0),
+    operatorRemediationActions: Number(summary?.operatorRemediationActions || 0),
+    requiresOperatorApprovalCount: Number(summary?.requiresOperatorApprovalCount || 0),
+    requiresKubeconfigSecretCount: Number(summary?.requiresKubeconfigSecretCount || 0),
+    actionsWithPlaceholdersCount: Number(summary?.actionsWithPlaceholdersCount || 0),
+    unplannedCheckCount: Number(summary?.unplannedCheckCount || 0),
+  }
+}
+
+function normalizeOperationsEvidencePlanCategoryCounts(counts = []) {
+  if (!Array.isArray(counts)) {
+    return []
+  }
+  return counts
+    .map((item) => ({
+      category: item?.category || '',
+      count: Number(item?.count || 0),
+    }))
+    .filter((item) => item.category)
+}
+
+function normalizeOperationsReadinessRemediations(remediations = []) {
+  if (!Array.isArray(remediations)) return []
+  return remediations.map((item) => ({
+    name: item?.name || '',
+    category: item?.category || '',
+    evidencePath: item?.evidencePath || '',
+    requiredEvidence: item?.requiredEvidence || '',
+    detail: item?.detail || '',
+    command: item?.command || '',
+    workflow: item?.workflow || '',
+    workflowCommand: item?.workflowCommand || '',
+    note: item?.note || '',
+  }))
+}
+
+function normalizeOperationsReadinessSummary(summary = {}) {
+  return {
+    result: summary?.result || '',
+    summary: summary?.summary || '',
+    reportPath: summary?.reportPath || '',
+    generatedAt: summary?.generatedAt || '',
+    passedCount: Number(summary?.passedCount || 0),
+    pendingCount: Number(summary?.pendingCount || 0),
+    totalCount: Number(summary?.totalCount || 0),
+    checkCount: Number(summary?.checkCount || 0),
+    pendingCategorySummary: summary?.pendingCategorySummary || '',
+    pendingCategoryCounts: normalizeOperationsEvidencePlanCategoryCounts(summary?.pendingCategoryCounts),
+    pendingRemediationCount: Number(summary?.pendingRemediationCount || 0),
+    pendingRemediations: normalizeOperationsReadinessRemediations(summary?.pendingRemediations),
+    decisionRule: summary?.decisionRule || '',
+  }
+}
+
+function normalizeOperationsEvidencePlan(plan = {}) {
+  return {
+    result: plan?.result || '',
+    sourceSummary: plan?.sourceSummary || '',
+    sourceReport: plan?.sourceReport || '',
+    sourcePassedCount: Number(plan?.sourcePassedCount || 0),
+    sourcePendingCount: Number(plan?.sourcePendingCount || 0),
+    sourceTotalCount: Number(plan?.sourceTotalCount || 0),
+    sourceCheckCount: Number(plan?.sourceCheckCount || 0),
+    sourcePendingRemediationCount: Number(plan?.sourcePendingRemediationCount || 0),
+    sourcePendingRemediationEntryCount: Number(plan?.sourcePendingRemediationEntryCount || 0),
+    sourcePendingRemediationActionCount: Number(plan?.sourcePendingRemediationActionCount || 0),
+    sourcePendingRemediationMissingActionCount: Number(plan?.sourcePendingRemediationMissingActionCount || 0),
+    sourcePendingRemediationCoverageReady: Boolean(plan?.sourcePendingRemediationCoverageReady),
+    pendingCount: Number(plan?.pendingCount || 0),
+    actionCount: Number(plan?.actionCount || 0),
+    unplannedCount: Number(plan?.unplannedCount || 0),
+    pendingCategorySummary: plan?.pendingCategorySummary || '',
+    pendingCategoryCounts: normalizeOperationsEvidencePlanCategoryCounts(plan?.pendingCategoryCounts),
+    actionSummary: normalizeOperationsEvidencePlanSummary(plan?.actionSummary),
+    actions: Array.isArray(plan?.actions) ? plan.actions : [],
+  }
+}
+
+function normalizeOperationsEvidenceInvocation(invocation = {}) {
+  return {
+    result: invocation?.result || '',
+    sourceSummary: invocation?.sourceSummary || '',
+    sourcePlan: invocation?.sourcePlan || '',
+    sourcePassedCount: Number(invocation?.sourcePassedCount || 0),
+    sourcePendingCount: Number(invocation?.sourcePendingCount || 0),
+    sourceTotalCount: Number(invocation?.sourceTotalCount || 0),
+    sourceCheckCount: Number(invocation?.sourceCheckCount || 0),
+    commandMode: invocation?.commandMode || '',
+    executionMode: invocation?.executionMode || '',
+    selectedActionCount: Number(invocation?.selectedActionCount || 0),
+    selectedActionOrders: Array.isArray(invocation?.selectedActionOrders)
+      ? invocation.selectedActionOrders
+      : [],
+    plannedCount: Number(invocation?.plannedCount || 0),
+    blockedCount: Number(invocation?.blockedCount || 0),
+    executedCount: Number(invocation?.executedCount || 0),
+    failedCount: Number(invocation?.failedCount || 0),
+    actions: Array.isArray(invocation?.actions) ? invocation.actions : [],
+  }
+}
+
+function normalizeOperationsInvocationUnblockPlan(plan = {}) {
+  return {
+    result: plan?.result || '',
+    sourceInvocationReport: plan?.sourceInvocationReport || '',
+    sourceResult: plan?.sourceResult || '',
+    sourceSummary: plan?.sourceSummary || '',
+    sourcePassedCount: Number(plan?.sourcePassedCount || 0),
+    sourcePendingCount: Number(plan?.sourcePendingCount || 0),
+    sourceTotalCount: Number(plan?.sourceTotalCount || 0),
+    sourceCheckCount: Number(plan?.sourceCheckCount || 0),
+    selectedActionCount: Number(plan?.selectedActionCount || 0),
+    plannedCount: Number(plan?.plannedCount || 0),
+    blockedCount: Number(plan?.blockedCount || 0),
+    failedCount: Number(plan?.failedCount || 0),
+    needsKubeconfigSecretConfirmation: Boolean(plan?.needsKubeconfigSecretConfirmation),
+    needsOperatorApprovalConfirmation: Boolean(plan?.needsOperatorApprovalConfirmation),
+    requiredPlaceholderCount: Number(plan?.requiredPlaceholderCount || 0),
+    ambiguousRepeatedPlaceholderCount: Number(plan?.ambiguousRepeatedPlaceholderCount || 0),
+    confirmationGroupCount: Number(plan?.confirmationGroupCount || 0),
+    requiredInputGroupCount: Number(plan?.requiredInputGroupCount || 0),
+    blockedActionOrders: Array.isArray(plan?.blockedActionOrders) ? plan.blockedActionOrders : [],
+    plannedActionOrders: Array.isArray(plan?.plannedActionOrders) ? plan.plannedActionOrders : [],
+    confirmedPlanCommand: plan?.confirmedPlanCommand || '',
+    blockedOnlyPlanCommand: plan?.blockedOnlyPlanCommand || '',
+    plannedOnlyCommand: plan?.plannedOnlyCommand || '',
+    decisionRule: plan?.decisionRule || '',
+    confirmationGroups: Array.isArray(plan?.confirmationGroups) ? plan.confirmationGroups : [],
+    requiredInputGroups: Array.isArray(plan?.requiredInputGroups) ? plan.requiredInputGroups : [],
+    actions: Array.isArray(plan?.actions) ? plan.actions : [],
+  }
+}
+
+function normalizeDispatchPreflightGitRefSafety(gitRefSafety = {}) {
+  return {
+    checked: Boolean(gitRefSafety?.checked),
+    status: gitRefSafety?.status || '',
+    githubRef: gitRefSafety?.githubRef || '',
+    currentBranch: gitRefSafety?.currentBranch || '',
+    commitSha: gitRefSafety?.commitSha || '',
+    shortCommitSha: gitRefSafety?.shortCommitSha || '',
+    upstreamRef: gitRefSafety?.upstreamRef || '',
+    upstreamCommitSha: gitRefSafety?.upstreamCommitSha || '',
+    aheadCount: Number(gitRefSafety?.aheadCount || 0),
+    behindCount: Number(gitRefSafety?.behindCount || 0),
+    workingTreeDirty: Boolean(gitRefSafety?.workingTreeDirty),
+    githubRefMatchesCurrentBranch: Boolean(gitRefSafety?.githubRefMatchesCurrentBranch),
+    githubRefLikelyContainsCommit: Boolean(gitRefSafety?.githubRefLikelyContainsCommit),
+    suggestedGitHubRef: gitRefSafety?.suggestedGitHubRef || '',
+    suggestedPushCommand: gitRefSafety?.suggestedPushCommand || '',
+    note: gitRefSafety?.note || '',
+  }
+}
+function normalizeOperationsDispatchPreflight(preflight = {}) {
+  return {
+    result: preflight?.result || '',
+    sourceUnblockPlan: preflight?.sourceUnblockPlan || '',
+    sourceResult: preflight?.sourceResult || '',
+    sourcePassedCount: Number(preflight?.sourcePassedCount || 0),
+    sourcePendingCount: Number(preflight?.sourcePendingCount || 0),
+    sourceTotalCount: Number(preflight?.sourceTotalCount || 0),
+    sourceCheckCount: Number(preflight?.sourceCheckCount || 0),
+    selectedActionCount: Number(preflight?.selectedActionCount || 0),
+    selectedActionOrders: Array.isArray(preflight?.selectedActionOrders) ? preflight.selectedActionOrders : [],
+    readyActionCount: Number(preflight?.readyActionCount || 0),
+    readyActionOrders: Array.isArray(preflight?.readyActionOrders) ? preflight.readyActionOrders : [],
+    blockedActionCount: Number(preflight?.blockedActionCount || 0),
+    blockedActionOrders: Array.isArray(preflight?.blockedActionOrders) ? preflight.blockedActionOrders : [],
+    needsKubeconfigSecretConfirmation: Boolean(preflight?.needsKubeconfigSecretConfirmation),
+    needsOperatorApprovalConfirmation: Boolean(preflight?.needsOperatorApprovalConfirmation),
+    requiredInputCount: Number(preflight?.requiredInputCount || 0),
+    missingInputCount: Number(preflight?.missingInputCount || 0),
+    ambiguousInputCount: Number(preflight?.ambiguousInputCount || 0),
+    unsafeInputCount: Number(preflight?.unsafeInputCount || 0),
+    invalidInputCount: Number(preflight?.invalidInputCount || 0),
+    failedCheckCount: Number(preflight?.failedCheckCount || 0),
+    warningCheckCount: Number(preflight?.warningCheckCount || 0),
+    requiredGitHubSecrets: Array.isArray(preflight?.requiredGitHubSecrets) ? preflight.requiredGitHubSecrets : [],
+    githubCliPath: preflight?.githubCliPath || '',
+    githubRepository: preflight?.githubRepository || '',
+    githubRef: preflight?.githubRef || '',
+    gitRefSafety: normalizeDispatchPreflightGitRefSafety(preflight?.gitRefSafety),
+    workflowFiles: Array.isArray(preflight?.workflowFiles) ? preflight.workflowFiles : [],
+    checks: Array.isArray(preflight?.checks) ? preflight.checks : [],
+    readyPlanCommand: preflight?.readyPlanCommand || '',
+    executeCommand: preflight?.executeCommand || '',
+    apiExecuteCommand: preflight?.apiExecuteCommand || '',
+    readySubsetPlanCommand: preflight?.readySubsetPlanCommand || '',
+    readySubsetExecuteCommand: preflight?.readySubsetExecuteCommand || '',
+    readySubsetApiExecuteCommand: preflight?.readySubsetApiExecuteCommand || '',
+    requiredInputs: Array.isArray(preflight?.requiredInputs) ? preflight.requiredInputs : [],
+    inputTemplates: Array.isArray(preflight?.inputTemplates) ? preflight.inputTemplates : [],
+    decisionRule: preflight?.decisionRule || '',
+  }
+}
+
+function normalizeOperationsWorkflowRunIdInputs(inputs = []) {
+  return Array.isArray(inputs)
+    ? inputs.map((input) => ({
+      workflow: input?.workflow || '',
+      group: input?.group || '',
+      actionOrders: Array.isArray(input?.actionOrders) ? input.actionOrders : [],
+      runIdParameter: input?.runIdParameter || '',
+      recommendedRunId: input?.recommendedRunId || '',
+      artifactName: input?.artifactName || '',
+      requiredForReadiness: Boolean(input?.requiredForReadiness),
+      readyForArtifactDownload: Boolean(input?.readyForArtifactDownload),
+      runsUrl: input?.runsUrl || '',
+      runListJsonPath: input?.runListJsonPath || '',
+      queryCommand: input?.queryCommand || '',
+      gitHubApiQueryUrl: input?.gitHubApiQueryUrl || '',
+      sourceSelected: Boolean(input?.sourceSelected),
+      supplementalForSecurityFinalizer: Boolean(input?.supplementalForSecurityFinalizer),
+    }))
+    : []
+}
+
+function normalizeOperationsInputValueActionSummaries(actions = []) {
+  return Array.isArray(actions)
+    ? actions.map((action) => ({
+      actionOrder: Number(action?.actionOrder || 0),
+      actionName: action?.actionName || '',
+      category: action?.category || '',
+      workflow: action?.workflow || '',
+      inputFree: Boolean(action?.inputFree),
+      status: action?.status || '',
+      valueCount: Number(action?.valueCount || 0),
+      readyValueCount: Number(action?.readyValueCount || 0),
+      missingValueCount: Number(action?.missingValueCount || 0),
+      unsafeValueCount: Number(action?.unsafeValueCount || 0),
+      invalidValueCount: Number(action?.invalidValueCount || 0),
+      nonReadyValueKeys: Array.isArray(action?.nonReadyValueKeys) ? action.nonReadyValueKeys : [],
+    }))
+    : []
+}
+function normalizeOperationsWorkflowRunIdPlan(plan = {}) {
+  return {
+    result: plan?.result || '',
+    sourceInvocationReport: plan?.sourceInvocationReport || '',
+    invocationResult: plan?.invocationResult || '',
+    sourceSummary: plan?.sourceSummary || '',
+    sourcePassedCount: Number(plan?.sourcePassedCount || 0),
+    sourcePendingCount: Number(plan?.sourcePendingCount || 0),
+    sourceTotalCount: Number(plan?.sourceTotalCount || 0),
+    sourceCheckCount: Number(plan?.sourceCheckCount || 0),
+    selectedActionOrders: Array.isArray(plan?.selectedActionOrders)
+      ? plan.selectedActionOrders
+      : (Array.isArray(plan?.sourceActionOrders) ? plan.sourceActionOrders : []),
+    branch: plan?.branch || '',
+    githubRepository: plan?.githubRepository || '',
+    queryMode: plan?.queryMode || '',
+    runListJsonDirectory: plan?.runListJsonDirectory || '',
+    runListJsonDirectoryCommand: plan?.runListJsonDirectoryCommand || '',
+    githubApiRunListCommand: plan?.githubApiRunListCommand || '',
+    githubApiBaseUrl: plan?.githubApiBaseUrl || '',
+    runListJsonFilePattern: plan?.runListJsonFilePattern || '',
+    runListJsonHandoffNote: plan?.runListJsonHandoffNote || '',
+    browserWorkflowRunsUrls: Array.isArray(plan?.browserWorkflowRunsUrls) ? plan.browserWorkflowRunsUrls : [],
+    workflowRunIdInputs: normalizeOperationsWorkflowRunIdInputs(plan?.workflowRunIdInputs),
+    recommendedCommands: Array.isArray(plan?.recommendedCommands) ? plan.recommendedCommands : [],
+    limit: Number(plan?.limit || 0),
+    workflowCount: Number(plan?.workflowCount || 0),
+    readyWorkflowCount: Number(plan?.readyWorkflowCount || 0),
+    missingWorkflowCount: Number(plan?.missingWorkflowCount || 0),
+    staleWorkflowCount: Number(plan?.staleWorkflowCount || 0),
+    imageSigningVersion: plan?.imageSigningVersion || '',
+    commitSha: plan?.commitSha || '',
+    artifactCollectionPlanCommand: plan?.artifactCollectionPlanCommand || '',
+    securityEvidenceFinalizerReady: Boolean(plan?.securityEvidenceFinalizerReady),
+    securityEvidenceFinalizerRunIdInputs: Array.isArray(plan?.securityEvidenceFinalizerRunIdInputs)
+      ? plan.securityEvidenceFinalizerRunIdInputs
+      : [],
+    securityEvidenceFinalizerRunIdInputHints: normalizeOperationsWorkflowRunIdInputs(plan?.securityEvidenceFinalizerRunIdInputHints),
+    securityEvidenceFinalizerMissingRunIdInputs: Array.isArray(plan?.securityEvidenceFinalizerMissingRunIdInputs)
+      ? plan.securityEvidenceFinalizerMissingRunIdInputs
+      : [],
+    securityEvidenceFinalizerDependencyNote: plan?.securityEvidenceFinalizerDependencyNote || '',
+    securityEvidenceFinalizerCommand: plan?.securityEvidenceFinalizerCommand || '',
+    decisionRule: plan?.decisionRule || '',
+    workflows: Array.isArray(plan?.workflows) ? plan.workflows : [],
+  }
+}
+
+function normalizeOperationsArtifactCollectionPlan(plan = {}) {
+  return {
+    result: plan?.result || '',
+    sourceInvocationReport: plan?.sourceInvocationReport || '',
+    invocationResult: plan?.invocationResult || '',
+    sourceSummary: plan?.sourceSummary || '',
+    sourcePassedCount: Number(plan?.sourcePassedCount || 0),
+    sourcePendingCount: Number(plan?.sourcePendingCount || 0),
+    sourceTotalCount: Number(plan?.sourceTotalCount || 0),
+    sourceCheckCount: Number(plan?.sourceCheckCount || 0),
+    selectedActionOrders: Array.isArray(plan?.selectedActionOrders)
+      ? plan.selectedActionOrders
+      : (Array.isArray(plan?.sourceActionOrders) ? plan.sourceActionOrders : []),
+    invocationSummary: plan?.invocationSummary || '',
+    artifactCount: Number(plan?.artifactCount || 0),
+    requiredArtifactCount: Number(plan?.requiredArtifactCount || 0),
+    readyArtifactCount: Number(plan?.readyArtifactCount || 0),
+    missingRequiredArtifactCount: Number(plan?.missingRequiredArtifactCount || 0),
+    securitySourceArtifactCount: Number(plan?.securitySourceArtifactCount || 0),
+    readySecuritySourceArtifactCount: Number(plan?.readySecuritySourceArtifactCount || 0),
+    missingSecuritySourceArtifactCount: Number(plan?.missingSecuritySourceArtifactCount || 0),
+    securityEvidenceFinalizerReady: Boolean(plan?.securityEvidenceFinalizerReady),
+    securityEvidenceFinalizerInputs: Array.isArray(plan?.securityEvidenceFinalizerInputs)
+      ? plan.securityEvidenceFinalizerInputs.map((input) => ({
+        name: input?.name || '',
+        runIdParameter: input?.runIdParameter || '',
+        workflow: input?.workflow || '',
+        artifactName: input?.artifactName || '',
+        artifactNameParameter: input?.artifactNameParameter || '',
+        runId: input?.runId || '',
+        ready: Boolean(input?.ready),
+        sourceArtifactSelected: Boolean(input?.sourceArtifactSelected),
+        sourceArtifactReady: Boolean(input?.sourceArtifactReady),
+        requiredForSecurityFinalizer: Boolean(input?.requiredForSecurityFinalizer),
+        note: input?.note || '',
+      }))
+      : [],
+    securityEvidenceFinalizerMissingRunIdInputs: Array.isArray(plan?.securityEvidenceFinalizerMissingRunIdInputs)
+      ? plan.securityEvidenceFinalizerMissingRunIdInputs
+      : [],
+    securityEvidenceFinalizerCommand: plan?.securityEvidenceFinalizerCommand || '',
+    operationsArtifactFinalizerCommand: plan?.operationsArtifactFinalizerCommand || '',
+    dataFlowStoragePlanInputNote: plan?.dataFlowStoragePlanInputNote || '',
+    dataFlowQueryRetentionBudgetInputNote: plan?.dataFlowQueryRetentionBudgetInputNote || '',
+    dataFlowStorageTransitionRunbookInputNote: plan?.dataFlowStorageTransitionRunbookInputNote || '',
+    minioBucketCorsInputNote: plan?.minioBucketCorsInputNote || '',
+    localImportCommand: plan?.localImportCommand || '',
+    decisionRule: plan?.decisionRule || '',
+    artifacts: Array.isArray(plan?.artifacts) ? plan.artifacts : [],
+  }
+}
+
+function normalizeOperationsReadinessArtifactImport(report = {}) {
+  return {
+    result: report?.result || '',
+    status: report?.status || '',
+    selectedGroupCount: Number(report?.selectedGroupCount || 0),
+    importedCount: Number(report?.importedCount || 0),
+    failedCount: Number(report?.failedCount || 0),
+    outputDirectory: report?.outputDirectory || '',
+    secretPolicy: report?.secretPolicy || '',
+    entries: Array.isArray(report?.entries) ? report.entries : [],
+  }
+}
+
+function normalizeOperationsReadinessFinalize(report = {}) {
+  return {
+    result: report?.result || '',
+    status: report?.status || '',
+    readinessResult: report?.readinessResult || '',
+    readinessSummary: report?.readinessSummary || '',
+    namespace: report?.namespace || '',
+    sourceNamespace: report?.sourceNamespace || '',
+    restoreNamespace: report?.restoreNamespace || '',
+    backupTimestamp: report?.backupTimestamp || '',
+    powerShellCommand: report?.powerShellCommand || '',
+    failedCount: Number(report?.failedCount || 0),
+    selectedSteps: report?.selectedSteps && typeof report.selectedSteps === 'object' ? report.selectedSteps : {},
+    paths: report?.paths && typeof report.paths === 'object' ? report.paths : {},
+    commands: Array.isArray(report?.commands) ? report.commands : [],
+    steps: Array.isArray(report?.steps) ? report.steps : [],
+    gaps: Array.isArray(report?.gaps) ? report.gaps : [],
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeOperationsHandoffPackage(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    passedCount: Number(report?.passedCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    checkCount: Number(report?.checkCount || 0),
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
+    operationsReadinessSnapshot: report?.operationsReadinessSnapshot && typeof report.operationsReadinessSnapshot === 'object' ? report.operationsReadinessSnapshot : {},
+    operationsConvergenceSnapshot: report?.operationsConvergenceSnapshot && typeof report.operationsConvergenceSnapshot === 'object' ? report.operationsConvergenceSnapshot : {},
+    dataFlowStoragePlanSnapshot: normalizeDataFlowStoragePlan(report?.dataFlowStoragePlanSnapshot),
+    dataFlowQueryRetentionBudgetSnapshot: normalizeDataFlowQueryRetentionBudget(report?.dataFlowQueryRetentionBudgetSnapshot),
+    dataFlowStorageTransitionRunbookSnapshot: normalizeDataFlowStorageTransitionRunbook(report?.dataFlowStorageTransitionRunbookSnapshot),
+    secretRotationSnapshot: normalizeSecretRotationEvidence(report?.secretRotationSnapshot),
+    commercialIntegrationSnapshot: normalizeCommercialIntegrationEvidence(report?.commercialIntegrationSnapshot),
+    commercialApprovalSnapshot: normalizeCommercialApprovalEvidence(report?.commercialApprovalSnapshot),
+    chargebackCloseoutSnapshot: report?.chargebackCloseoutSnapshot && typeof report.chargebackCloseoutSnapshot === 'object' ? report.chargebackCloseoutSnapshot : {},
+    enterpriseAuthSmokeSnapshot: normalizeEnterpriseAuthSmokeEvidence(report?.enterpriseAuthSmokeSnapshot),
+    enterpriseAuthJitRollbackSnapshot: normalizeEnterpriseAuthJitRollbackEvidence(report?.enterpriseAuthJitRollbackSnapshot),
+    monitoringThresholdSnapshot: normalizeMonitoringThresholdEvidence(report?.monitoringThresholdSnapshot),
+    clusterNetworkAccessReviewSnapshot: normalizeHardeningEvidence(report?.clusterNetworkAccessReviewSnapshot),
+    helmValuesHardeningSnapshot: normalizeHardeningEvidence(report?.helmValuesHardeningSnapshot),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeCommercialIntegrationEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    integrationCount: Number(report?.integrationCount || 0),
+    verifiedCount: Number(report?.verifiedCount || 0),
+    requiredCount: Number(report?.requiredCount || 0),
+    requiredVerifiedCount: Number(report?.requiredVerifiedCount || 0),
+    paymentProviderAdapterReadinessReviewed: Boolean(report?.paymentProviderAdapterReadinessReviewed),
+    paymentProviderAdapterReadinessStatus: report?.paymentProviderAdapterReadinessStatus || '',
+    paymentProviderAdapterWebhookReadyProfileCount: Number(report?.paymentProviderAdapterWebhookReadyProfileCount || 0),
+    paymentProviderAdapterNativeReadyProfileCount: Number(report?.paymentProviderAdapterNativeReadyProfileCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeStorageExpansionFinalize(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    startedAt: report?.startedAt || '',
+    completedAt: report?.completedAt || '',
+    namespace: report?.namespace || '',
+    tenantName: report?.tenantName || '',
+    serviceAccount: report?.serviceAccount || '',
+    impersonateRunner: Boolean(report?.impersonateRunner),
+    runBackendDryRunRunner: Boolean(report?.runBackendDryRunRunner),
+    runBackendApply: Boolean(report?.runBackendApply),
+    confirmApply: Boolean(report?.confirmApply),
+    runStorageBackendTelemetry: Boolean(report?.runStorageBackendTelemetry),
+    failedCount: Number(report?.failedCount || 0),
+    evidence: report?.evidence && typeof report.evidence === 'object' ? report.evidence : {},
+    gaps: Array.isArray(report?.gaps) ? report.gaps : [],
+    steps: Array.isArray(report?.steps) ? report.steps : [],
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeKubernetesHaDrReadiness(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    namespace: report?.namespace || '',
+    kubectlPath: report?.kubectlPath || '',
+    restoreManifestPath: report?.restoreManifestPath || '',
+    failureCount: Number(report?.failureCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+  }
+}
+
+function normalizeKubernetesDrFinalize(report = {}) {
+  return {
+    result: report?.result || '',
+    status: report?.status || '',
+    generatedAt: report?.generatedAt || '',
+    startedAt: report?.startedAt || '',
+    completedAt: report?.completedAt || '',
+    sourceNamespace: report?.sourceNamespace || '',
+    restoreNamespace: report?.restoreNamespace || '',
+    backupTimestamp: report?.backupTimestamp || '',
+    serverDryRunOnly: Boolean(report?.serverDryRunOnly),
+    confirmRestore: Boolean(report?.confirmRestore),
+    runBackupDrill: Boolean(report?.runBackupDrill),
+    runRestoreSmoke: Boolean(report?.runRestoreSmoke),
+    writeEvidenceRequest: Boolean(report?.writeEvidenceRequest),
+    submitEvidence: Boolean(report?.submitEvidence),
+    runS3ClientSmoke: Boolean(report?.runS3ClientSmoke),
+    failedStepCount: Number(report?.failedStepCount || 0),
+    gaps: Array.isArray(report?.gaps) ? report.gaps : [],
+    commands: Array.isArray(report?.commands) ? report.commands : [],
+    steps: Array.isArray(report?.steps) ? report.steps : [],
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeIamRbacEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    status: report?.status || '',
+    generatedAt: report?.generatedAt || '',
+    startedAt: report?.startedAt || '',
+    completedAt: report?.completedAt || '',
+    namespace: report?.namespace || '',
+    serviceAccount: report?.serviceAccount || '',
+    powerShellCommand: report?.powerShellCommand || '',
+    gradleCommand: report?.gradleCommand || '',
+    runBackendPolicyTests: Boolean(report?.runBackendPolicyTests),
+    runKubernetesLiveAuth: Boolean(report?.runKubernetesLiveAuth),
+    failedCount: Number(report?.failedCount || 0),
+    gaps: Array.isArray(report?.gaps) ? report.gaps : [],
+    commands: Array.isArray(report?.commands) ? report.commands : [],
+    steps: Array.isArray(report?.steps) ? report.steps : [],
+    decisionRule: report?.decisionRule || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeSecurityEvidence(report = {}) {
+  const imageSigning = report?.imageSigning || {}
+  const containerSecurity = report?.containerSecurity || {}
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    failureCount: Number(report?.failureCount || 0),
+    allowSyntheticEvidence: Boolean(report?.allowSyntheticEvidence),
+    inputs: report?.inputs && typeof report.inputs === 'object' ? report.inputs : {},
+    promoted: report?.promoted && typeof report.promoted === 'object' ? report.promoted : {},
+    source: report?.source && typeof report.source === 'object' ? report.source : {},
+    images: report?.images && typeof report.images === 'object' ? report.images : {},
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    imageSigning: {
+      ...imageSigning,
+      failureCount: Number(imageSigning?.failureCount || 0),
+    },
+    containerSecurity: {
+      ...containerSecurity,
+      failureCount: Number(containerSecurity?.failureCount || 0),
+      backendSbomPackageCount: Number(containerSecurity?.backendSbomPackageCount || 0),
+      backendSbomByteSize: Number(containerSecurity?.backendSbomByteSize || 0),
+      frontendSbomPackageCount: Number(containerSecurity?.frontendSbomPackageCount || 0),
+      frontendSbomByteSize: Number(containerSecurity?.frontendSbomByteSize || 0),
+    },
+    decisionRule: report?.decisionRule || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeSecretRotationEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    rotationWindow: report?.rotationWindow && typeof report.rotationWindow === 'object' ? report.rotationWindow : {},
+    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    rotatedCount: Number(report?.rotatedCount || 0),
+    coreRotatedCount: Number(report?.coreRotatedCount || 0),
+    coreRequiredCount: Number(report?.coreRequiredCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    rotations: Array.isArray(report?.rotations) ? report.rotations : [],
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeCommercialApprovalEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    productVersion: report?.productVersion || '',
+    approvedBy: report?.approvedBy || '',
+    approvedAt: report?.approvedAt || '',
+    passedCount: Number(report?.passedCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    checkCount: Number(report?.checkCount || 0),
+    pricingPolicyProposalCommercialApproved: Boolean(report?.pricingPolicyProposalCommercialApproved),
+    pricingPolicyProposalCommercialApprovedCount: Number(report?.pricingPolicyProposalCommercialApprovedCount || 0),
+    pricingPolicyProposalApprovedPriceListCount: Number(report?.pricingPolicyProposalApprovedPriceListCount || 0),
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeEnterpriseAuthSmokeEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    executionMode: report?.executionMode || '',
+    apiBase: report?.apiBase || '',
+    requireOidc: Boolean(report?.requireOidc),
+    requireLdap: Boolean(report?.requireLdap),
+    requireAuditEvents: Boolean(report?.requireAuditEvents),
+    inputs: report?.inputs && typeof report.inputs === 'object' ? report.inputs : {},
+    scopeOut: report?.scopeOut && typeof report.scopeOut === 'object' ? report.scopeOut : {},
+    passCount: Number(report?.passCount || 0),
+    failCount: Number(report?.failCount || 0),
+    blockedCount: Number(report?.blockedCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    skippedCount: Number(report?.skippedCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeEnterpriseAuthJitRollbackEvidence(report = {}) {
+  const smokeSnapshot = report?.enterpriseAuthSmokeSnapshot || {}
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    evidenceRef: report?.evidenceRef || '',
+    reviewWindow: report?.reviewWindow && typeof report.reviewWindow === 'object' ? report.reviewWindow : {},
+    enterpriseAuthSmokeSnapshot: {
+      provided: Boolean(smokeSnapshot?.provided),
+      parsed: Boolean(smokeSnapshot?.parsed),
+      formatVersion: smokeSnapshot?.formatVersion || '',
+      result: smokeSnapshot?.result || '',
+      executionMode: smokeSnapshot?.executionMode || '',
+      passCount: Number(smokeSnapshot?.passCount || 0),
+      failCount: Number(smokeSnapshot?.failCount || 0),
+      blockedCount: Number(smokeSnapshot?.blockedCount || 0),
+      plannedCount: Number(smokeSnapshot?.plannedCount || 0),
+      scopeOutAccepted: Boolean(smokeSnapshot?.scopeOutAccepted),
+      detail: smokeSnapshot?.detail || '',
+    },
+    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    failureCount: Number(report?.failureCount || 0),
+    checkCount: Number(report?.checkCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeDataFlowStoragePlanCandidateDecision(candidateDecision = {}) {
+  return {
+    decision: candidateDecision?.decision || '',
+    evidenceModel: candidateDecision?.evidenceModel || '',
+    requiresMariaDbQueryEvidence: Boolean(candidateDecision.requiresMariaDbQueryEvidence),
+    requiresTargetStoreEvidence: Boolean(candidateDecision.requiresTargetStoreEvidence),
+    queryPlanEvidencePassed: Boolean(candidateDecision.queryPlanEvidencePassed),
+    targetStoreEvidenceConfirmed: Boolean(candidateDecision.targetStoreEvidenceConfirmed),
+    nextAction: candidateDecision?.nextAction || '',
+    safeDataPolicy: candidateDecision?.safeDataPolicy || '',
+  }
+}
+
+function normalizeDataFlowStoragePlan(report = {}) {
+  const queryPlanEvidence = report?.queryPlanEvidence || {}
+  return {
+    result: report?.result || '',
+    recordedAt: report?.recordedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    evidenceRef: report?.evidenceRef || '',
+    candidateStore: report?.candidateStore || '',
+    candidateDecision: normalizeDataFlowStoragePlanCandidateDecision(report?.candidateDecision),
+    expectedPeakEventsPerDay: Number(report?.expectedPeakEventsPerDay || 0),
+    expectedQueryWindowDays: Number(report?.expectedQueryWindowDays || 0),
+    targetP95QueryLatencyMs: Number(report?.targetP95QueryLatencyMs || 0),
+    eventRetentionDays: Number(report?.eventRetentionDays || 0),
+    dailyRollupRetentionDays: Number(report?.dailyRollupRetentionDays || 0),
+    monthlyRollupRetentionMonths: Number(report?.monthlyRollupRetentionMonths || 0),
+    checkCount: Number(report?.checkCount || 0),
+    passedCount: Number(report?.passedCount || 0),
+    pendingCount: Number(report?.pendingCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    queryPlanEvidence: {
+      provided: Boolean(queryPlanEvidence.provided),
+      path: queryPlanEvidence.path || '',
+      parsed: Boolean(queryPlanEvidence.parsed),
+      formatVersion: queryPlanEvidence.formatVersion || '',
+      expectedFormatVersion: queryPlanEvidence.expectedFormatVersion || '',
+      validFormatVersion: Boolean(queryPlanEvidence.validFormatVersion),
+      result: queryPlanEvidence.result || '',
+      mode: queryPlanEvidence.mode || '',
+      checkCount: Number(queryPlanEvidence.checkCount || 0),
+      passedCount: Number(queryPlanEvidence.passedCount || 0),
+      failedCount: Number(queryPlanEvidence.failedCount || 0),
+      failedChecks: Array.isArray(queryPlanEvidence.failedChecks) ? queryPlanEvidence.failedChecks : [],
+      detail: queryPlanEvidence.detail || '',
+    },
+    scopePolicy: report?.scopePolicy || '',
+  }
+}
+
+function normalizeDataFlowQueryRetentionBudget(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    evidenceRef: report?.evidenceRef || '',
+    storagePlanResult: report?.storagePlanResult || '',
+    candidateStore: report?.candidateStore || '',
+    targetP95QueryLatencyMs: Number(report?.targetP95QueryLatencyMs || 0),
+    observedP95QueryLatencyMs: Number(report?.observedP95QueryLatencyMs || 0),
+    observedP99QueryLatencyMs: Number(report?.observedP99QueryLatencyMs || 0),
+    querySampleCount: Number(report?.querySampleCount || 0),
+    observedQueryWindowDays: Number(report?.observedQueryWindowDays || 0),
+    retentionBudgetSeconds: Number(report?.retentionBudgetSeconds || 0),
+    detailedRetentionObservedSeconds: Number(report?.detailedRetentionObservedSeconds || 0),
+    dailyRollupRetentionObservedSeconds: Number(report?.dailyRollupRetentionObservedSeconds || 0),
+    monthlyRollupRetentionObservedSeconds: Number(report?.monthlyRollupRetentionObservedSeconds || 0),
+    detailedRetentionDeletedRows: Number(report?.detailedRetentionDeletedRows || 0),
+    dailyRollupRetentionDeletedRows: Number(report?.dailyRollupRetentionDeletedRows || 0),
+    monthlyRollupRetentionDeletedRows: Number(report?.monthlyRollupRetentionDeletedRows || 0),
+    queryLatencyWithinBudget: Boolean(report?.queryLatencyWithinBudget),
+    retentionJobsWithinBudget: Boolean(report?.retentionJobsWithinBudget),
+    failureCount: Number(report?.failureCount || 0),
+    checkCount: Number(report?.checkCount || 0),
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    topFailedChecks: Array.isArray(report?.topFailedChecks) ? report.topFailedChecks : [],
+    scopePolicy: report?.scopePolicy || '',
+  }
+}
+
+function normalizeDataFlowStorageTransitionRunbook(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    evidenceRef: report?.evidenceRef || '',
+    storagePlanResult: report?.storagePlanResult || '',
+    candidateStore: report?.candidateStore || '',
+    targetP95QueryLatencyMs: Number(report?.targetP95QueryLatencyMs || 0),
+    failureCount: Number(report?.failureCount || 0),
+    checkCount: Number(report?.checkCount || 0),
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    topFailedChecks: Array.isArray(report?.topFailedChecks) ? report.topFailedChecks : [],
+    scopePolicy: report?.scopePolicy || '',
+  }
+}
+
+function normalizeStorageBackendTelemetryEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    sourceMode: report?.sourceMode || '',
+    minioAlias: report?.minioAlias || '',
+    evidenceRef: report?.evidenceRef || '',
+    adminInfoJsonSha256: report?.adminInfoJsonSha256 || '',
+    rawAdminInfoStored: Boolean(report?.rawAdminInfoStored),
+    poolCount: Number(report?.poolCount || 0),
+    serverCount: Number(report?.serverCount || 0),
+    onlineServerCount: Number(report?.onlineServerCount || 0),
+    offlineServerCount: Number(report?.offlineServerCount || 0),
+    driveCount: Number(report?.driveCount || 0),
+    totalBytes: Number(report?.totalBytes || 0),
+    usedBytes: Number(report?.usedBytes || 0),
+    freeBytes: Number(report?.freeBytes || 0),
+    capacityKnown: Boolean(report?.capacityKnown),
+    failureCount: Number(report?.failureCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
+  }
+}
+
+function normalizeMonitoringThresholdEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    evidenceRef: report?.evidenceRef || '',
+    reviewWindow: report?.reviewWindow && typeof report.reviewWindow === 'object' ? report.reviewWindow : {},
+    thresholdTargetsPath: report?.thresholdTargetsPath || '',
+    requiredAlertCount: Number(report?.requiredAlertCount || 0),
+    mappedAlertCount: Number(report?.mappedAlertCount || 0),
+    missingAlerts: Array.isArray(report?.missingAlerts) ? report.missingAlerts : [],
+    routeCount: Number(report?.routeCount || 0),
+    routes: Array.isArray(report?.routes) ? report.routes : [],
+    grafanaPanelCount: Number(report?.grafanaPanelCount || 0),
+    tuningEvidenceCount: Number(report?.tuningEvidenceCount || 0),
+    alertTargetCoverageComplete: Boolean(report?.alertTargetCoverageComplete),
+    routeCoverageComplete: Boolean(report?.routeCoverageComplete),
+    grafanaPanelCoverageComplete: Boolean(report?.grafanaPanelCoverageComplete),
+    tuningEvidenceCoverageComplete: Boolean(report?.tuningEvidenceCoverageComplete),
+    thresholdMappingComplete: Boolean(report?.thresholdMappingComplete),
+    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    failureCount: Number(report?.failureCount || 0),
+    checkCount: Number(report?.checkCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeHardeningEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    reviewWindow: report?.reviewWindow && typeof report.reviewWindow === 'object' ? report.reviewWindow : {},
+    evidence: report?.evidence && typeof report.evidence === 'object' ? report.evidence : {},
+    staticSnapshot: report?.staticSnapshot && typeof report.staticSnapshot === 'object' ? report.staticSnapshot : {},
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    passCount: Number(report?.passCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    totalCount: Number(report?.totalCount || report?.checkCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeSupportEscalationHandoffEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    reviewWindow: report?.reviewWindow && typeof report.reviewWindow === 'object' ? report.reviewWindow : {},
+    evidence: report?.evidence && typeof report.evidence === 'object' ? report.evidence : {},
+    documentSnapshot: report?.documentSnapshot && typeof report.documentSnapshot === 'object' ? report.documentSnapshot : {},
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    passCount: Number(report?.passCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    totalCount: Number(report?.totalCount || report?.checkCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeMinioBucketCorsVerification(report = {}) {
+  const commands = report?.operatorCommands || {}
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    sourceMode: report?.sourceMode || '',
+    bucketName: report?.bucketName || '',
+    minioAlias: report?.minioAlias || '',
+    sourceRef: report?.sourceRef || '',
+    executeRequested: Boolean(report?.executeRequested),
+    rawCorsXmlStored: Boolean(report?.rawCorsXmlStored),
+    ruleCount: Number(report?.ruleCount || 0),
+    exposedHeaderCount: Number(report?.exposedHeaderCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    allowedOrigins: Array.isArray(report?.allowedOrigins) ? report.allowedOrigins : [],
+    allowedMethods: Array.isArray(report?.allowedMethods) ? report.allowedMethods : [],
+    allowedHeaders: Array.isArray(report?.allowedHeaders) ? report.allowedHeaders : [],
+    exposeHeaders: Array.isArray(report?.exposeHeaders) ? report.exposeHeaders : [],
+    maxAgeSeconds: Array.isArray(report?.maxAgeSeconds) ? report.maxAgeSeconds : [],
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
+    operatorCommands: {
+      collectWithMc: commands.collectWithMc || '',
+      verifyFromFile: commands.verifyFromFile || '',
+      collectAndVerify: commands.collectAndVerify || '',
+    },
+  }
+}
+
+function normalizeOperationsEvidenceHandoff(handoff = {}) {
+  const nextStep = handoff?.nextStep || {}
+  const currentBottleneck = handoff?.currentBottleneck || nextStep
+  return {
+    result: handoff?.result || '',
+    generatedAt: handoff?.generatedAt || '',
+    nextStep: {
+      code: nextStep.code || '',
+      title: nextStep.title || '',
+      command: nextStep.command || '',
+      reason: nextStep.reason || '',
+      note: nextStep.note || '',
+      dispatchUrls: Array.isArray(nextStep.dispatchUrls) ? nextStep.dispatchUrls : [],
+    },
+    currentBottleneck: {
+      code: currentBottleneck.code || '',
+      title: currentBottleneck.title || '',
+      command: currentBottleneck.command || '',
+      reason: currentBottleneck.reason || '',
+      note: currentBottleneck.note || '',
+      dispatchUrls: Array.isArray(currentBottleneck.dispatchUrls) ? currentBottleneck.dispatchUrls : [],
+    },
+    stageCount: Number(handoff?.stageCount || 0),
+    readyStageCount: Number(handoff?.readyStageCount || 0),
+    readinessSummary: handoff?.readinessSummary || '',
+    readinessPassedCount: Number(handoff?.readinessPassedCount || 0),
+    readinessPendingCount: Number(handoff?.readinessPendingCount || 0),
+    readinessTotalCount: Number(handoff?.readinessTotalCount || 0),
+    readinessCheckCount: Number(handoff?.readinessCheckCount || 0),
+    dispatchPreflightResult: handoff?.dispatchPreflightResult || '',
+    dispatchGithubRepository: handoff?.dispatchGithubRepository || '',
+    requiredGitHubSecretCount: Number(handoff?.requiredGitHubSecretCount || 0),
+    requiredGitHubSecrets: Array.isArray(handoff?.requiredGitHubSecrets) ? handoff.requiredGitHubSecrets : [],
+    requiredGitHubSecretSummaries: Array.isArray(handoff?.requiredGitHubSecretSummaries) ? handoff.requiredGitHubSecretSummaries : [],
+    readyDispatchTemplateCount: Number(handoff?.readyDispatchTemplateCount || 0),
+    blockedDispatchTemplateCount: Number(handoff?.blockedDispatchTemplateCount || 0),
+    readyDispatchActionOrders: Array.isArray(handoff?.readyDispatchActionOrders) ? handoff.readyDispatchActionOrders : [],
+    blockedDispatchActionOrders: Array.isArray(handoff?.blockedDispatchActionOrders) ? handoff.blockedDispatchActionOrders : [],
+    invocationSelectedActionOrders: Array.isArray(handoff?.invocationSelectedActionOrders) ? handoff.invocationSelectedActionOrders : [],
+    dispatchPreflightSelectedActionOrders: Array.isArray(handoff?.dispatchPreflightSelectedActionOrders) ? handoff.dispatchPreflightSelectedActionOrders : [],
+    workflowRunIdPlanActionOrders: Array.isArray(handoff?.workflowRunIdPlanActionOrders) ? handoff.workflowRunIdPlanActionOrders : [],
+    workflowRunIdPlanQueryMode: handoff?.workflowRunIdPlanQueryMode || '',
+    workflowRunIdPlanGithubApiTokenPresent: Boolean(handoff?.workflowRunIdPlanGithubApiTokenPresent),
+    workflowRunIdPlanGithubApiUnauthenticated: Boolean(handoff?.workflowRunIdPlanGithubApiUnauthenticated),
+    workflowRunIdPlanQueryExecuted: Boolean(handoff?.workflowRunIdPlanQueryExecuted),
+    workflowRunIdPlanQueryExecutedCount: Number(handoff?.workflowRunIdPlanQueryExecutedCount || 0),
+    workflowRunIdPlanQueryWorkflowCount: Number(handoff?.workflowRunIdPlanQueryWorkflowCount || 0),
+    workflowRunIdPlanQuerySucceededCount: Number(handoff?.workflowRunIdPlanQuerySucceededCount || 0),
+    workflowRunIdPlanQueryErrorCount: Number(handoff?.workflowRunIdPlanQueryErrorCount || 0),
+    workflowRunIdPlanCandidateCount: Number(handoff?.workflowRunIdPlanCandidateCount || 0),
+    inputFreeBlockedReviewReportExists: Boolean(handoff?.inputFreeBlockedReviewReportExists),
+    inputFreeBlockedReviewReportResult: handoff?.inputFreeBlockedReviewReportResult || '',
+    inputFreeBlockedReviewReportGeneratedAt: handoff?.inputFreeBlockedReviewReportGeneratedAt || '',
+    inputFreeBlockedReviewReportSelectedActionCount: Number(handoff?.inputFreeBlockedReviewReportSelectedActionCount || 0),
+    inputFreeBlockedReviewReportPlannedCount: Number(handoff?.inputFreeBlockedReviewReportPlannedCount || 0),
+    inputFreeBlockedReviewReportBlockedCount: Number(handoff?.inputFreeBlockedReviewReportBlockedCount || 0),
+    inputFreeBlockedReviewReportFailedCount: Number(handoff?.inputFreeBlockedReviewReportFailedCount || 0),
+    inputFreeBlockedReviewReportExecutedCount: Number(handoff?.inputFreeBlockedReviewReportExecutedCount || 0),
+    inputFreeBlockedReviewReportActionOrders: Array.isArray(handoff?.inputFreeBlockedReviewReportActionOrders) ? handoff.inputFreeBlockedReviewReportActionOrders : [],
+    inputFreeBlockedReviewReportStale: Boolean(handoff?.inputFreeBlockedReviewReportStale),
+    inputFreeBlockedReviewReportScopeMismatch: Boolean(handoff?.inputFreeBlockedReviewReportScopeMismatch),
+    inputFreeBlockedActions: Array.isArray(handoff?.inputFreeBlockedActions) ? handoff.inputFreeBlockedActions : [],
+    operatorInputValuesProfileReportPath: handoff?.operatorInputValuesProfileReportPath || '',
+    operatorInputValuesProfileExists: Boolean(handoff?.operatorInputValuesProfileExists),
+    operatorInputValuesProfileResult: handoff?.operatorInputValuesProfileResult || '',
+    operatorInputValuesProfileGeneratedAt: handoff?.operatorInputValuesProfileGeneratedAt || '',
+    operatorInputValuesProfileDefaultsUsed: Boolean(handoff?.operatorInputValuesProfileDefaultsUsed),
+    operatorInputValuesProfileDefaultsSkipped: Boolean(handoff?.operatorInputValuesProfileDefaultsSkipped),
+    operatorInputValuesProfileDefaultsSkipReason: handoff?.operatorInputValuesProfileDefaultsSkipReason || '',
+    operatorInputValuesProfileDefaultValueCount: Number(handoff?.operatorInputValuesProfileDefaultValueCount || 0),
+    operatorInputValuesProfileFilledValueCount: Number(handoff?.operatorInputValuesProfileFilledValueCount || 0),
+    operatorInputValuesProfileBlankValueCount: Number(handoff?.operatorInputValuesProfileBlankValueCount || 0),
+    operatorInputValuesProfileCommand: handoff?.operatorInputValuesProfileCommand || '',
+    operatorInputValuesCheckCommand: handoff?.operatorInputValuesCheckCommand || '',
+    operatorInputValuesCheckResult: handoff?.operatorInputValuesCheckResult || '',
+    operatorInputValuesCheckValueCount: Number(handoff?.operatorInputValuesCheckValueCount || 0),
+    operatorInputValuesCheckReadyValueCount: Number(handoff?.operatorInputValuesCheckReadyValueCount || 0),
+    operatorInputValuesCheckMissingValueCount: Number(handoff?.operatorInputValuesCheckMissingValueCount || 0),
+    operatorInputValuesCheckUnsafeValueCount: Number(handoff?.operatorInputValuesCheckUnsafeValueCount || 0),
+    operatorInputValuesCheckInvalidValueCount: Number(handoff?.operatorInputValuesCheckInvalidValueCount || 0),
+    operatorInputValuesCheckValueReadyActionCount: Number(handoff?.operatorInputValuesCheckValueReadyActionCount || 0),
+    operatorInputValuesCheckNonReadyActionCount: Number(handoff?.operatorInputValuesCheckNonReadyActionCount || 0),
+    operatorInputValuesCheckActionSummaryCount: Number(handoff?.operatorInputValuesCheckActionSummaryCount || 0),
+    operatorInputValuesCheckNonReadyActionOrders: Array.isArray(handoff?.operatorInputValuesCheckNonReadyActionOrders) ? handoff.operatorInputValuesCheckNonReadyActionOrders : [],
+    operatorInputValuesCheckNonReadyActionSummaries: normalizeOperationsInputValueActionSummaries(handoff?.operatorInputValuesCheckNonReadyActionSummaries),
+    artifactCollectionActionOrders: Array.isArray(handoff?.artifactCollectionActionOrders) ? handoff.artifactCollectionActionOrders : [],
+    dispatchPreflightScopeMismatch: Boolean(handoff?.dispatchPreflightScopeMismatch),
+    workflowRunIdPlanStale: Boolean(handoff?.workflowRunIdPlanStale),
+    workflowRunIdPlanScopeMismatch: Boolean(handoff?.workflowRunIdPlanScopeMismatch),
+    artifactCollectionStale: Boolean(handoff?.artifactCollectionStale),
+    artifactCollectionScopeMismatch: Boolean(handoff?.artifactCollectionScopeMismatch),
+    staleReportCount: Number(handoff?.staleReportCount || 0),
+    readyDispatchWorkflows: Array.isArray(handoff?.readyDispatchWorkflows) ? handoff.readyDispatchWorkflows : [],
+    blockedDispatchWorkflows: Array.isArray(handoff?.blockedDispatchWorkflows) ? handoff.blockedDispatchWorkflows : [],
+    browserDispatchChecklistCount: Number(handoff?.browserDispatchChecklistCount || 0),
+    browserDispatchChecklist: Array.isArray(handoff?.browserDispatchChecklist) ? handoff.browserDispatchChecklist : [],
+    securityEvidenceFinalizerRunIdInputHintCount: Number(handoff?.securityEvidenceFinalizerRunIdInputHintCount || 0),
+    securityEvidenceFinalizerRunIdInputHints: normalizeOperationsWorkflowRunIdInputs(handoff?.securityEvidenceFinalizerRunIdInputHints),
+    dispatchWorkflows: Array.isArray(handoff?.dispatchWorkflows) ? handoff.dispatchWorkflows : [],
+    blockedActionCount: Number(handoff?.blockedActionCount || 0),
+    missingWorkflowRunCount: Number(handoff?.missingWorkflowRunCount || 0),
+    missingRequiredArtifactCount: Number(handoff?.missingRequiredArtifactCount || 0),
+    failedImportCount: Number(handoff?.failedImportCount || 0),
+    finalizerFailedCount: Number(handoff?.finalizerFailedCount || 0),
+    finalizerGapCount: Number(handoff?.finalizerGapCount || 0),
+    postDispatchCommands: Array.isArray(handoff?.postDispatchCommands) ? handoff.postDispatchCommands : [],
+    stages: Array.isArray(handoff?.stages) ? handoff.stages : [],
+  }
+}
+
+function normalizeOperationsReadinessConvergence(report = {}) {
+  const bottleneck = report?.currentBottleneck || {}
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    handoffReportPath: report?.handoffReportPath || '',
+    readinessReportPath: report?.readinessReportPath || '',
+    operationsReadinessFinalizeReportPath: report?.operationsReadinessFinalizeReportPath || '',
+    handoffExists: Boolean(report?.handoffExists),
+    handoffResult: report?.handoffResult || '',
+    readinessExists: Boolean(report?.readinessExists),
+    readinessResult: report?.readinessResult || '',
+    readinessSummary: report?.readinessSummary || '',
+    readinessPassedCount: Number(report?.readinessPassedCount || 0),
+    readinessPendingCount: Number(report?.readinessPendingCount || 0),
+    readinessTotalCount: Number(report?.readinessTotalCount || 0),
+    readinessCheckCount: Number(report?.readinessCheckCount || 0),
+    finalizerExists: Boolean(report?.finalizerExists),
+    finalizerResult: report?.finalizerResult || '',
+    finalizerReadinessResult: report?.finalizerReadinessResult || '',
+    finalizerFailedCount: Number(report?.finalizerFailedCount || 0),
+    finalizerFailedCountValid: typeof report?.finalizerFailedCountValid === 'boolean'
+      ? report.finalizerFailedCountValid
+      : null,
+    finalizerFailedCountRaw: report?.finalizerFailedCountRaw || '',
+    kubernetesOperationsReportSyncReportPath: report?.kubernetesOperationsReportSyncReportPath || '',
+    kubernetesReportSyncExists: Boolean(report?.kubernetesReportSyncExists),
+    kubernetesReportSyncResult: report?.kubernetesReportSyncResult || '',
+    kubernetesReportSyncStale: Boolean(report?.kubernetesReportSyncStale),
+    kubernetesReportSyncTimestamp: report?.kubernetesReportSyncTimestamp || '',
+    kubernetesReportSyncTimestampSource: report?.kubernetesReportSyncTimestampSource || '',
+    kubernetesReportSyncFreshnessReason: report?.kubernetesReportSyncFreshnessReason || '',
+    kubernetesReportSyncFailedCount: Number(report?.kubernetesReportSyncFailedCount || 0),
+    kubernetesReportSyncFailedCountValid: typeof report?.kubernetesReportSyncFailedCountValid === 'boolean'
+      ? report.kubernetesReportSyncFailedCountValid
+      : null,
+    kubernetesReportSyncFailedCountRaw: report?.kubernetesReportSyncFailedCountRaw || '',
+    kubernetesReportSyncConfigMapName: report?.kubernetesReportSyncConfigMapName || '',
+    kubernetesReportSyncConfigMapKey: report?.kubernetesReportSyncConfigMapKey || '',
+    kubernetesReportSyncSourceReportResult: report?.kubernetesReportSyncSourceReportResult || '',
+    kubernetesReportSyncWorkflowCommand: report?.kubernetesReportSyncWorkflowCommand || '',
+    kubernetesReportSyncWorkflowNote: report?.kubernetesReportSyncWorkflowNote || '',
+    kubernetesReportSyncReady: Boolean(report?.kubernetesReportSyncReady),
+    finalizerGapCount: Number(report?.finalizerGapCount || 0),
+    stageCount: Number(report?.stageCount || 0),
+    readyStageCount: Number(report?.readyStageCount || 0),
+    blockedActionCount: Number(report?.blockedActionCount || 0),
+    handoffRequiredGitHubSecretCount: Number(report?.handoffRequiredGitHubSecretCount || 0),
+    handoffRequiredGitHubSecrets: Array.isArray(report?.handoffRequiredGitHubSecrets) ? report.handoffRequiredGitHubSecrets : [],
+    handoffRequiredGitHubSecretSummaries: Array.isArray(report?.handoffRequiredGitHubSecretSummaries) ? report.handoffRequiredGitHubSecretSummaries : [],
+    handoffWorkflowRunIdPlanQueryMode: report?.handoffWorkflowRunIdPlanQueryMode || '',
+    handoffWorkflowRunIdPlanGithubApiTokenPresent: Boolean(report?.handoffWorkflowRunIdPlanGithubApiTokenPresent),
+    handoffWorkflowRunIdPlanGithubApiUnauthenticated: Boolean(report?.handoffWorkflowRunIdPlanGithubApiUnauthenticated),
+    handoffWorkflowRunIdPlanQueryExecuted: Boolean(report?.handoffWorkflowRunIdPlanQueryExecuted),
+    handoffWorkflowRunIdPlanQueryExecutedCount: Number(report?.handoffWorkflowRunIdPlanQueryExecutedCount || 0),
+    handoffWorkflowRunIdPlanQueryWorkflowCount: Number(report?.handoffWorkflowRunIdPlanQueryWorkflowCount || 0),
+    handoffWorkflowRunIdPlanQuerySucceededCount: Number(report?.handoffWorkflowRunIdPlanQuerySucceededCount || 0),
+    handoffWorkflowRunIdPlanQueryErrorCount: Number(report?.handoffWorkflowRunIdPlanQueryErrorCount || 0),
+    handoffWorkflowRunIdPlanCandidateCount: Number(report?.handoffWorkflowRunIdPlanCandidateCount || 0),
+    handoffInputFreeBlockedReviewReportExists: Boolean(report?.handoffInputFreeBlockedReviewReportExists),
+    handoffInputFreeBlockedReviewReportResult: report?.handoffInputFreeBlockedReviewReportResult || '',
+    handoffInputFreeBlockedReviewReportGeneratedAt: report?.handoffInputFreeBlockedReviewReportGeneratedAt || '',
+    handoffInputFreeBlockedReviewReportSelectedActionCount: Number(report?.handoffInputFreeBlockedReviewReportSelectedActionCount || 0),
+    handoffInputFreeBlockedReviewReportPlannedCount: Number(report?.handoffInputFreeBlockedReviewReportPlannedCount || 0),
+    handoffInputFreeBlockedReviewReportBlockedCount: Number(report?.handoffInputFreeBlockedReviewReportBlockedCount || 0),
+    handoffInputFreeBlockedReviewReportFailedCount: Number(report?.handoffInputFreeBlockedReviewReportFailedCount || 0),
+    handoffInputFreeBlockedReviewReportExecutedCount: Number(report?.handoffInputFreeBlockedReviewReportExecutedCount || 0),
+    handoffInputFreeBlockedReviewReportActionOrders: Array.isArray(report?.handoffInputFreeBlockedReviewReportActionOrders) ? report.handoffInputFreeBlockedReviewReportActionOrders : [],
+    handoffInputFreeBlockedReviewReportStale: Boolean(report?.handoffInputFreeBlockedReviewReportStale),
+    handoffInputFreeBlockedReviewReportScopeMismatch: Boolean(report?.handoffInputFreeBlockedReviewReportScopeMismatch),
+    handoffOperatorInputValuesProfileReportPath: report?.handoffOperatorInputValuesProfileReportPath || '',
+    handoffOperatorInputValuesProfileExists: Boolean(report?.handoffOperatorInputValuesProfileExists),
+    handoffOperatorInputValuesProfileResult: report?.handoffOperatorInputValuesProfileResult || '',
+    handoffOperatorInputValuesProfileGeneratedAt: report?.handoffOperatorInputValuesProfileGeneratedAt || '',
+    handoffOperatorInputValuesProfileDefaultsUsed: Boolean(report?.handoffOperatorInputValuesProfileDefaultsUsed),
+    handoffOperatorInputValuesProfileDefaultsSkipped: Boolean(report?.handoffOperatorInputValuesProfileDefaultsSkipped),
+    handoffOperatorInputValuesProfileDefaultsSkipReason: report?.handoffOperatorInputValuesProfileDefaultsSkipReason || '',
+    handoffOperatorInputValuesProfileDefaultValueCount: Number(report?.handoffOperatorInputValuesProfileDefaultValueCount || 0),
+    handoffOperatorInputValuesProfileFilledValueCount: Number(report?.handoffOperatorInputValuesProfileFilledValueCount || 0),
+    handoffOperatorInputValuesProfileBlankValueCount: Number(report?.handoffOperatorInputValuesProfileBlankValueCount || 0),
+    handoffOperatorInputValuesCheckResult: report?.handoffOperatorInputValuesCheckResult || '',
+    handoffOperatorInputValuesCheckValueCount: Number(report?.handoffOperatorInputValuesCheckValueCount || 0),
+    handoffOperatorInputValuesCheckReadyValueCount: Number(report?.handoffOperatorInputValuesCheckReadyValueCount || 0),
+    handoffOperatorInputValuesCheckMissingValueCount: Number(report?.handoffOperatorInputValuesCheckMissingValueCount || 0),
+    handoffOperatorInputValuesCheckUnsafeValueCount: Number(report?.handoffOperatorInputValuesCheckUnsafeValueCount || 0),
+    handoffOperatorInputValuesCheckInvalidValueCount: Number(report?.handoffOperatorInputValuesCheckInvalidValueCount || 0),
+    handoffOperatorInputValuesCheckValueReadyActionCount: Number(report?.handoffOperatorInputValuesCheckValueReadyActionCount || 0),
+    handoffOperatorInputValuesCheckNonReadyActionCount: Number(report?.handoffOperatorInputValuesCheckNonReadyActionCount || 0),
+    handoffOperatorInputValuesCheckActionSummaryCount: Number(report?.handoffOperatorInputValuesCheckActionSummaryCount || 0),
+    handoffOperatorInputValuesCheckNonReadyActionOrders: Array.isArray(report?.handoffOperatorInputValuesCheckNonReadyActionOrders) ? report.handoffOperatorInputValuesCheckNonReadyActionOrders : [],
+    handoffOperatorInputValuesCheckNonReadyActionSummaries: normalizeOperationsInputValueActionSummaries(report?.handoffOperatorInputValuesCheckNonReadyActionSummaries),
+    missingWorkflowRunCount: Number(report?.missingWorkflowRunCount || 0),
+    missingRequiredArtifactCount: Number(report?.missingRequiredArtifactCount || 0),
+    failedImportCount: Number(report?.failedImportCount || 0),
+    currentBottleneck: {
+      code: bottleneck.code || '',
+      title: bottleneck.title || '',
+      reason: bottleneck.reason || '',
+      command: bottleneck.command || '',
+      note: bottleneck.note || '',
+      dispatchUrls: Array.isArray(bottleneck.dispatchUrls) ? bottleneck.dispatchUrls : [],
+    },
+    handoffStale: Boolean(report?.handoffStale),
+    handoffTimestamp: report?.handoffTimestamp || '',
+    handoffTimestampSource: report?.handoffTimestampSource || '',
+    readinessTimestamp: report?.readinessTimestamp || '',
+    readinessTimestampSource: report?.readinessTimestampSource || '',
+    handoffPostDispatchCommands: Array.isArray(report?.handoffPostDispatchCommands) ? report.handoffPostDispatchCommands : [],
+    handoffBrowserDispatchDependencyNotes: Array.isArray(report?.handoffBrowserDispatchDependencyNotes) ? report.handoffBrowserDispatchDependencyNotes : [],
+    handoffSecurityEvidenceFinalizerRunIdInputHintCount: Number(report?.handoffSecurityEvidenceFinalizerRunIdInputHintCount || 0),
+    handoffSecurityEvidenceFinalizerRunIdInputHints: normalizeOperationsWorkflowRunIdInputs(report?.handoffSecurityEvidenceFinalizerRunIdInputHints),
+    recommendedCommands: Array.isArray(report?.recommendedCommands) ? report.recommendedCommands : [],
+    decisionRule: report?.decisionRule || '',
+    safetyPolicy: report?.safetyPolicy || '',
+  }
+}
+
+function normalizeKubernetesOperationsReportSync(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    namespace: report?.namespace || '',
+    configMapName: report?.configMapName || '',
+    configMapKey: report?.configMapKey || '',
+    evidenceConfigMapKey: report?.evidenceConfigMapKey || '',
+    dataFlowStoragePlanConfigMapKey: report?.dataFlowStoragePlanConfigMapKey || '',
+    dataFlowStorageTransitionRunbookConfigMapKey: report?.dataFlowStorageTransitionRunbookConfigMapKey || '',
+    dataFlowQueryRetentionBudgetConfigMapKey: report?.dataFlowQueryRetentionBudgetConfigMapKey || '',
+    publishDataFlowStoragePlanToConfigMap: Boolean(report?.publishDataFlowStoragePlanToConfigMap),
+    publishDataFlowQueryRetentionBudgetToConfigMap: Boolean(report?.publishDataFlowQueryRetentionBudgetToConfigMap),
+    publishDataFlowStorageTransitionRunbookToConfigMap: Boolean(report?.publishDataFlowStorageTransitionRunbookToConfigMap),
+    sourceReportPath: report?.sourceReportPath || '',
+    sourceReportFormatVersion: report?.sourceReportFormatVersion || '',
+    sourceReportResult: report?.sourceReportResult || '',
+    sourceReportBytes: Number(report?.sourceReportBytes || 0),
+    sourceReportSha256: report?.sourceReportSha256 || '',
+    dataFlowStorageTransitionRunbookResult: report?.dataFlowStorageTransitionRunbookResult || '',
+    dataFlowStorageTransitionRunbookStoragePlanResult: report?.dataFlowStorageTransitionRunbookStoragePlanResult || '',
+    dataFlowStorageTransitionRunbookCandidateStore: report?.dataFlowStorageTransitionRunbookCandidateStore || '',
+    dataFlowQueryRetentionBudgetResult: report?.dataFlowQueryRetentionBudgetResult || '',
+    dataFlowQueryRetentionBudgetStoragePlanResult: report?.dataFlowQueryRetentionBudgetStoragePlanResult || '',
+    dataFlowQueryRetentionBudgetCandidateStore: report?.dataFlowQueryRetentionBudgetCandidateStore || '',
+    dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs: Number(report?.dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs || 0),
+    dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs: Number(report?.dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs || 0),
+    dataFlowQueryRetentionBudgetRetentionBudgetSeconds: Number(report?.dataFlowQueryRetentionBudgetRetentionBudgetSeconds || 0),
+    dataFlowQueryRetentionBudgetFailureCount: Number(report?.dataFlowQueryRetentionBudgetFailureCount || 0),
+    dataFlowQueryRetentionBudgetCheckCount: Number(report?.dataFlowQueryRetentionBudgetCheckCount || 0),
+    dataFlowStorageTransitionRunbookFailureCount: Number(report?.dataFlowStorageTransitionRunbookFailureCount || 0),
+    dataFlowStorageTransitionRunbookCheckCount: Number(report?.dataFlowStorageTransitionRunbookCheckCount || 0),
+    dataFlowStorageTransitionRunbookBytes: Number(report?.dataFlowStorageTransitionRunbookBytes || 0),
+    dataFlowStorageTransitionRunbookSha256: report?.dataFlowStorageTransitionRunbookSha256 || '',
+    clientDryRunCommand: report?.clientDryRunCommand || '',
+    serverDryRunCommand: report?.serverDryRunCommand || '',
+    applyCommand: report?.applyCommand || '',
+    checkCount: Number(report?.checkCount || 0),
+    failedCount: Number(report?.failedCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    safetyPolicy: report?.safetyPolicy || '',
+  }
+}

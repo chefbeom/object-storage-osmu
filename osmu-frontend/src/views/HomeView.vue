@@ -1,5 +1,5 @@
 <template>
-  <main class="shell">
+  <main :class="['shell', { 'docs-shell': activePage === 'docs' }]">
     <aside class="sidebar">
       <div class="brand-block">
         <p class="eyebrow">Private Object Storage</p>
@@ -16,12 +16,22 @@
 
       <nav class="side-nav" aria-label="Dashboard sections">
         <RouterLink
-          v-for="item in visibleNavigationItems"
+          v-for="item in visiblePrimaryNavigationItems"
           :key="item.page"
           :to="item.to"
           :class="{ active: activePage === item.page }"
         >
           {{ item.label }}
+        </RouterLink>
+      </nav>
+
+      <nav v-if="docsNavigationItem" class="side-nav sidebar-docs-nav" aria-label="Documentation">
+        <RouterLink
+          :to="docsNavigationItem.to"
+          :class="{ active: activePage === docsNavigationItem.page }"
+          data-testid="dev-docs-nav-link"
+        >
+          Dev-Docs
         </RouterLink>
       </nav>
 
@@ -32,7 +42,7 @@
       </section>
     </aside>
 
-    <section class="workspace">
+    <section :class="['workspace', { 'docs-workspace': activePage === 'docs' }]">
       <header id="overview" class="hero-panel">
         <div class="hero-copy">
           <p class="eyebrow">{{ activePageMeta.eyebrow }}</p>
@@ -129,8 +139,10 @@
         :dashboard-quota="dashboardQuota"
         :access-keys="accessKeys"
         :users="users"
+        :users-next-cursor="usersNextCursor"
         :organizations="organizations"
         :lifecycle-rules="lifecycleRules"
+        :lifecycle-rules-next-cursor="lifecycleRulesNextCursor"
         :lifecycle-rule-conflicts="lifecycleRuleConflicts"
         :runtime-readiness-label="runtimeReadinessLabel"
         :dashboard-readiness="dashboardReadiness"
@@ -223,6 +235,17 @@
         @reset-data-flow-filter="handleResetDataFlowFilter"
       />
 
+      <QuickStartPage
+        v-if="activePage === 'quick-start'"
+        :selected-bucket="selectedBucket"
+        :latest-access-key="quickStartAccessKey"
+        :new-secret-key="newSecretKey"
+        :s3-client-config="s3ClientConfig"
+        @create-bucket="handleQuickStartCreateBucket"
+        @create-access-key="handleQuickStartCreateAccessKey"
+        @open-objects="handleOpenQuickStartObjects"
+      />
+
       <StoragePage
         v-if="activePage === 'storage'"
         :buckets="buckets"
@@ -237,6 +260,8 @@
         :bucket-storage-profile="bucketStorageProfile"
         :storage-profile-form="storageProfileForm"
         :storage-profile-requests="storageProfileRequests"
+        :storage-profile-next-cursor="storageProfileHistoryNextCursor"
+        :storage-profile-requests-loading="storageProfileHistoryLoading"
         :format-date-time="formatDateTime"
         :status-class="statusClass"
         @create-bucket="handleCreateBucket"
@@ -244,7 +269,8 @@
         @sync-bucket="handleSyncBucket"
         @delete-bucket="handleDeleteBucket"
         @create-storage-profile-request="handleCreateStorageProfileRequest"
-        @refresh-bucket-storage-profile="loadBucketStorageProfile"
+        @refresh-bucket-storage-profile="loadStorageProfileDetails"
+        @load-more-storage-profile-requests="handleLoadMoreStorageProfileRequests"
       />
 
       <ObjectPage
@@ -357,8 +383,13 @@
         :can-show-bucket-permissions="canShowBucketPermissions"
         :bucket-permission-form="bucketPermissionForm"
         :users="users"
+        :users-next-cursor="usersNextCursor"
+        :users-loading="usersLoading"
         :organizations="organizations"
         :teams="teams"
+        :team-organization-filter="teamOrganizationFilter"
+        :teams-next-cursor="teamsNextCursor"
+        :teams-loading="teamsLoading"
         :team-form="teamForm"
         :bucket-permissions="bucketPermissions"
         :can-use-bucket-lifecycle="canUseBucketLifecycle"
@@ -386,20 +417,41 @@
         :quota-policy-form="quotaPolicyForm"
         :quota-policy-target-options="quotaPolicyTargetOptions"
         :quota-policies="quotaPolicies"
+        :quota-policies-next-cursor="quotaPoliciesNextCursor"
+        :quota-policies-loading="quotaPoliciesLoading"
         :quota-policy-history="quotaPolicyHistory"
         :storage-expansion-form="storageExpansionForm"
         :storage-expansion-requests="storageExpansionRequests"
+        :storage-expansion-status-filter="storageExpansionStatusFilter"
+        :storage-expansion-next-cursor="storageExpansionNextCursor"
+        :storage-expansion-requests-loading="storageExpansionRequestsLoading"
         :storage-expansion-manifest="storageExpansionManifest"
         :storage-expansion-execution-plan="storageExpansionExecutionPlan"
         :storage-expansion-git-ops-plan="storageExpansionGitOpsPlan"
         :storage-expansion-executions="storageExpansionExecutions"
+        :storage-expansion-execution-next-cursor="storageExpansionExecutionNextCursor"
+        :storage-expansion-executions-loading="storageExpansionExecutionsLoading"
         :storage-expansion-execution-form="storageExpansionExecutionForm"
         :storage-expansion-apply-evidence="storageExpansionApplyEvidence"
         :storage-expansion-runner-preflight="storageExpansionRunnerPreflight"
-        :storage-profile-requests="storageProfileRequests"
+        :storage-layout-catalog="storageLayoutCatalog"
+        :storage-layout-form="storageLayoutForm"
+        :storage-layout-plans="storageLayoutPlans"
+        :storage-layout-status-filter="storageLayoutStatusFilter"
+        :storage-layout-next-cursor="storageLayoutNextCursor"
+        :storage-layout-plans-loading="storageLayoutPlansLoading"
+        :storage-layout-simulation="storageLayoutSimulation"
+        :storage-profile-requests="adminStorageProfileRequests"
+        :storage-profile-status-filter="storageProfileStatusFilter"
+        :storage-profile-next-cursor="storageProfileNextCursor"
+        :storage-profile-requests-loading="storageProfileRequestsLoading"
         :storage-profile-admin-note="storageProfileAdminNote"
         :lifecycle-rule-form="lifecycleRuleForm"
         :lifecycle-rules="lifecycleRules"
+        :lifecycle-rule-status-filter="lifecycleRuleStatusFilter"
+        :lifecycle-rule-target-filter="lifecycleRuleTargetFilter"
+        :lifecycle-rules-next-cursor="lifecycleRulesNextCursor"
+        :lifecycle-rules-loading="lifecycleRulesLoading"
         :lifecycle-rule-preview="lifecycleRulePreview"
         :lifecycle-rule-conflicts="lifecycleRuleConflicts"
         :lifecycle-xml="lifecycleXml"
@@ -456,7 +508,10 @@
         @reset-quota-policy-form="resetQuotaPolicyForm"
         @edit-quota-policy="editQuotaPolicy"
         @delete-quota-policy="handleDeleteQuotaPolicy"
+        @load-more-quota-policies="handleLoadMoreQuotaPolicies"
         @create-storage-expansion-request="handleCreateStorageExpansionRequest"
+        @update-storage-expansion-status-filter="handleStorageExpansionStatusFilter"
+        @load-more-storage-expansion-requests="handleLoadMoreStorageExpansionRequests"
         @preview-storage-expansion-manifest="handlePreviewStorageExpansionManifest"
         @download-storage-expansion-manifest="handleDownloadStorageExpansionManifest"
         @download-storage-expansion-gitops-bundle="handleDownloadStorageExpansionGitOpsBundle"
@@ -469,11 +524,20 @@
         @run-storage-expansion-gitops-pr-execution="handleRunStorageExpansionGitOpsPrExecution"
         @record-storage-expansion-gitops-pr-execution="handleRecordStorageExpansionGitOpsPrExecution"
         @load-storage-expansion-executions="handleLoadStorageExpansionExecutions"
+        @load-more-storage-expansion-executions="handleLoadMoreStorageExpansionExecutions"
         @create-storage-expansion-execution-record="handleCreateStorageExpansionExecutionRecord"
         @apply-storage-expansion-from-execution="handleApplyStorageExpansionFromExecution"
         @update-storage-expansion-apply-evidence="storageExpansionApplyEvidence = $event"
         @refresh-storage-expansion-runner-preflight="loadStorageExpansionRunnerPreflight"
         @update-storage-expansion-status="handleUpdateStorageExpansionStatus"
+        @update-storage-layout-form="updateStorageLayoutForm"
+        @create-storage-layout-plan="handleCreateStorageLayoutPlan"
+        @update-storage-layout-status-filter="handleStorageLayoutStatusFilter"
+        @load-more-storage-layout-plans="handleLoadMoreStorageLayoutPlans"
+        @update-storage-layout-plan-status="handleUpdateStorageLayoutPlanStatus"
+        @simulate-storage-layout-plan="handleSimulateStorageLayoutPlan"
+        @update-storage-profile-status-filter="handleStorageProfileStatusFilter"
+        @load-more-storage-profile-requests="handleLoadMoreAdminStorageProfileRequests"
         @update-storage-profile-admin-note="storageProfileAdminNote = $event"
         @update-storage-profile-request-status="handleUpdateStorageProfileRequestStatus"
         @apply-storage-profile-request="handleApplyStorageProfileRequest"
@@ -482,14 +546,20 @@
         @dry-run-object-lifecycle-rule="handleDryRunObjectLifecycleRule"
         @edit-lifecycle-rule="editLifecycleRule"
         @delete-object-lifecycle-rule="handleDeleteObjectLifecycleRule"
+        @update-lifecycle-rule-status-filter="handleLifecycleRuleStatusFilter"
+        @update-lifecycle-rule-target-filter="handleLifecycleRuleTargetFilter"
+        @load-more-lifecycle-rules="handleLoadMoreLifecycleRules"
         @refresh-lifecycle-rule-conflicts="refreshLifecycleRuleConflicts"
         @export-lifecycle-xml="handleExportLifecycleXml"
         @import-lifecycle-xml="handleImportLifecycleXml"
         @create-organization="handleCreateOrganization"
         @create-team="handleCreateTeam"
         @delete-team="handleDeleteTeam"
+        @update-team-organization-filter="handleTeamOrganizationFilter"
+        @load-more-teams="handleLoadMoreTeams"
         @create-user="handleCreateUser"
         @toggle-user-status="handleToggleUserStatus"
+        @load-more-users="handleLoadMoreUsers"
       />
 
       <AuditPage
@@ -504,6 +574,8 @@
         @reset-audit-filter="handleResetAuditFilter"
         @load-next-audit-logs="handleLoadNextAuditLogs"
       />
+
+      <DevDocsPage v-if="activePage === 'docs'" />
     </section>
 
     <div
@@ -533,14 +605,8 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AdminPage from '@/components/admin/AdminPage.vue'
-import AuditPage from '@/components/audit/AuditPage.vue'
-import DashboardPage from '@/components/dashboard/DashboardPage.vue'
-import DeveloperPage from '@/components/developer/DeveloperPage.vue'
-import ObjectPage from '@/components/objects/ObjectPage.vue'
-import StoragePage from '@/components/storage/StoragePage.vue'
 import {
   MULTIPART_UPLOAD_THRESHOLD_BYTES,
   approveBillingPricingPolicyProposal,
@@ -566,6 +632,7 @@ import {
   createStorageExpansionExecutionPlan,
   createStorageExpansionGitOpsPlan,
   createStorageExpansionRequest,
+  createStorageLayoutPlan,
   createStorageProfileRequest,
   createUser,
   deleteAccessKey,
@@ -656,6 +723,8 @@ import {
   getStorageExpansionRequests,
   getStorageExpansionRunnerPreflight,
   getStorageExpansionSummary,
+  getStorageLayoutCapabilities,
+  getStorageLayoutPlans,
   getStorageProfiles,
   getStorageProfileRequests,
   getTeams,
@@ -695,6 +764,7 @@ import {
   runChargebackAdapterRetryWorker,
   runStorageExpansionGitOpsPrExecution,
   runObjectRetentionPurge,
+  simulateStorageLayoutPlan,
   saveDashboardLayoutDefault,
   saveBillingPricingPolicy,
   saveObjectLifecycleRule,
@@ -707,6 +777,7 @@ import {
   updateDashboardLayoutPreset,
   updateObjectTags,
   updateStorageExpansionRequestStatus,
+  updateStorageLayoutPlanStatus,
   updateStorageProfileRequestStatus,
   updateUserStatus,
   uploadObject,
@@ -724,6 +795,15 @@ import { buildBucketListRows, summarizeBuckets } from '@/utils/buckets'
 import { canStartUpload } from '@/utils/uploads'
 import { tagPairsToMap, tagsToInput, validateBucketTagInput, validateObjectTagInput } from '@/utils/tags'
 
+const AdminPage = defineAsyncComponent(() => import('@/components/admin/AdminPage.vue'))
+const AuditPage = defineAsyncComponent(() => import('@/components/audit/AuditPage.vue'))
+const DashboardPage = defineAsyncComponent(() => import('@/components/dashboard/DashboardPage.vue'))
+const DevDocsPage = defineAsyncComponent(() => import('@/components/docs/DevDocsPage.vue'))
+const QuickStartPage = defineAsyncComponent(() => import('@/components/quickstart/QuickStartPage.vue'))
+const DeveloperPage = defineAsyncComponent(() => import('@/components/developer/DeveloperPage.vue'))
+const ObjectPage = defineAsyncComponent(() => import('@/components/objects/ObjectPage.vue'))
+const StoragePage = defineAsyncComponent(() => import('@/components/storage/StoragePage.vue'))
+
 const BYTES_PER_GIB = 1024 * 1024 * 1024
 const objectListLimitOptions = [50, 100, 250, 500, 1000]
 const DASHBOARD_LAYOUT_SCHEMA_VERSION = 'osmu.dashboard-layout.v1'
@@ -731,17 +811,24 @@ const DASHBOARD_WIDGET_STORAGE_KEY = 'osmu.dashboard.widgets.v1'
 const DASHBOARD_SECTION_STORAGE_KEY = 'osmu.dashboard.sections.v1'
 const navigationItems = [
   { page: 'dashboard', to: '/dashboard', label: 'Dashboard', roles: ['ADMIN', 'ORG_ADMIN', 'AUDITOR', 'USER'] },
+  { page: 'quick-start', to: '/quick-start', label: 'Quick Start', roles: ['ADMIN', 'ORG_ADMIN', 'USER'] },
   { page: 'storage', to: '/storage', label: 'Storage', roles: ['ADMIN', 'ORG_ADMIN', 'USER'] },
   { page: 'objects', to: '/objects', label: 'Objects', roles: ['ADMIN', 'ORG_ADMIN', 'USER'] },
   { page: 'developer', to: '/developer', label: 'Developer', roles: ['ADMIN', 'ORG_ADMIN', 'USER'] },
   { page: 'admin', to: '/admin', label: 'Admin', roles: ['ADMIN', 'ORG_ADMIN'] },
   { page: 'audit', to: '/audit', label: 'Audit', roles: ['ADMIN', 'AUDITOR'] },
+  { page: 'docs', to: '/dev-docs', label: 'Dev-Docs', roles: ['ADMIN', 'ORG_ADMIN', 'AUDITOR', 'USER'] },
 ]
 const pageMeta = {
   dashboard: {
     eyebrow: 'Operations Dashboard',
     title: '필요한 운영 패널만 골라 보는 대시보드입니다.',
     description: '용량, 상태, 입출력, 요청 현황 같은 팔레트를 추가하고 순서를 바꿔 운영 관점을 직접 구성합니다.',
+  },
+  'quick-start': {
+    eyebrow: 'Quick Start',
+    title: 'Create storage, issue an Access Key, and connect your first client.',
+    description: 'A focused path for creating a bucket, issuing credentials, and copying a connection example.',
   },
   storage: {
     eyebrow: 'Storage',
@@ -767,6 +854,11 @@ const pageMeta = {
     eyebrow: 'Audit',
     title: '요청과 변경 이력을 추적합니다.',
     description: '이벤트 유형, 행위자, 대상, 결과, 요청 ID 기준으로 감사 로그를 조회하고 CSV로 내보냅니다.',
+  },
+  docs: {
+    eyebrow: 'Dev-Docs',
+    title: 'OSMU를 처음부터 안전하게 사용하는 방법',
+    description: '역할별 사용 절차, 운영 원칙, API 예제와 AI 작업 계약을 한곳에서 확인합니다.',
   },
 }
 const defaultDashboardWidgetCatalog = [
@@ -1831,6 +1923,7 @@ const dashboardReadiness = reactive({
   },
   generatedAt: '',
 })
+const dashboardReadinessInitialState = JSON.stringify(dashboardReadiness)
 const dataFlowRetention = reactive(defaultDataFlowRetention())
 const dataFlowStorageStatus = reactive(defaultDataFlowStorageStatus())
 const retentionPolicy = reactive({
@@ -1902,6 +1995,14 @@ const organizationForm = reactive({ name: '', description: '', defaultQuotaTb: 1
 const teamForm = reactive({ organizationId: '', name: '', description: '', memberIds: [] })
 const quotaPolicyForm = reactive({ targetType: 'USER', targetId: '', targetSearch: '', quotaGb: 100, reason: '', editingKey: '' })
 const storageExpansionForm = reactive({ capacityGb: 1024, serverCount: 4, volumesPerServer: 1, reason: '' })
+const storageLayoutForm = reactive({
+  layoutCode: 'RAID6',
+  storageClassName: 'osmu-storage',
+  serverCount: 4,
+  volumesPerServer: 1,
+  volumeSizeGiB: 1024,
+  reason: '',
+})
 const storageProfileForm = reactive({ requestedProfile: 'STANDARD', reason: '' })
 const storageProfileAdminNote = ref('')
 const storageExpansionExecutionForm = reactive({
@@ -2015,6 +2116,9 @@ const objects = ref([])
 const accessKeys = ref([])
 const bucketPermissions = ref([])
 const users = ref([])
+const usersNextCursor = ref('')
+const usersLoading = ref(false)
+let userLoadSequence = 0
 const organizations = ref([])
 const organizationUsages = ref([])
 const chargebackPreview = ref(defaultChargebackPreview())
@@ -2030,16 +2134,46 @@ const chargebackAdapterRetryWorker = ref(defaultChargebackAdapterRetryWorker())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const billingPricingPolicyProposals = ref(defaultBillingPricingPolicyProposals())
 const teams = ref([])
+const teamOrganizationFilter = ref('')
+const teamsNextCursor = ref('')
+const teamsLoading = ref(false)
+let teamLoadSequence = 0
 const quotaPolicies = ref([])
+const quotaPoliciesNextCursor = ref('')
+const quotaPoliciesLoading = ref(false)
+let quotaPolicyLoadSequence = 0
 const quotaPolicyHistory = ref([])
 const storageExpansionRequests = ref([])
+const storageExpansionStatusFilter = ref('OPEN')
+const storageExpansionNextCursor = ref('')
+const storageExpansionRequestsLoading = ref(false)
+let storageExpansionRequestLoadSequence = 0
+const storageLayoutCatalog = ref([])
+const storageLayoutPlans = ref([])
+const storageLayoutStatusFilter = ref('OPEN')
+const storageLayoutNextCursor = ref('')
+const storageLayoutPlansLoading = ref(false)
+const storageLayoutSimulation = ref(null)
+let storageLayoutPlanLoadSequence = 0
 const storageProfiles = ref([])
 const storageProfileRequests = ref([])
+const storageProfileHistoryNextCursor = ref('')
+const storageProfileHistoryLoading = ref(false)
+let storageProfileHistoryLoadSequence = 0
+const adminStorageProfileRequests = ref([])
+const storageProfileStatusFilter = ref('OPEN')
+const storageProfileNextCursor = ref('')
+const storageProfileRequestsLoading = ref(false)
+let storageProfileRequestLoadSequence = 0
 const bucketStorageProfile = ref(null)
 const storageExpansionManifest = ref(null)
 const storageExpansionExecutionPlan = ref(null)
 const storageExpansionGitOpsPlan = ref(null)
 const storageExpansionExecutions = ref([])
+const storageExpansionExecutionHistoryRequest = ref(null)
+const storageExpansionExecutionNextCursor = ref('')
+const storageExpansionExecutionsLoading = ref(false)
+let storageExpansionExecutionLoadSequence = 0
 const storageExpansionApplyEvidence = ref('')
 const storageExpansionSummary = reactive({
   requestCount: 0,
@@ -2078,8 +2212,14 @@ const s3ClientConfig = reactive({
   virtualHostedStyleDomainSuffixes: [],
 })
 const lifecycleRules = ref([])
+const lifecycleRuleStatusFilter = ref('ALL')
+const lifecycleRuleTargetFilter = ref('ALL')
+const lifecycleRulesNextCursor = ref('')
+const lifecycleRulesLoading = ref(false)
+let lifecycleRuleLoadSequence = 0
 const auditLogs = ref([])
 const auditNextCursor = ref('')
+const quickStartAccessKey = ref('')
 const selectedBucket = ref('')
 const errorMessage = ref('')
 const errorRequestId = ref('')
@@ -2210,6 +2350,10 @@ const adminActionRemediation = computed(() => {
   }
 })
 const visibleNavigationItems = computed(() => navigationItems.filter(canAccessNavigationItem))
+const visiblePrimaryNavigationItems = computed(() => (
+  visibleNavigationItems.value.filter((item) => item.page !== 'docs')
+))
+const docsNavigationItem = computed(() => visibleNavigationItems.value.find((item) => item.page === 'docs') || null)
 const statusItems = computed(() => [
   { label: 'Backend', value: health.backend },
   { label: 'Storage', value: health.storage },
@@ -3001,11 +3145,19 @@ watch(dashboardAutoRefreshIntervalMs, (intervalMs) => {
   restartDashboardAutoRefresh(intervalMs)
 }, { immediate: true })
 
+watch(activePage, async (page, previousPage) => {
+  if (!isLoggedIn.value || page === previousPage) return
+  await loadDashboard({ page })
+})
+
 onMounted(async () => {
   stopAuthSync = auth.startAuthSync(handleSessionExpired)
   refreshPendingMultipartUploads()
   if (isLoggedIn.value || await auth.restoreSession()) {
     await loadDashboard()
+    if (route.query.notice === 'admin-role-required') {
+      setStatusMessage('Your account does not have admin access. Opened the developer console instead.')
+    }
     return
   }
   await loadHealth()
@@ -3065,6 +3217,15 @@ async function loadHealth() {
 
 async function loadDashboard(options = {}) {
   const background = options?.background === true
+  const page = options?.page || activePage.value
+  const isDashboardPage = page === 'dashboard'
+  const isStoragePage = page === 'storage'
+  const isObjectPage = page === 'objects'
+  const isDeveloperPage = page === 'developer'
+  const isAdminPage = page === 'admin'
+  const isAuditPage = page === 'audit'
+  const needsBuckets = !isAuditPage
+  const needsAccessKeys = isDashboardPage || isDeveloperPage || isAdminPage
   if (!background) {
     clearError()
     dashboardLoadState.loading = true
@@ -3072,25 +3233,41 @@ async function loadDashboard(options = {}) {
   }
   refreshPendingMultipartUploads()
   try {
-    await loadDashboardWidgetCatalog()
-    await Promise.all([loadDashboardLayout(), loadDashboardLayoutPresets(), loadDashboardLayoutDefaults()])
-    const dashboardSummaryLoaded = canUseAuditTools.value ? await loadDashboardSummary() : false
+    if (isDashboardPage) {
+      await loadDashboardWidgetCatalog()
+      await Promise.all([loadDashboardLayout(), loadDashboardLayoutPresets(), loadDashboardLayoutDefaults()])
+    }
+    const dashboardSummaryLoaded = canUseAuditTools.value && isDashboardPage
+      ? await loadDashboardSummary()
+      : false
     if (!dashboardSummaryLoaded) {
       await loadHealth()
     }
-    await loadStorageBackendStatus()
+    if (isDashboardPage) {
+      await loadStorageBackendStatus()
+    }
 
     const [bucketResult, keyResult] = await Promise.all([
-      safeRequest(() => getBuckets(), { items: [] }),
-      safeRequest(() => getAccessKeys(), { items: [] }),
+      needsBuckets ? safeRequest(() => getBuckets(), { items: [] }) : null,
+      needsAccessKeys ? safeRequest(() => getAccessKeys(), { items: [] }) : null,
     ])
 
-    buckets.value = bucketResult.items || []
-    accessKeys.value = keyResult.items || []
-    await Promise.all([loadStorageProfiles(), loadStorageProfileRequests()])
-    await loadS3ClientConfig()
-    syncAccessKeyBucketSelection()
-    if (!dashboardSummaryLoaded) {
+    if (bucketResult) {
+      buckets.value = bucketResult.items || []
+    }
+    if (keyResult) {
+      accessKeys.value = keyResult.items || []
+      syncAccessKeyBucketSelection()
+    }
+    if (isStoragePage) {
+      await loadStorageProfiles()
+    } else if (isAdminPage) {
+      await loadAdminStorageProfileRequests()
+    }
+    if (isDeveloperPage) {
+      await loadS3ClientConfig()
+    }
+    if (bucketResult && !dashboardSummaryLoaded) {
       Object.assign(usage, summarizeBuckets(buckets.value))
     }
 
@@ -3099,24 +3276,34 @@ async function loadDashboard(options = {}) {
     }
 
     if (canUseAdminTools.value) {
-      const [userResult, organizationResult, organizationUsageResult, teamResult] = await Promise.all([
-        safeRequest(() => getUsers(), { items: [] }),
-        safeRequest(() => getOrganizations(), { items: [] }),
-        safeRequest(() => getOrganizationUsage(), { items: [] }),
-        safeRequest(() => getTeams(), { items: [] }),
+      const needsUsers = isDashboardPage || isAdminPage
+      const needsOrganizations = isDashboardPage || isStoragePage || isAdminPage
+      const needsOrganizationUsage = isAdminPage
+      const needsTeams = isAdminPage
+      const [, organizationResult, organizationUsageResult] = await Promise.all([
+        needsUsers ? loadUsers() : Promise.resolve(),
+        needsOrganizations ? safeRequest(() => getOrganizations(), { items: [] }) : Promise.resolve(null),
+        needsOrganizationUsage ? safeRequest(() => getOrganizationUsage(), { items: [] }) : Promise.resolve(null),
+        needsTeams ? loadTeams() : Promise.resolve(),
       ])
-      users.value = userResult.items || []
-      organizations.value = organizationResult.items || []
-      organizationUsages.value = organizationUsageResult.items || []
-      teams.value = teamResult.items || []
-      syncTeamFormDefaults()
-      await loadBillingPricingPolicy()
-      await loadChargebackPanel()
+      if (organizationResult) organizations.value = organizationResult.items || []
+      if (organizationUsageResult) organizationUsages.value = organizationUsageResult.items || []
+      if (needsTeams) syncTeamFormDefaults()
+      if (isAdminPage) {
+        await Promise.all([loadBillingPricingPolicy(), loadChargebackPanel()])
+      }
     } else {
       users.value = []
+      usersNextCursor.value = ''
+      usersLoading.value = false
+      userLoadSequence += 1
       organizations.value = []
       organizationUsages.value = []
       teams.value = []
+      teamOrganizationFilter.value = ''
+      teamsNextCursor.value = ''
+      teamsLoading.value = false
+      teamLoadSequence += 1
       resetBillingPricingPolicy()
       resetChargebackPreview()
       resetChargebackAlerts()
@@ -3129,7 +3316,7 @@ async function loadDashboard(options = {}) {
       resetChargebackAdapterRetryWorker()
     }
 
-    if (isAdmin.value) {
+    if (isAdmin.value && isDashboardPage) {
       await Promise.all([
         dashboardSummaryLoaded ? Promise.resolve() : loadAdminUsage(),
         dashboardSummaryLoaded ? Promise.resolve() : loadBackupStatus(),
@@ -3138,25 +3325,39 @@ async function loadDashboard(options = {}) {
         loadDataFlowStorageStatus(),
         loadDataFlowRetention(),
         loadStorageExpansionExecutionLogRetentionStatus(),
+        refreshLifecycleRules({ status: 'ALL', targetType: 'ALL' }),
+        refreshLifecycleRuleConflicts(),
+        loadStorageExpansionRequests(),
+        loadStorageLayouts(),
+        loadStorageExpansionSummary(),
+        dashboardSummaryLoaded ? Promise.resolve() : refreshObjectShareAnalytics(),
+        dashboardSummaryLoaded ? Promise.resolve() : handleLoadAuditLogs(),
+      ])
+    } else if (isAdmin.value && isAdminPage) {
+      await Promise.all([
         refreshLifecycleRules(),
         refreshLifecycleRuleConflicts(),
         loadQuotaPolicies(),
-        loadStorageProfileRequests(),
         loadStorageExpansionRequests(),
+        loadStorageLayouts(),
         loadStorageExpansionSummary(),
         loadStorageExpansionRunnerPreflight(),
         loadObjectSharePolicy(),
         loadEnterpriseAuthPlan(),
-        dashboardSummaryLoaded ? Promise.resolve() : refreshObjectShareAnalytics(),
-        dashboardSummaryLoaded ? Promise.resolve() : handleLoadAuditLogs(),
+        refreshObjectShareAnalytics(),
+        handleLoadAuditLogs(),
       ])
     } else if (!isAuditor.value) {
       resetAdminOnlyState()
     }
 
+    if (isAuditPage && canUseAuditTools.value) {
+      await handleLoadAuditLogs()
+    }
+
     if (selectedBucket.value) {
-      await loadSelectedBucketDetails()
-    } else {
+      await loadSelectedBucketDetails(page)
+    } else if (isObjectPage || isDashboardPage) {
       objects.value = []
       objectPrefixes.value = []
     }
@@ -3192,10 +3393,94 @@ async function loadStorageProfiles() {
   }
 }
 
-async function loadStorageProfileRequests() {
-  const loader = isAdmin.value ? getAdminStorageProfileRequests : getStorageProfileRequests
-  const result = await safeRequest(() => loader(), { items: [] })
-  storageProfileRequests.value = result.items || []
+async function loadStorageProfileRequests(options = {}) {
+  const append = options.append === true
+  const bucketName = selectedBucket.value
+  if (!bucketName) {
+    storageProfileRequests.value = []
+    storageProfileHistoryNextCursor.value = ''
+    return
+  }
+  const cursor = append ? storageProfileHistoryNextCursor.value : ''
+  if (append && (!cursor || storageProfileHistoryLoading.value)) return
+
+  const loadSequence = ++storageProfileHistoryLoadSequence
+  storageProfileHistoryLoading.value = true
+  try {
+    const fallback = append
+      ? { items: [], nextCursor: storageProfileHistoryNextCursor.value }
+      : { items: [], nextCursor: null }
+    const result = await safeRequest(() => getStorageProfileRequests({
+      bucketName,
+      cursor,
+      limit: 5,
+    }), fallback)
+    if (loadSequence !== storageProfileHistoryLoadSequence
+      || selectedBucket.value !== bucketName
+      || activePage.value !== 'storage') return
+    if (append) {
+      const existingIds = new Set(storageProfileRequests.value.map((request) => request.id))
+      storageProfileRequests.value = [
+        ...storageProfileRequests.value,
+        ...(result.items || []).filter((request) => !existingIds.has(request.id)),
+      ]
+    } else {
+      storageProfileRequests.value = result.items || []
+    }
+    storageProfileHistoryNextCursor.value = result.nextCursor || ''
+  } finally {
+    if (loadSequence === storageProfileHistoryLoadSequence) {
+      storageProfileHistoryLoading.value = false
+    }
+  }
+}
+
+async function loadAdminStorageProfileRequests(options = {}) {
+  const append = options.append === true
+  const cursor = append ? storageProfileNextCursor.value : ''
+  if (append && (!cursor || storageProfileRequestsLoading.value)) return
+
+  const loadSequence = ++storageProfileRequestLoadSequence
+  storageProfileRequestsLoading.value = true
+  try {
+    const fallback = append
+      ? { items: [], nextCursor: storageProfileNextCursor.value }
+      : { items: [], nextCursor: null }
+    const result = await safeRequest(() => getAdminStorageProfileRequests({
+      status: storageProfileStatusFilter.value,
+      cursor,
+      limit: 50,
+    }), fallback)
+    if (loadSequence !== storageProfileRequestLoadSequence) return
+    if (append) {
+      const existingIds = new Set(adminStorageProfileRequests.value.map((request) => request.id))
+      adminStorageProfileRequests.value = [
+        ...adminStorageProfileRequests.value,
+        ...(result.items || []).filter((request) => !existingIds.has(request.id)),
+      ]
+    } else {
+      adminStorageProfileRequests.value = result.items || []
+    }
+    storageProfileNextCursor.value = result.nextCursor || ''
+  } finally {
+    if (loadSequence === storageProfileRequestLoadSequence) {
+      storageProfileRequestsLoading.value = false
+    }
+  }
+}
+
+async function handleStorageProfileStatusFilter(status) {
+  const allowedStatuses = ['OPEN', 'ALL', 'PENDING', 'APPROVED', 'APPLIED', 'REJECTED']
+  storageProfileStatusFilter.value = allowedStatuses.includes(status) ? status : 'OPEN'
+  await loadAdminStorageProfileRequests()
+}
+
+async function handleLoadMoreAdminStorageProfileRequests() {
+  await loadAdminStorageProfileRequests({ append: true })
+}
+
+async function handleLoadMoreStorageProfileRequests() {
+  await loadStorageProfileRequests({ append: true })
 }
 
 async function loadDashboardSummary() {
@@ -3222,7 +3507,7 @@ async function loadDashboardSummary() {
     applyDashboardQuotaSummary(result.data.quota)
   }
   if (result.data.readiness) {
-    applyDashboardReadiness(result.data.readiness)
+    await applyDashboardReadiness(result.data.readiness)
   }
   if (result.data.dataFlow) {
     applyDataFlowMonitoring(result.data.dataFlow)
@@ -3833,7 +4118,7 @@ async function loadS3ClientConfig() {
 async function handleRefreshDashboardReadiness() {
   const result = await runAction(() => getDashboardReadiness())
   if (result?.data) {
-    applyDashboardReadiness(result.data)
+    await applyDashboardReadiness(result.data)
     setStatusMessage('Readiness 새로고침 완료')
   }
 }
@@ -3898,6 +4183,10 @@ function resetSessionData() {
   accessKeys.value = []
   storageProfiles.value = []
   storageProfileRequests.value = []
+  storageProfileHistoryNextCursor.value = ''
+  storageProfileHistoryLoading.value = false
+  storageProfileHistoryLoadSequence += 1
+  adminStorageProfileRequests.value = []
   bucketStorageProfile.value = null
   storageProfileForm.requestedProfile = 'STANDARD'
   storageProfileForm.reason = ''
@@ -3934,18 +4223,55 @@ function resetSessionData() {
 }
 
 function resetAdminOnlyState() {
+  users.value = []
+  usersNextCursor.value = ''
+  usersLoading.value = false
+  userLoadSequence += 1
+  teams.value = []
+  teamOrganizationFilter.value = ''
+  teamsNextCursor.value = ''
+  teamsLoading.value = false
+  teamLoadSequence += 1
   auditLogs.value = []
   auditNextCursor.value = ''
   quotaPolicies.value = []
+  quotaPoliciesNextCursor.value = ''
+  quotaPoliciesLoading.value = false
+  quotaPolicyLoadSequence += 1
   quotaPolicyHistory.value = []
   storageExpansionRequests.value = []
+  storageExpansionStatusFilter.value = 'OPEN'
+  storageExpansionNextCursor.value = ''
+  storageExpansionRequestsLoading.value = false
+  storageExpansionRequestLoadSequence += 1
+  storageLayoutCatalog.value = []
+  storageLayoutPlans.value = []
+  storageLayoutStatusFilter.value = 'OPEN'
+  storageLayoutNextCursor.value = ''
+  storageLayoutPlansLoading.value = false
+  storageLayoutSimulation.value = null
+  storageLayoutPlanLoadSequence += 1
+  adminStorageProfileRequests.value = []
+  storageProfileStatusFilter.value = 'OPEN'
+  storageProfileNextCursor.value = ''
+  storageProfileRequestsLoading.value = false
+  storageProfileRequestLoadSequence += 1
   storageExpansionManifest.value = null
   storageExpansionExecutionPlan.value = null
   storageExpansionGitOpsPlan.value = null
   storageExpansionExecutions.value = []
+  storageExpansionExecutionHistoryRequest.value = null
+  storageExpansionExecutionNextCursor.value = ''
+  storageExpansionExecutionsLoading.value = false
+  storageExpansionExecutionLoadSequence += 1
   storageExpansionApplyEvidence.value = ''
   resetStorageExpansionExecutionForm()
   lifecycleRules.value = []
+  lifecycleRuleStatusFilter.value = 'ALL'
+  lifecycleRuleTargetFilter.value = 'ALL'
+  lifecycleRulesNextCursor.value = ''
+  lifecycleRulesLoading.value = false
+  lifecycleRuleLoadSequence += 1
   resetBackupStatus()
   resetRetentionPolicy()
   resetStorageExpansionExecutionLogRetention()
@@ -3992,6 +4318,48 @@ function resetUploadRuntime() {
   uploadState.message = ''
   uploadState.retryable = false
   lastUploadRequest.value = null
+}
+
+async function handleQuickStartCreateBucket({ name, quotaGb }) {
+  const bucketName = String(name || '').trim()
+  if (!bucketName) {
+    setErrorMessage('?? ??? ???? ???.')
+    return
+  }
+  const result = await runAction(() => createBucket({
+    name: bucketName,
+    quotaBytes: Number(quotaGb || 1) * BYTES_PER_GIB,
+  }))
+  if (!result?.data) return
+  selectedBucket.value = result.data.name
+  quickStartAccessKey.value = ''
+  newSecretKey.value = ''
+  await loadDashboard()
+  setStatusMessage(`${result.data.name} ??? ?? ??`)
+}
+
+async function handleQuickStartCreateAccessKey({ name, permissions }) {
+  if (!selectedBucket.value) {
+    setErrorMessage('?? ???? ???? ???.')
+    return
+  }
+  const result = await runAction(() => createAccessKey({
+    name: String(name || '').trim() || 'my-app-key',
+    bucketScopes: [{ bucketName: selectedBucket.value, permissions: Array.isArray(permissions) ? permissions : ['READ', 'WRITE'] }],
+    expiresAt: null,
+  }))
+  if (!result?.data) return
+  quickStartAccessKey.value = result.data.accessKey || ''
+  newSecretKey.value = result.data.secretKey || ''
+  await loadDashboard()
+  setStatusMessage(`${result.data.name || 'Access Key'} ?? ??`)
+}
+
+async function handleOpenQuickStartObjects() {
+  if (!selectedBucket.value) return
+  await router.push('/objects')
+  await nextTick()
+  await loadObjects()
 }
 
 async function handleCreateBucket() {
@@ -4069,20 +4437,32 @@ function resetSelectedBucketState() {
   resetBucketLifecycleXml()
   resetBucketTags()
   bucketStorageProfile.value = null
+  storageProfileRequests.value = []
+  storageProfileHistoryNextCursor.value = ''
+  storageProfileHistoryLoading.value = false
+  storageProfileHistoryLoadSequence += 1
   presignedUrl.value = ''
   shareLinkUrl.value = ''
   shareLinkPassword.value = ''
   shareLinkAllowedIpCidrs.value = ''
 }
 
-async function loadSelectedBucketDetails() {
-  await Promise.all([
-    loadObjects(),
-    loadBucketPermissions(),
-    loadBucketLifecycleXml(),
-    loadBucketTags(),
-    loadBucketStorageProfile(),
-  ])
+async function loadSelectedBucketDetails(page = activePage.value) {
+  if (page === 'dashboard' || page === 'objects') {
+    await loadObjects()
+    return
+  }
+  if (page === 'storage') {
+    await loadStorageProfileDetails()
+    return
+  }
+  if (page === 'admin') {
+    await Promise.all([
+      loadBucketPermissions(),
+      loadBucketLifecycleXml(),
+      loadBucketTags(),
+    ])
+  }
 }
 
 async function loadBucketStorageProfile() {
@@ -4094,6 +4474,10 @@ async function loadBucketStorageProfile() {
   bucketStorageProfile.value = result?.data || null
 }
 
+async function loadStorageProfileDetails() {
+  await Promise.all([loadBucketStorageProfile(), loadStorageProfileRequests()])
+}
+
 async function handleCreateStorageProfileRequest() {
   if (!selectedBucket.value || !storageProfileForm.requestedProfile) return
   const result = await runAction(() => createStorageProfileRequest(selectedBucket.value, {
@@ -4102,7 +4486,7 @@ async function handleCreateStorageProfileRequest() {
   }))
   if (!result?.data) return
   storageProfileForm.reason = ''
-  await Promise.all([loadStorageProfileRequests(), loadBucketStorageProfile()])
+  await loadStorageProfileDetails()
   setStatusMessage(`Storage profile requested: ${result.data.requestedProfile?.name || result.data.requestedProfile?.code}`)
 }
 
@@ -4115,15 +4499,16 @@ async function handleUpdateStorageProfileRequestStatus(payload) {
   ))
   if (!result?.data) return
   storageProfileAdminNote.value = ''
-  await Promise.all([loadStorageProfileRequests(), loadBucketStorageProfile()])
+  await Promise.all([loadAdminStorageProfileRequests(), loadBucketStorageProfile()])
   setStatusMessage(`Storage profile request ${result.data.status}: ${result.data.bucketName}`)
 }
 
-async function handleApplyStorageProfileRequest(request) {
+async function handleApplyStorageProfileRequest(payload) {
+  const request = payload?.request
   if (!request?.id) return
-  const result = await runAction(() => applyStorageProfileRequest(request.id))
+  const result = await runAction(() => applyStorageProfileRequest(request.id, payload.storageLayoutPlanId))
   if (!result?.data) return
-  await Promise.all([loadStorageProfileRequests(), loadBucketStorageProfile()])
+  await Promise.all([loadAdminStorageProfileRequests(), loadBucketStorageProfile()])
   setStatusMessage(`Storage profile applied: ${result.data.bucketName} ${result.data.requestedProfile?.code}`)
 }
 
@@ -5789,51 +6174,23 @@ function resetChargebackAdapterRetryWorker() {
   applyChargebackAdapterRetryWorker({})
 }
 
-function applyDashboardReadiness(data) {
-  Object.assign(dashboardReadiness, {
-    status: data.status || 'UNKNOWN',
-    runtimeProfile: data.runtimeProfile || '-',
-    blockerCount: Number(data.blockerCount || 0),
-    warningCount: Number(data.warningCount || 0),
-    blockers: Array.isArray(data.blockers) ? data.blockers : [],
-    warnings: Array.isArray(data.warnings) ? data.warnings : [],
-    severitySummaries: Array.isArray(data.severitySummaries) ? data.severitySummaries : [],
-    categorySummaries: Array.isArray(data.categorySummaries) ? data.categorySummaries : [],
-    items: Array.isArray(data.items) ? data.items : [],
-    operationsReadinessSummary: normalizeOperationsReadinessSummary(data.operationsReadinessSummary),
-    operationsEvidencePlan: normalizeOperationsEvidencePlan(data.operationsEvidencePlan),
-    operationsEvidenceInvocation: normalizeOperationsEvidenceInvocation(data.operationsEvidenceInvocation),
-    operationsInvocationUnblockPlan: normalizeOperationsInvocationUnblockPlan(data.operationsInvocationUnblockPlan),
-    operationsDispatchPreflight: normalizeOperationsDispatchPreflight(data.operationsDispatchPreflight),
-    operationsWorkflowRunIdPlan: normalizeOperationsWorkflowRunIdPlan(data.operationsWorkflowRunIdPlan),
-    operationsArtifactCollectionPlan: normalizeOperationsArtifactCollectionPlan(data.operationsArtifactCollectionPlan),
-    operationsReadinessArtifactImport: normalizeOperationsReadinessArtifactImport(data.operationsReadinessArtifactImport),
-    operationsReadinessFinalize: normalizeOperationsReadinessFinalize(data.operationsReadinessFinalize),
-    operationsHandoffPackage: normalizeOperationsHandoffPackage(data.operationsHandoffPackage),
-    storageExpansionFinalize: normalizeStorageExpansionFinalize(data.storageExpansionFinalize),
-    kubernetesHaDrReadiness: normalizeKubernetesHaDrReadiness(data.kubernetesHaDrReadiness),
-    kubernetesDrFinalize: normalizeKubernetesDrFinalize(data.kubernetesDrFinalize),
-    iamRbacEvidence: normalizeIamRbacEvidence(data.iamRbacEvidence),
-    securityEvidence: normalizeSecurityEvidence(data.securityEvidence),
-    secretRotationEvidence: normalizeSecretRotationEvidence(data.secretRotationEvidence),
-    commercialIntegrationEvidence: normalizeCommercialIntegrationEvidence(data.commercialIntegrationEvidence),
-    commercialApprovalEvidence: normalizeCommercialApprovalEvidence(data.commercialApprovalEvidence),
-    enterpriseAuthSmokeEvidence: normalizeEnterpriseAuthSmokeEvidence(data.enterpriseAuthSmokeEvidence),
-    enterpriseAuthJitRollbackEvidence: normalizeEnterpriseAuthJitRollbackEvidence(data.enterpriseAuthJitRollbackEvidence),
-    dataFlowStoragePlan: normalizeDataFlowStoragePlan(data.dataFlowStoragePlan),
-    dataFlowQueryRetentionBudget: normalizeDataFlowQueryRetentionBudget(data.dataFlowQueryRetentionBudget),
-    dataFlowStorageTransitionRunbook: normalizeDataFlowStorageTransitionRunbook(data.dataFlowStorageTransitionRunbook),
-    storageBackendTelemetryEvidence: normalizeStorageBackendTelemetryEvidence(data.storageBackendTelemetryEvidence),
-    monitoringThresholdEvidence: normalizeMonitoringThresholdEvidence(data.monitoringThresholdEvidence),
-    clusterNetworkAccessReviewEvidence: normalizeHardeningEvidence(data.clusterNetworkAccessReviewEvidence),
-    helmValuesHardeningEvidence: normalizeHardeningEvidence(data.helmValuesHardeningEvidence),
-    supportEscalationHandoffEvidence: normalizeSupportEscalationHandoffEvidence(data.supportEscalationHandoffEvidence),
-    minioBucketCorsVerification: normalizeMinioBucketCorsVerification(data.minioBucketCorsVerification),
-    operationsEvidenceHandoff: normalizeOperationsEvidenceHandoff(data.operationsEvidenceHandoff),
-    operationsReadinessConvergence: normalizeOperationsReadinessConvergence(data.operationsReadinessConvergence),
-    kubernetesOperationsReportSync: normalizeKubernetesOperationsReportSync(data.kubernetesOperationsReportSync),
-    generatedAt: data.generatedAt || '',
-  })
+let dashboardReadinessNormalizerPromise = null
+let dashboardReadinessApplyVersion = 0
+
+function loadDashboardReadinessNormalizer() {
+  if (!dashboardReadinessNormalizerPromise) {
+    dashboardReadinessNormalizerPromise = import('@/utils/dashboardReadiness')
+  }
+  return dashboardReadinessNormalizerPromise
+}
+
+async function applyDashboardReadiness(data) {
+  const applyVersion = dashboardReadinessApplyVersion
+  const { normalizeDashboardReadiness } = await loadDashboardReadinessNormalizer()
+  if (applyVersion !== dashboardReadinessApplyVersion) {
+    return
+  }
+  Object.assign(dashboardReadiness, normalizeDashboardReadiness(data))
   if (readinessCategoryFilter.value !== 'ALL' && !dashboardReadiness.categorySummaries.some((summary) => summary.category === readinessCategoryFilter.value)) {
     readinessCategoryFilter.value = 'ALL'
   }
@@ -5843,1171 +6200,199 @@ function applyDashboardReadiness(data) {
 }
 
 function resetDashboardReadiness() {
-  applyDashboardReadiness({})
+  dashboardReadinessApplyVersion += 1
+  Object.assign(dashboardReadiness, JSON.parse(dashboardReadinessInitialState))
+  readinessCategoryFilter.value = 'ALL'
+  readinessSeverityFilter.value = 'ALL'
 }
 
-function normalizeOperationsEvidencePlanSummary(summary = {}) {
-  return {
-    totalActions: Number(summary?.totalActions || 0),
-    kubernetesLiveActions: Number(summary?.kubernetesLiveActions || 0),
-    securityCiActions: Number(summary?.securityCiActions || 0),
-    operatorRemediationActions: Number(summary?.operatorRemediationActions || 0),
-    requiresOperatorApprovalCount: Number(summary?.requiresOperatorApprovalCount || 0),
-    requiresKubeconfigSecretCount: Number(summary?.requiresKubeconfigSecretCount || 0),
-    actionsWithPlaceholdersCount: Number(summary?.actionsWithPlaceholdersCount || 0),
-    unplannedCheckCount: Number(summary?.unplannedCheckCount || 0),
+async function loadQuotaPolicies(options = {}) {
+  const append = options.append === true
+  const cursor = append ? quotaPoliciesNextCursor.value : ''
+  if (append && (!cursor || quotaPoliciesLoading.value)) return
+
+  const loadSequence = ++quotaPolicyLoadSequence
+  quotaPoliciesLoading.value = true
+  try {
+    const policyFallback = append
+      ? { items: [], nextCursor: quotaPoliciesNextCursor.value }
+      : { items: [], nextCursor: null }
+    const historyRequest = append
+      ? Promise.resolve({ items: quotaPolicyHistory.value })
+      : safeRequest(() => getQuotaPolicyHistory(50), { items: [] })
+    const [policyResult, historyResult] = await Promise.all([
+      safeRequest(() => getQuotaPolicies({ cursor, limit: 50 }), policyFallback),
+      historyRequest,
+    ])
+    if (loadSequence !== quotaPolicyLoadSequence) return
+    if (append) {
+      const existingKeys = new Set(quotaPolicies.value.map((policy) => String(policy.targetType) + '-' + String(policy.targetId)))
+      quotaPolicies.value = [
+        ...quotaPolicies.value,
+        ...(policyResult.items || []).filter((policy) => !existingKeys.has(String(policy.targetType) + '-' + String(policy.targetId))),
+      ]
+    } else {
+      quotaPolicies.value = policyResult.items || []
+      quotaPolicyHistory.value = historyResult.items || []
+    }
+    quotaPoliciesNextCursor.value = policyResult.nextCursor || ''
+  } finally {
+    if (loadSequence === quotaPolicyLoadSequence) {
+      quotaPoliciesLoading.value = false
+    }
   }
 }
 
-function normalizeOperationsEvidencePlanCategoryCounts(counts = []) {
-  if (!Array.isArray(counts)) {
-    return []
-  }
-  return counts
-    .map((item) => ({
-      category: item?.category || '',
-      count: Number(item?.count || 0),
-    }))
-    .filter((item) => item.category)
+async function handleLoadMoreQuotaPolicies() {
+  await loadQuotaPolicies({ append: true })
 }
 
-function normalizeOperationsReadinessRemediations(remediations = []) {
-  if (!Array.isArray(remediations)) return []
-  return remediations.map((item) => ({
-    name: item?.name || '',
-    category: item?.category || '',
-    evidencePath: item?.evidencePath || '',
-    requiredEvidence: item?.requiredEvidence || '',
-    detail: item?.detail || '',
-    command: item?.command || '',
-    workflow: item?.workflow || '',
-    workflowCommand: item?.workflowCommand || '',
-    note: item?.note || '',
+async function loadStorageLayouts(options = {}) {
+  const append = options.append === true
+  const cursor = append ? storageLayoutNextCursor.value : ''
+  if (append && (!cursor || storageLayoutPlansLoading.value)) return
+
+  const loadSequence = ++storageLayoutPlanLoadSequence
+  storageLayoutPlansLoading.value = true
+  try {
+    const plansFallback = append
+      ? { items: [], nextCursor: storageLayoutNextCursor.value }
+      : { items: [], nextCursor: null }
+    const catalogRequest = append
+      ? Promise.resolve({ data: storageLayoutCatalog.value })
+      : safeRequest(() => getStorageLayoutCapabilities(), { data: [] })
+    const [catalogResult, plansResult] = await Promise.all([
+      catalogRequest,
+      safeRequest(() => getStorageLayoutPlans({
+        status: storageLayoutStatusFilter.value,
+        cursor,
+        limit: 50,
+      }), plansFallback),
+    ])
+    if (loadSequence !== storageLayoutPlanLoadSequence) return
+    if (append) {
+      const existingIds = new Set(storageLayoutPlans.value.map((plan) => plan.id))
+      storageLayoutPlans.value = [
+        ...storageLayoutPlans.value,
+        ...(plansResult.items || []).filter((plan) => !existingIds.has(plan.id)),
+      ]
+    } else {
+      storageLayoutCatalog.value = catalogResult.data || []
+      storageLayoutPlans.value = plansResult.items || []
+    }
+    storageLayoutNextCursor.value = plansResult.nextCursor || ''
+  } finally {
+    if (loadSequence === storageLayoutPlanLoadSequence) {
+      storageLayoutPlansLoading.value = false
+    }
+  }
+}
+
+async function handleStorageLayoutStatusFilter(status) {
+  const allowedStatuses = ['OPEN', 'ALL', 'PLANNED', 'APPROVED', 'REJECTED']
+  storageLayoutStatusFilter.value = allowedStatuses.includes(status) ? status : 'OPEN'
+  await loadStorageLayouts()
+}
+
+async function handleLoadMoreStorageLayoutPlans() {
+  await loadStorageLayouts({ append: true })
+}
+
+function updateStorageLayoutForm(payload) {
+  if (!payload || !['layoutCode', 'storageClassName', 'serverCount', 'volumesPerServer', 'volumeSizeGiB', 'reason'].includes(payload.field)) {
+    return
+  }
+  const numericFields = ['serverCount', 'volumesPerServer', 'volumeSizeGiB']
+  storageLayoutForm[payload.field] = numericFields.includes(payload.field)
+    ? Number(payload.value || 0)
+    : payload.value
+}
+
+async function handleCreateStorageLayoutPlan() {
+  const result = await runAction(() => createStorageLayoutPlan({
+    layoutCode: storageLayoutForm.layoutCode,
+    storageClassName: storageLayoutForm.storageClassName,
+    serverCount: Number(storageLayoutForm.serverCount || 0),
+    volumesPerServer: Number(storageLayoutForm.volumesPerServer || 0),
+    volumeSizeGiB: Number(storageLayoutForm.volumeSizeGiB || 0),
+    reason: storageLayoutForm.reason,
   }))
+  if (!result?.data) return
+  storageLayoutSimulation.value = null
+  resetStorageLayoutForm()
+  await loadStorageLayouts()
+  setStatusMessage('Storage layout plan created: ' + result.data.poolName)
 }
 
-function normalizeOperationsReadinessSummary(summary = {}) {
-  return {
-    result: summary?.result || '',
-    summary: summary?.summary || '',
-    reportPath: summary?.reportPath || '',
-    generatedAt: summary?.generatedAt || '',
-    passedCount: Number(summary?.passedCount || 0),
-    pendingCount: Number(summary?.pendingCount || 0),
-    totalCount: Number(summary?.totalCount || 0),
-    checkCount: Number(summary?.checkCount || 0),
-    pendingCategorySummary: summary?.pendingCategorySummary || '',
-    pendingCategoryCounts: normalizeOperationsEvidencePlanCategoryCounts(summary?.pendingCategoryCounts),
-    pendingRemediationCount: Number(summary?.pendingRemediationCount || 0),
-    pendingRemediations: normalizeOperationsReadinessRemediations(summary?.pendingRemediations),
-    decisionRule: summary?.decisionRule || '',
+async function handleUpdateStorageLayoutPlanStatus(payload) {
+  if (!payload?.plan?.id || !payload.status) return
+  const result = await runAction(() => updateStorageLayoutPlanStatus(payload.plan.id, payload.status))
+  if (!result?.data) return
+  await loadStorageLayouts()
+  setStatusMessage('Storage layout plan status updated: ' + result.data.poolName + ' ' + result.data.status)
+}
+
+async function handleSimulateStorageLayoutPlan(plan) {
+  if (!plan?.id) return
+  const result = await runAction(() => simulateStorageLayoutPlan(plan.id))
+  if (!result?.data) return
+  storageLayoutSimulation.value = result.data
+  storageLayoutPlans.value = storageLayoutPlans.value.map((candidate) => (
+    candidate.id === result.data.plan?.id ? result.data.plan : candidate
+  ))
+  setStatusMessage('Storage layout simulation completed: ' + result.data.plan?.poolName)
+}
+
+function resetStorageLayoutForm() {
+  storageLayoutForm.layoutCode = 'RAID6'
+  storageLayoutForm.storageClassName = 'osmu-storage'
+  storageLayoutForm.serverCount = 4
+  storageLayoutForm.volumesPerServer = 1
+  storageLayoutForm.volumeSizeGiB = 1024
+  storageLayoutForm.reason = ''
+}
+async function loadStorageExpansionRequests(options = {}) {
+  const append = options.append === true
+  const cursor = append ? storageExpansionNextCursor.value : ''
+  if (append && (!cursor || storageExpansionRequestsLoading.value)) return
+
+  const loadSequence = ++storageExpansionRequestLoadSequence
+  storageExpansionRequestsLoading.value = true
+  try {
+    const fallback = append
+      ? { items: [], nextCursor: storageExpansionNextCursor.value }
+      : { items: [], nextCursor: null }
+    const result = await safeRequest(() => getStorageExpansionRequests({
+      status: storageExpansionStatusFilter.value,
+      cursor,
+      limit: 50,
+    }), fallback)
+    if (loadSequence !== storageExpansionRequestLoadSequence) return
+    if (append) {
+      const existingIds = new Set(storageExpansionRequests.value.map((request) => request.id))
+      storageExpansionRequests.value = [
+        ...storageExpansionRequests.value,
+        ...(result.items || []).filter((request) => !existingIds.has(request.id)),
+      ]
+    } else {
+      storageExpansionRequests.value = result.items || []
+    }
+    storageExpansionNextCursor.value = result.nextCursor || ''
+  } finally {
+    if (loadSequence === storageExpansionRequestLoadSequence) {
+      storageExpansionRequestsLoading.value = false
+    }
   }
 }
 
-function normalizeOperationsEvidencePlan(plan = {}) {
-  return {
-    result: plan?.result || '',
-    sourceSummary: plan?.sourceSummary || '',
-    sourceReport: plan?.sourceReport || '',
-    sourcePassedCount: Number(plan?.sourcePassedCount || 0),
-    sourcePendingCount: Number(plan?.sourcePendingCount || 0),
-    sourceTotalCount: Number(plan?.sourceTotalCount || 0),
-    sourceCheckCount: Number(plan?.sourceCheckCount || 0),
-    sourcePendingRemediationCount: Number(plan?.sourcePendingRemediationCount || 0),
-    sourcePendingRemediationEntryCount: Number(plan?.sourcePendingRemediationEntryCount || 0),
-    sourcePendingRemediationActionCount: Number(plan?.sourcePendingRemediationActionCount || 0),
-    sourcePendingRemediationMissingActionCount: Number(plan?.sourcePendingRemediationMissingActionCount || 0),
-    sourcePendingRemediationCoverageReady: Boolean(plan?.sourcePendingRemediationCoverageReady),
-    pendingCount: Number(plan?.pendingCount || 0),
-    actionCount: Number(plan?.actionCount || 0),
-    unplannedCount: Number(plan?.unplannedCount || 0),
-    pendingCategorySummary: plan?.pendingCategorySummary || '',
-    pendingCategoryCounts: normalizeOperationsEvidencePlanCategoryCounts(plan?.pendingCategoryCounts),
-    actionSummary: normalizeOperationsEvidencePlanSummary(plan?.actionSummary),
-    actions: Array.isArray(plan?.actions) ? plan.actions : [],
-  }
+async function handleStorageExpansionStatusFilter(status) {
+  const allowedStatuses = ['OPEN', 'ALL', 'PLANNED', 'APPROVED', 'APPLIED', 'REJECTED']
+  storageExpansionStatusFilter.value = allowedStatuses.includes(status) ? status : 'OPEN'
+  await loadStorageExpansionRequests()
 }
 
-function normalizeOperationsEvidenceInvocation(invocation = {}) {
-  return {
-    result: invocation?.result || '',
-    sourceSummary: invocation?.sourceSummary || '',
-    sourcePlan: invocation?.sourcePlan || '',
-    sourcePassedCount: Number(invocation?.sourcePassedCount || 0),
-    sourcePendingCount: Number(invocation?.sourcePendingCount || 0),
-    sourceTotalCount: Number(invocation?.sourceTotalCount || 0),
-    sourceCheckCount: Number(invocation?.sourceCheckCount || 0),
-    commandMode: invocation?.commandMode || '',
-    executionMode: invocation?.executionMode || '',
-    selectedActionCount: Number(invocation?.selectedActionCount || 0),
-    selectedActionOrders: Array.isArray(invocation?.selectedActionOrders)
-      ? invocation.selectedActionOrders
-      : [],
-    plannedCount: Number(invocation?.plannedCount || 0),
-    blockedCount: Number(invocation?.blockedCount || 0),
-    executedCount: Number(invocation?.executedCount || 0),
-    failedCount: Number(invocation?.failedCount || 0),
-    actions: Array.isArray(invocation?.actions) ? invocation.actions : [],
-  }
-}
-
-function normalizeOperationsInvocationUnblockPlan(plan = {}) {
-  return {
-    result: plan?.result || '',
-    sourceInvocationReport: plan?.sourceInvocationReport || '',
-    sourceResult: plan?.sourceResult || '',
-    sourceSummary: plan?.sourceSummary || '',
-    sourcePassedCount: Number(plan?.sourcePassedCount || 0),
-    sourcePendingCount: Number(plan?.sourcePendingCount || 0),
-    sourceTotalCount: Number(plan?.sourceTotalCount || 0),
-    sourceCheckCount: Number(plan?.sourceCheckCount || 0),
-    selectedActionCount: Number(plan?.selectedActionCount || 0),
-    plannedCount: Number(plan?.plannedCount || 0),
-    blockedCount: Number(plan?.blockedCount || 0),
-    failedCount: Number(plan?.failedCount || 0),
-    needsKubeconfigSecretConfirmation: Boolean(plan?.needsKubeconfigSecretConfirmation),
-    needsOperatorApprovalConfirmation: Boolean(plan?.needsOperatorApprovalConfirmation),
-    requiredPlaceholderCount: Number(plan?.requiredPlaceholderCount || 0),
-    ambiguousRepeatedPlaceholderCount: Number(plan?.ambiguousRepeatedPlaceholderCount || 0),
-    confirmationGroupCount: Number(plan?.confirmationGroupCount || 0),
-    requiredInputGroupCount: Number(plan?.requiredInputGroupCount || 0),
-    blockedActionOrders: Array.isArray(plan?.blockedActionOrders) ? plan.blockedActionOrders : [],
-    plannedActionOrders: Array.isArray(plan?.plannedActionOrders) ? plan.plannedActionOrders : [],
-    confirmedPlanCommand: plan?.confirmedPlanCommand || '',
-    blockedOnlyPlanCommand: plan?.blockedOnlyPlanCommand || '',
-    plannedOnlyCommand: plan?.plannedOnlyCommand || '',
-    decisionRule: plan?.decisionRule || '',
-    confirmationGroups: Array.isArray(plan?.confirmationGroups) ? plan.confirmationGroups : [],
-    requiredInputGroups: Array.isArray(plan?.requiredInputGroups) ? plan.requiredInputGroups : [],
-    actions: Array.isArray(plan?.actions) ? plan.actions : [],
-  }
-}
-
-function normalizeDispatchPreflightGitRefSafety(gitRefSafety = {}) {
-  return {
-    checked: Boolean(gitRefSafety?.checked),
-    status: gitRefSafety?.status || '',
-    githubRef: gitRefSafety?.githubRef || '',
-    currentBranch: gitRefSafety?.currentBranch || '',
-    commitSha: gitRefSafety?.commitSha || '',
-    shortCommitSha: gitRefSafety?.shortCommitSha || '',
-    upstreamRef: gitRefSafety?.upstreamRef || '',
-    upstreamCommitSha: gitRefSafety?.upstreamCommitSha || '',
-    aheadCount: Number(gitRefSafety?.aheadCount || 0),
-    behindCount: Number(gitRefSafety?.behindCount || 0),
-    workingTreeDirty: Boolean(gitRefSafety?.workingTreeDirty),
-    githubRefMatchesCurrentBranch: Boolean(gitRefSafety?.githubRefMatchesCurrentBranch),
-    githubRefLikelyContainsCommit: Boolean(gitRefSafety?.githubRefLikelyContainsCommit),
-    suggestedGitHubRef: gitRefSafety?.suggestedGitHubRef || '',
-    suggestedPushCommand: gitRefSafety?.suggestedPushCommand || '',
-    note: gitRefSafety?.note || '',
-  }
-}
-function normalizeOperationsDispatchPreflight(preflight = {}) {
-  return {
-    result: preflight?.result || '',
-    sourceUnblockPlan: preflight?.sourceUnblockPlan || '',
-    sourceResult: preflight?.sourceResult || '',
-    sourcePassedCount: Number(preflight?.sourcePassedCount || 0),
-    sourcePendingCount: Number(preflight?.sourcePendingCount || 0),
-    sourceTotalCount: Number(preflight?.sourceTotalCount || 0),
-    sourceCheckCount: Number(preflight?.sourceCheckCount || 0),
-    selectedActionCount: Number(preflight?.selectedActionCount || 0),
-    selectedActionOrders: Array.isArray(preflight?.selectedActionOrders) ? preflight.selectedActionOrders : [],
-    readyActionCount: Number(preflight?.readyActionCount || 0),
-    readyActionOrders: Array.isArray(preflight?.readyActionOrders) ? preflight.readyActionOrders : [],
-    blockedActionCount: Number(preflight?.blockedActionCount || 0),
-    blockedActionOrders: Array.isArray(preflight?.blockedActionOrders) ? preflight.blockedActionOrders : [],
-    needsKubeconfigSecretConfirmation: Boolean(preflight?.needsKubeconfigSecretConfirmation),
-    needsOperatorApprovalConfirmation: Boolean(preflight?.needsOperatorApprovalConfirmation),
-    requiredInputCount: Number(preflight?.requiredInputCount || 0),
-    missingInputCount: Number(preflight?.missingInputCount || 0),
-    ambiguousInputCount: Number(preflight?.ambiguousInputCount || 0),
-    unsafeInputCount: Number(preflight?.unsafeInputCount || 0),
-    invalidInputCount: Number(preflight?.invalidInputCount || 0),
-    failedCheckCount: Number(preflight?.failedCheckCount || 0),
-    warningCheckCount: Number(preflight?.warningCheckCount || 0),
-    requiredGitHubSecrets: Array.isArray(preflight?.requiredGitHubSecrets) ? preflight.requiredGitHubSecrets : [],
-    githubCliPath: preflight?.githubCliPath || '',
-    githubRepository: preflight?.githubRepository || '',
-    githubRef: preflight?.githubRef || '',
-    gitRefSafety: normalizeDispatchPreflightGitRefSafety(preflight?.gitRefSafety),
-    workflowFiles: Array.isArray(preflight?.workflowFiles) ? preflight.workflowFiles : [],
-    checks: Array.isArray(preflight?.checks) ? preflight.checks : [],
-    readyPlanCommand: preflight?.readyPlanCommand || '',
-    executeCommand: preflight?.executeCommand || '',
-    apiExecuteCommand: preflight?.apiExecuteCommand || '',
-    readySubsetPlanCommand: preflight?.readySubsetPlanCommand || '',
-    readySubsetExecuteCommand: preflight?.readySubsetExecuteCommand || '',
-    readySubsetApiExecuteCommand: preflight?.readySubsetApiExecuteCommand || '',
-    requiredInputs: Array.isArray(preflight?.requiredInputs) ? preflight.requiredInputs : [],
-    inputTemplates: Array.isArray(preflight?.inputTemplates) ? preflight.inputTemplates : [],
-    decisionRule: preflight?.decisionRule || '',
-  }
-}
-
-function normalizeOperationsWorkflowRunIdInputs(inputs = []) {
-  return Array.isArray(inputs)
-    ? inputs.map((input) => ({
-      workflow: input?.workflow || '',
-      group: input?.group || '',
-      actionOrders: Array.isArray(input?.actionOrders) ? input.actionOrders : [],
-      runIdParameter: input?.runIdParameter || '',
-      recommendedRunId: input?.recommendedRunId || '',
-      artifactName: input?.artifactName || '',
-      requiredForReadiness: Boolean(input?.requiredForReadiness),
-      readyForArtifactDownload: Boolean(input?.readyForArtifactDownload),
-      runsUrl: input?.runsUrl || '',
-      runListJsonPath: input?.runListJsonPath || '',
-      queryCommand: input?.queryCommand || '',
-      gitHubApiQueryUrl: input?.gitHubApiQueryUrl || '',
-      sourceSelected: Boolean(input?.sourceSelected),
-      supplementalForSecurityFinalizer: Boolean(input?.supplementalForSecurityFinalizer),
-    }))
-    : []
-}
-
-function normalizeOperationsInputValueActionSummaries(actions = []) {
-  return Array.isArray(actions)
-    ? actions.map((action) => ({
-      actionOrder: Number(action?.actionOrder || 0),
-      actionName: action?.actionName || '',
-      category: action?.category || '',
-      workflow: action?.workflow || '',
-      inputFree: Boolean(action?.inputFree),
-      status: action?.status || '',
-      valueCount: Number(action?.valueCount || 0),
-      readyValueCount: Number(action?.readyValueCount || 0),
-      missingValueCount: Number(action?.missingValueCount || 0),
-      unsafeValueCount: Number(action?.unsafeValueCount || 0),
-      invalidValueCount: Number(action?.invalidValueCount || 0),
-      nonReadyValueKeys: Array.isArray(action?.nonReadyValueKeys) ? action.nonReadyValueKeys : [],
-    }))
-    : []
-}
-function normalizeOperationsWorkflowRunIdPlan(plan = {}) {
-  return {
-    result: plan?.result || '',
-    sourceInvocationReport: plan?.sourceInvocationReport || '',
-    invocationResult: plan?.invocationResult || '',
-    sourceSummary: plan?.sourceSummary || '',
-    sourcePassedCount: Number(plan?.sourcePassedCount || 0),
-    sourcePendingCount: Number(plan?.sourcePendingCount || 0),
-    sourceTotalCount: Number(plan?.sourceTotalCount || 0),
-    sourceCheckCount: Number(plan?.sourceCheckCount || 0),
-    selectedActionOrders: Array.isArray(plan?.selectedActionOrders)
-      ? plan.selectedActionOrders
-      : (Array.isArray(plan?.sourceActionOrders) ? plan.sourceActionOrders : []),
-    branch: plan?.branch || '',
-    githubRepository: plan?.githubRepository || '',
-    queryMode: plan?.queryMode || '',
-    runListJsonDirectory: plan?.runListJsonDirectory || '',
-    runListJsonDirectoryCommand: plan?.runListJsonDirectoryCommand || '',
-    githubApiRunListCommand: plan?.githubApiRunListCommand || '',
-    githubApiBaseUrl: plan?.githubApiBaseUrl || '',
-    runListJsonFilePattern: plan?.runListJsonFilePattern || '',
-    runListJsonHandoffNote: plan?.runListJsonHandoffNote || '',
-    browserWorkflowRunsUrls: Array.isArray(plan?.browserWorkflowRunsUrls) ? plan.browserWorkflowRunsUrls : [],
-    workflowRunIdInputs: normalizeOperationsWorkflowRunIdInputs(plan?.workflowRunIdInputs),
-    recommendedCommands: Array.isArray(plan?.recommendedCommands) ? plan.recommendedCommands : [],
-    limit: Number(plan?.limit || 0),
-    workflowCount: Number(plan?.workflowCount || 0),
-    readyWorkflowCount: Number(plan?.readyWorkflowCount || 0),
-    missingWorkflowCount: Number(plan?.missingWorkflowCount || 0),
-    staleWorkflowCount: Number(plan?.staleWorkflowCount || 0),
-    imageSigningVersion: plan?.imageSigningVersion || '',
-    commitSha: plan?.commitSha || '',
-    artifactCollectionPlanCommand: plan?.artifactCollectionPlanCommand || '',
-    securityEvidenceFinalizerReady: Boolean(plan?.securityEvidenceFinalizerReady),
-    securityEvidenceFinalizerRunIdInputs: Array.isArray(plan?.securityEvidenceFinalizerRunIdInputs)
-      ? plan.securityEvidenceFinalizerRunIdInputs
-      : [],
-    securityEvidenceFinalizerRunIdInputHints: normalizeOperationsWorkflowRunIdInputs(plan?.securityEvidenceFinalizerRunIdInputHints),
-    securityEvidenceFinalizerMissingRunIdInputs: Array.isArray(plan?.securityEvidenceFinalizerMissingRunIdInputs)
-      ? plan.securityEvidenceFinalizerMissingRunIdInputs
-      : [],
-    securityEvidenceFinalizerDependencyNote: plan?.securityEvidenceFinalizerDependencyNote || '',
-    securityEvidenceFinalizerCommand: plan?.securityEvidenceFinalizerCommand || '',
-    decisionRule: plan?.decisionRule || '',
-    workflows: Array.isArray(plan?.workflows) ? plan.workflows : [],
-  }
-}
-
-function normalizeOperationsArtifactCollectionPlan(plan = {}) {
-  return {
-    result: plan?.result || '',
-    sourceInvocationReport: plan?.sourceInvocationReport || '',
-    invocationResult: plan?.invocationResult || '',
-    sourceSummary: plan?.sourceSummary || '',
-    sourcePassedCount: Number(plan?.sourcePassedCount || 0),
-    sourcePendingCount: Number(plan?.sourcePendingCount || 0),
-    sourceTotalCount: Number(plan?.sourceTotalCount || 0),
-    sourceCheckCount: Number(plan?.sourceCheckCount || 0),
-    selectedActionOrders: Array.isArray(plan?.selectedActionOrders)
-      ? plan.selectedActionOrders
-      : (Array.isArray(plan?.sourceActionOrders) ? plan.sourceActionOrders : []),
-    invocationSummary: plan?.invocationSummary || '',
-    artifactCount: Number(plan?.artifactCount || 0),
-    requiredArtifactCount: Number(plan?.requiredArtifactCount || 0),
-    readyArtifactCount: Number(plan?.readyArtifactCount || 0),
-    missingRequiredArtifactCount: Number(plan?.missingRequiredArtifactCount || 0),
-    securitySourceArtifactCount: Number(plan?.securitySourceArtifactCount || 0),
-    readySecuritySourceArtifactCount: Number(plan?.readySecuritySourceArtifactCount || 0),
-    missingSecuritySourceArtifactCount: Number(plan?.missingSecuritySourceArtifactCount || 0),
-    securityEvidenceFinalizerReady: Boolean(plan?.securityEvidenceFinalizerReady),
-    securityEvidenceFinalizerInputs: Array.isArray(plan?.securityEvidenceFinalizerInputs)
-      ? plan.securityEvidenceFinalizerInputs.map((input) => ({
-        name: input?.name || '',
-        runIdParameter: input?.runIdParameter || '',
-        workflow: input?.workflow || '',
-        artifactName: input?.artifactName || '',
-        artifactNameParameter: input?.artifactNameParameter || '',
-        runId: input?.runId || '',
-        ready: Boolean(input?.ready),
-        sourceArtifactSelected: Boolean(input?.sourceArtifactSelected),
-        sourceArtifactReady: Boolean(input?.sourceArtifactReady),
-        requiredForSecurityFinalizer: Boolean(input?.requiredForSecurityFinalizer),
-        note: input?.note || '',
-      }))
-      : [],
-    securityEvidenceFinalizerMissingRunIdInputs: Array.isArray(plan?.securityEvidenceFinalizerMissingRunIdInputs)
-      ? plan.securityEvidenceFinalizerMissingRunIdInputs
-      : [],
-    securityEvidenceFinalizerCommand: plan?.securityEvidenceFinalizerCommand || '',
-    operationsArtifactFinalizerCommand: plan?.operationsArtifactFinalizerCommand || '',
-    dataFlowStoragePlanInputNote: plan?.dataFlowStoragePlanInputNote || '',
-    dataFlowQueryRetentionBudgetInputNote: plan?.dataFlowQueryRetentionBudgetInputNote || '',
-    dataFlowStorageTransitionRunbookInputNote: plan?.dataFlowStorageTransitionRunbookInputNote || '',
-    minioBucketCorsInputNote: plan?.minioBucketCorsInputNote || '',
-    localImportCommand: plan?.localImportCommand || '',
-    decisionRule: plan?.decisionRule || '',
-    artifacts: Array.isArray(plan?.artifacts) ? plan.artifacts : [],
-  }
-}
-
-function normalizeOperationsReadinessArtifactImport(report = {}) {
-  return {
-    result: report?.result || '',
-    status: report?.status || '',
-    selectedGroupCount: Number(report?.selectedGroupCount || 0),
-    importedCount: Number(report?.importedCount || 0),
-    failedCount: Number(report?.failedCount || 0),
-    outputDirectory: report?.outputDirectory || '',
-    secretPolicy: report?.secretPolicy || '',
-    entries: Array.isArray(report?.entries) ? report.entries : [],
-  }
-}
-
-function normalizeOperationsReadinessFinalize(report = {}) {
-  return {
-    result: report?.result || '',
-    status: report?.status || '',
-    readinessResult: report?.readinessResult || '',
-    readinessSummary: report?.readinessSummary || '',
-    namespace: report?.namespace || '',
-    sourceNamespace: report?.sourceNamespace || '',
-    restoreNamespace: report?.restoreNamespace || '',
-    backupTimestamp: report?.backupTimestamp || '',
-    powerShellCommand: report?.powerShellCommand || '',
-    failedCount: Number(report?.failedCount || 0),
-    selectedSteps: report?.selectedSteps && typeof report.selectedSteps === 'object' ? report.selectedSteps : {},
-    paths: report?.paths && typeof report.paths === 'object' ? report.paths : {},
-    commands: Array.isArray(report?.commands) ? report.commands : [],
-    steps: Array.isArray(report?.steps) ? report.steps : [],
-    gaps: Array.isArray(report?.gaps) ? report.gaps : [],
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeOperationsHandoffPackage(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    passedCount: Number(report?.passedCount || 0),
-    failureCount: Number(report?.failureCount || 0),
-    plannedCount: Number(report?.plannedCount || 0),
-    checkCount: Number(report?.checkCount || 0),
-    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
-    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
-    operationsReadinessSnapshot: report?.operationsReadinessSnapshot && typeof report.operationsReadinessSnapshot === 'object' ? report.operationsReadinessSnapshot : {},
-    operationsConvergenceSnapshot: report?.operationsConvergenceSnapshot && typeof report.operationsConvergenceSnapshot === 'object' ? report.operationsConvergenceSnapshot : {},
-    dataFlowStoragePlanSnapshot: normalizeDataFlowStoragePlan(report?.dataFlowStoragePlanSnapshot),
-    dataFlowQueryRetentionBudgetSnapshot: normalizeDataFlowQueryRetentionBudget(report?.dataFlowQueryRetentionBudgetSnapshot),
-    dataFlowStorageTransitionRunbookSnapshot: normalizeDataFlowStorageTransitionRunbook(report?.dataFlowStorageTransitionRunbookSnapshot),
-    secretRotationSnapshot: normalizeSecretRotationEvidence(report?.secretRotationSnapshot),
-    commercialIntegrationSnapshot: normalizeCommercialIntegrationEvidence(report?.commercialIntegrationSnapshot),
-    commercialApprovalSnapshot: normalizeCommercialApprovalEvidence(report?.commercialApprovalSnapshot),
-    chargebackCloseoutSnapshot: report?.chargebackCloseoutSnapshot && typeof report.chargebackCloseoutSnapshot === 'object' ? report.chargebackCloseoutSnapshot : {},
-    enterpriseAuthSmokeSnapshot: normalizeEnterpriseAuthSmokeEvidence(report?.enterpriseAuthSmokeSnapshot),
-    enterpriseAuthJitRollbackSnapshot: normalizeEnterpriseAuthJitRollbackEvidence(report?.enterpriseAuthJitRollbackSnapshot),
-    monitoringThresholdSnapshot: normalizeMonitoringThresholdEvidence(report?.monitoringThresholdSnapshot),
-    clusterNetworkAccessReviewSnapshot: normalizeHardeningEvidence(report?.clusterNetworkAccessReviewSnapshot),
-    helmValuesHardeningSnapshot: normalizeHardeningEvidence(report?.helmValuesHardeningSnapshot),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    scopePolicy: report?.scopePolicy || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeCommercialIntegrationEvidence(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    integrationCount: Number(report?.integrationCount || 0),
-    verifiedCount: Number(report?.verifiedCount || 0),
-    requiredCount: Number(report?.requiredCount || 0),
-    requiredVerifiedCount: Number(report?.requiredVerifiedCount || 0),
-    paymentProviderAdapterReadinessReviewed: Boolean(report?.paymentProviderAdapterReadinessReviewed),
-    paymentProviderAdapterReadinessStatus: report?.paymentProviderAdapterReadinessStatus || '',
-    paymentProviderAdapterWebhookReadyProfileCount: Number(report?.paymentProviderAdapterWebhookReadyProfileCount || 0),
-    paymentProviderAdapterNativeReadyProfileCount: Number(report?.paymentProviderAdapterNativeReadyProfileCount || 0),
-    failureCount: Number(report?.failureCount || 0),
-    plannedCount: Number(report?.plannedCount || 0),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    scopePolicy: report?.scopePolicy || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeStorageExpansionFinalize(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    startedAt: report?.startedAt || '',
-    completedAt: report?.completedAt || '',
-    namespace: report?.namespace || '',
-    tenantName: report?.tenantName || '',
-    serviceAccount: report?.serviceAccount || '',
-    impersonateRunner: Boolean(report?.impersonateRunner),
-    runBackendDryRunRunner: Boolean(report?.runBackendDryRunRunner),
-    runBackendApply: Boolean(report?.runBackendApply),
-    confirmApply: Boolean(report?.confirmApply),
-    runStorageBackendTelemetry: Boolean(report?.runStorageBackendTelemetry),
-    failedCount: Number(report?.failedCount || 0),
-    evidence: report?.evidence && typeof report.evidence === 'object' ? report.evidence : {},
-    gaps: Array.isArray(report?.gaps) ? report.gaps : [],
-    steps: Array.isArray(report?.steps) ? report.steps : [],
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeKubernetesHaDrReadiness(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    namespace: report?.namespace || '',
-    kubectlPath: report?.kubectlPath || '',
-    restoreManifestPath: report?.restoreManifestPath || '',
-    failureCount: Number(report?.failureCount || 0),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-  }
-}
-
-function normalizeKubernetesDrFinalize(report = {}) {
-  return {
-    result: report?.result || '',
-    status: report?.status || '',
-    generatedAt: report?.generatedAt || '',
-    startedAt: report?.startedAt || '',
-    completedAt: report?.completedAt || '',
-    sourceNamespace: report?.sourceNamespace || '',
-    restoreNamespace: report?.restoreNamespace || '',
-    backupTimestamp: report?.backupTimestamp || '',
-    serverDryRunOnly: Boolean(report?.serverDryRunOnly),
-    confirmRestore: Boolean(report?.confirmRestore),
-    runBackupDrill: Boolean(report?.runBackupDrill),
-    runRestoreSmoke: Boolean(report?.runRestoreSmoke),
-    writeEvidenceRequest: Boolean(report?.writeEvidenceRequest),
-    submitEvidence: Boolean(report?.submitEvidence),
-    runS3ClientSmoke: Boolean(report?.runS3ClientSmoke),
-    failedStepCount: Number(report?.failedStepCount || 0),
-    gaps: Array.isArray(report?.gaps) ? report.gaps : [],
-    commands: Array.isArray(report?.commands) ? report.commands : [],
-    steps: Array.isArray(report?.steps) ? report.steps : [],
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeIamRbacEvidence(report = {}) {
-  return {
-    result: report?.result || '',
-    status: report?.status || '',
-    generatedAt: report?.generatedAt || '',
-    startedAt: report?.startedAt || '',
-    completedAt: report?.completedAt || '',
-    namespace: report?.namespace || '',
-    serviceAccount: report?.serviceAccount || '',
-    powerShellCommand: report?.powerShellCommand || '',
-    gradleCommand: report?.gradleCommand || '',
-    runBackendPolicyTests: Boolean(report?.runBackendPolicyTests),
-    runKubernetesLiveAuth: Boolean(report?.runKubernetesLiveAuth),
-    failedCount: Number(report?.failedCount || 0),
-    gaps: Array.isArray(report?.gaps) ? report.gaps : [],
-    commands: Array.isArray(report?.commands) ? report.commands : [],
-    steps: Array.isArray(report?.steps) ? report.steps : [],
-    decisionRule: report?.decisionRule || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeSecurityEvidence(report = {}) {
-  const imageSigning = report?.imageSigning || {}
-  const containerSecurity = report?.containerSecurity || {}
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    failureCount: Number(report?.failureCount || 0),
-    allowSyntheticEvidence: Boolean(report?.allowSyntheticEvidence),
-    inputs: report?.inputs && typeof report.inputs === 'object' ? report.inputs : {},
-    promoted: report?.promoted && typeof report.promoted === 'object' ? report.promoted : {},
-    source: report?.source && typeof report.source === 'object' ? report.source : {},
-    images: report?.images && typeof report.images === 'object' ? report.images : {},
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    imageSigning: {
-      ...imageSigning,
-      failureCount: Number(imageSigning?.failureCount || 0),
-    },
-    containerSecurity: {
-      ...containerSecurity,
-      failureCount: Number(containerSecurity?.failureCount || 0),
-      backendSbomPackageCount: Number(containerSecurity?.backendSbomPackageCount || 0),
-      backendSbomByteSize: Number(containerSecurity?.backendSbomByteSize || 0),
-      frontendSbomPackageCount: Number(containerSecurity?.frontendSbomPackageCount || 0),
-      frontendSbomByteSize: Number(containerSecurity?.frontendSbomByteSize || 0),
-    },
-    decisionRule: report?.decisionRule || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeSecretRotationEvidence(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    rotationWindow: report?.rotationWindow && typeof report.rotationWindow === 'object' ? report.rotationWindow : {},
-    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
-    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
-    rotatedCount: Number(report?.rotatedCount || 0),
-    coreRotatedCount: Number(report?.coreRotatedCount || 0),
-    coreRequiredCount: Number(report?.coreRequiredCount || 0),
-    failureCount: Number(report?.failureCount || 0),
-    plannedCount: Number(report?.plannedCount || 0),
-    rotations: Array.isArray(report?.rotations) ? report.rotations : [],
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeCommercialApprovalEvidence(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    productVersion: report?.productVersion || '',
-    approvedBy: report?.approvedBy || '',
-    approvedAt: report?.approvedAt || '',
-    passedCount: Number(report?.passedCount || 0),
-    failureCount: Number(report?.failureCount || 0),
-    checkCount: Number(report?.checkCount || 0),
-    pricingPolicyProposalCommercialApproved: Boolean(report?.pricingPolicyProposalCommercialApproved),
-    pricingPolicyProposalCommercialApprovedCount: Number(report?.pricingPolicyProposalCommercialApprovedCount || 0),
-    pricingPolicyProposalApprovedPriceListCount: Number(report?.pricingPolicyProposalApprovedPriceListCount || 0),
-    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
-    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    scopePolicy: report?.scopePolicy || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeEnterpriseAuthSmokeEvidence(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    executionMode: report?.executionMode || '',
-    apiBase: report?.apiBase || '',
-    requireOidc: Boolean(report?.requireOidc),
-    requireLdap: Boolean(report?.requireLdap),
-    requireAuditEvents: Boolean(report?.requireAuditEvents),
-    inputs: report?.inputs && typeof report.inputs === 'object' ? report.inputs : {},
-    scopeOut: report?.scopeOut && typeof report.scopeOut === 'object' ? report.scopeOut : {},
-    passCount: Number(report?.passCount || 0),
-    failCount: Number(report?.failCount || 0),
-    blockedCount: Number(report?.blockedCount || 0),
-    plannedCount: Number(report?.plannedCount || 0),
-    skippedCount: Number(report?.skippedCount || 0),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeEnterpriseAuthJitRollbackEvidence(report = {}) {
-  const smokeSnapshot = report?.enterpriseAuthSmokeSnapshot || {}
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    evidenceRef: report?.evidenceRef || '',
-    reviewWindow: report?.reviewWindow && typeof report.reviewWindow === 'object' ? report.reviewWindow : {},
-    enterpriseAuthSmokeSnapshot: {
-      provided: Boolean(smokeSnapshot?.provided),
-      parsed: Boolean(smokeSnapshot?.parsed),
-      formatVersion: smokeSnapshot?.formatVersion || '',
-      result: smokeSnapshot?.result || '',
-      executionMode: smokeSnapshot?.executionMode || '',
-      passCount: Number(smokeSnapshot?.passCount || 0),
-      failCount: Number(smokeSnapshot?.failCount || 0),
-      blockedCount: Number(smokeSnapshot?.blockedCount || 0),
-      plannedCount: Number(smokeSnapshot?.plannedCount || 0),
-      scopeOutAccepted: Boolean(smokeSnapshot?.scopeOutAccepted),
-      detail: smokeSnapshot?.detail || '',
-    },
-    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
-    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
-    failureCount: Number(report?.failureCount || 0),
-    checkCount: Number(report?.checkCount || 0),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    scopePolicy: report?.scopePolicy || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeDataFlowStoragePlanCandidateDecision(candidateDecision = {}) {
-  return {
-    decision: candidateDecision?.decision || '',
-    evidenceModel: candidateDecision?.evidenceModel || '',
-    requiresMariaDbQueryEvidence: Boolean(candidateDecision.requiresMariaDbQueryEvidence),
-    requiresTargetStoreEvidence: Boolean(candidateDecision.requiresTargetStoreEvidence),
-    queryPlanEvidencePassed: Boolean(candidateDecision.queryPlanEvidencePassed),
-    targetStoreEvidenceConfirmed: Boolean(candidateDecision.targetStoreEvidenceConfirmed),
-    nextAction: candidateDecision?.nextAction || '',
-    safeDataPolicy: candidateDecision?.safeDataPolicy || '',
-  }
-}
-
-function normalizeDataFlowStoragePlan(report = {}) {
-  const queryPlanEvidence = report?.queryPlanEvidence || {}
-  return {
-    result: report?.result || '',
-    recordedAt: report?.recordedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    evidenceRef: report?.evidenceRef || '',
-    candidateStore: report?.candidateStore || '',
-    candidateDecision: normalizeDataFlowStoragePlanCandidateDecision(report?.candidateDecision),
-    expectedPeakEventsPerDay: Number(report?.expectedPeakEventsPerDay || 0),
-    expectedQueryWindowDays: Number(report?.expectedQueryWindowDays || 0),
-    targetP95QueryLatencyMs: Number(report?.targetP95QueryLatencyMs || 0),
-    eventRetentionDays: Number(report?.eventRetentionDays || 0),
-    dailyRollupRetentionDays: Number(report?.dailyRollupRetentionDays || 0),
-    monthlyRollupRetentionMonths: Number(report?.monthlyRollupRetentionMonths || 0),
-    checkCount: Number(report?.checkCount || 0),
-    passedCount: Number(report?.passedCount || 0),
-    pendingCount: Number(report?.pendingCount || 0),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    queryPlanEvidence: {
-      provided: Boolean(queryPlanEvidence.provided),
-      path: queryPlanEvidence.path || '',
-      parsed: Boolean(queryPlanEvidence.parsed),
-      formatVersion: queryPlanEvidence.formatVersion || '',
-      expectedFormatVersion: queryPlanEvidence.expectedFormatVersion || '',
-      validFormatVersion: Boolean(queryPlanEvidence.validFormatVersion),
-      result: queryPlanEvidence.result || '',
-      mode: queryPlanEvidence.mode || '',
-      checkCount: Number(queryPlanEvidence.checkCount || 0),
-      passedCount: Number(queryPlanEvidence.passedCount || 0),
-      failedCount: Number(queryPlanEvidence.failedCount || 0),
-      failedChecks: Array.isArray(queryPlanEvidence.failedChecks) ? queryPlanEvidence.failedChecks : [],
-      detail: queryPlanEvidence.detail || '',
-    },
-    scopePolicy: report?.scopePolicy || '',
-  }
-}
-
-function normalizeDataFlowQueryRetentionBudget(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    evidenceRef: report?.evidenceRef || '',
-    storagePlanResult: report?.storagePlanResult || '',
-    candidateStore: report?.candidateStore || '',
-    targetP95QueryLatencyMs: Number(report?.targetP95QueryLatencyMs || 0),
-    observedP95QueryLatencyMs: Number(report?.observedP95QueryLatencyMs || 0),
-    observedP99QueryLatencyMs: Number(report?.observedP99QueryLatencyMs || 0),
-    querySampleCount: Number(report?.querySampleCount || 0),
-    observedQueryWindowDays: Number(report?.observedQueryWindowDays || 0),
-    retentionBudgetSeconds: Number(report?.retentionBudgetSeconds || 0),
-    detailedRetentionObservedSeconds: Number(report?.detailedRetentionObservedSeconds || 0),
-    dailyRollupRetentionObservedSeconds: Number(report?.dailyRollupRetentionObservedSeconds || 0),
-    monthlyRollupRetentionObservedSeconds: Number(report?.monthlyRollupRetentionObservedSeconds || 0),
-    detailedRetentionDeletedRows: Number(report?.detailedRetentionDeletedRows || 0),
-    dailyRollupRetentionDeletedRows: Number(report?.dailyRollupRetentionDeletedRows || 0),
-    monthlyRollupRetentionDeletedRows: Number(report?.monthlyRollupRetentionDeletedRows || 0),
-    queryLatencyWithinBudget: Boolean(report?.queryLatencyWithinBudget),
-    retentionJobsWithinBudget: Boolean(report?.retentionJobsWithinBudget),
-    failureCount: Number(report?.failureCount || 0),
-    checkCount: Number(report?.checkCount || 0),
-    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
-    topFailedChecks: Array.isArray(report?.topFailedChecks) ? report.topFailedChecks : [],
-    scopePolicy: report?.scopePolicy || '',
-  }
-}
-
-function normalizeDataFlowStorageTransitionRunbook(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    evidenceRef: report?.evidenceRef || '',
-    storagePlanResult: report?.storagePlanResult || '',
-    candidateStore: report?.candidateStore || '',
-    targetP95QueryLatencyMs: Number(report?.targetP95QueryLatencyMs || 0),
-    failureCount: Number(report?.failureCount || 0),
-    checkCount: Number(report?.checkCount || 0),
-    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
-    topFailedChecks: Array.isArray(report?.topFailedChecks) ? report.topFailedChecks : [],
-    scopePolicy: report?.scopePolicy || '',
-  }
-}
-
-function normalizeStorageBackendTelemetryEvidence(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    sourceMode: report?.sourceMode || '',
-    minioAlias: report?.minioAlias || '',
-    evidenceRef: report?.evidenceRef || '',
-    adminInfoJsonSha256: report?.adminInfoJsonSha256 || '',
-    rawAdminInfoStored: Boolean(report?.rawAdminInfoStored),
-    poolCount: Number(report?.poolCount || 0),
-    serverCount: Number(report?.serverCount || 0),
-    onlineServerCount: Number(report?.onlineServerCount || 0),
-    offlineServerCount: Number(report?.offlineServerCount || 0),
-    driveCount: Number(report?.driveCount || 0),
-    totalBytes: Number(report?.totalBytes || 0),
-    usedBytes: Number(report?.usedBytes || 0),
-    freeBytes: Number(report?.freeBytes || 0),
-    capacityKnown: Boolean(report?.capacityKnown),
-    failureCount: Number(report?.failureCount || 0),
-    plannedCount: Number(report?.plannedCount || 0),
-    decisionRule: report?.decisionRule || '',
-    scopePolicy: report?.scopePolicy || '',
-  }
-}
-
-function normalizeMonitoringThresholdEvidence(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    evidenceRef: report?.evidenceRef || '',
-    reviewWindow: report?.reviewWindow && typeof report.reviewWindow === 'object' ? report.reviewWindow : {},
-    thresholdTargetsPath: report?.thresholdTargetsPath || '',
-    requiredAlertCount: Number(report?.requiredAlertCount || 0),
-    mappedAlertCount: Number(report?.mappedAlertCount || 0),
-    missingAlerts: Array.isArray(report?.missingAlerts) ? report.missingAlerts : [],
-    routeCount: Number(report?.routeCount || 0),
-    routes: Array.isArray(report?.routes) ? report.routes : [],
-    grafanaPanelCount: Number(report?.grafanaPanelCount || 0),
-    tuningEvidenceCount: Number(report?.tuningEvidenceCount || 0),
-    alertTargetCoverageComplete: Boolean(report?.alertTargetCoverageComplete),
-    routeCoverageComplete: Boolean(report?.routeCoverageComplete),
-    grafanaPanelCoverageComplete: Boolean(report?.grafanaPanelCoverageComplete),
-    tuningEvidenceCoverageComplete: Boolean(report?.tuningEvidenceCoverageComplete),
-    thresholdMappingComplete: Boolean(report?.thresholdMappingComplete),
-    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
-    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
-    failureCount: Number(report?.failureCount || 0),
-    checkCount: Number(report?.checkCount || 0),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeHardeningEvidence(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    reviewWindow: report?.reviewWindow && typeof report.reviewWindow === 'object' ? report.reviewWindow : {},
-    evidence: report?.evidence && typeof report.evidence === 'object' ? report.evidence : {},
-    staticSnapshot: report?.staticSnapshot && typeof report.staticSnapshot === 'object' ? report.staticSnapshot : {},
-    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
-    passCount: Number(report?.passCount || 0),
-    failureCount: Number(report?.failureCount || 0),
-    totalCount: Number(report?.totalCount || report?.checkCount || 0),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    scopePolicy: report?.scopePolicy || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeSupportEscalationHandoffEvidence(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    environmentName: report?.environmentName || '',
-    targetCluster: report?.targetCluster || '',
-    operatorName: report?.operatorName || '',
-    reviewWindow: report?.reviewWindow && typeof report.reviewWindow === 'object' ? report.reviewWindow : {},
-    evidence: report?.evidence && typeof report.evidence === 'object' ? report.evidence : {},
-    documentSnapshot: report?.documentSnapshot && typeof report.documentSnapshot === 'object' ? report.documentSnapshot : {},
-    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
-    passCount: Number(report?.passCount || 0),
-    failureCount: Number(report?.failureCount || 0),
-    totalCount: Number(report?.totalCount || report?.checkCount || 0),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    scopePolicy: report?.scopePolicy || '',
-    secretPolicy: report?.secretPolicy || '',
-  }
-}
-
-function normalizeMinioBucketCorsVerification(report = {}) {
-  const commands = report?.operatorCommands || {}
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    sourceMode: report?.sourceMode || '',
-    bucketName: report?.bucketName || '',
-    minioAlias: report?.minioAlias || '',
-    sourceRef: report?.sourceRef || '',
-    executeRequested: Boolean(report?.executeRequested),
-    rawCorsXmlStored: Boolean(report?.rawCorsXmlStored),
-    ruleCount: Number(report?.ruleCount || 0),
-    exposedHeaderCount: Number(report?.exposedHeaderCount || 0),
-    failureCount: Number(report?.failureCount || 0),
-    plannedCount: Number(report?.plannedCount || 0),
-    allowedOrigins: Array.isArray(report?.allowedOrigins) ? report.allowedOrigins : [],
-    allowedMethods: Array.isArray(report?.allowedMethods) ? report.allowedMethods : [],
-    allowedHeaders: Array.isArray(report?.allowedHeaders) ? report.allowedHeaders : [],
-    exposeHeaders: Array.isArray(report?.exposeHeaders) ? report.exposeHeaders : [],
-    maxAgeSeconds: Array.isArray(report?.maxAgeSeconds) ? report.maxAgeSeconds : [],
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    decisionRule: report?.decisionRule || '',
-    scopePolicy: report?.scopePolicy || '',
-    operatorCommands: {
-      collectWithMc: commands.collectWithMc || '',
-      verifyFromFile: commands.verifyFromFile || '',
-      collectAndVerify: commands.collectAndVerify || '',
-    },
-  }
-}
-
-function normalizeOperationsEvidenceHandoff(handoff = {}) {
-  const nextStep = handoff?.nextStep || {}
-  const currentBottleneck = handoff?.currentBottleneck || nextStep
-  return {
-    result: handoff?.result || '',
-    generatedAt: handoff?.generatedAt || '',
-    nextStep: {
-      code: nextStep.code || '',
-      title: nextStep.title || '',
-      command: nextStep.command || '',
-      reason: nextStep.reason || '',
-      note: nextStep.note || '',
-      dispatchUrls: Array.isArray(nextStep.dispatchUrls) ? nextStep.dispatchUrls : [],
-    },
-    currentBottleneck: {
-      code: currentBottleneck.code || '',
-      title: currentBottleneck.title || '',
-      command: currentBottleneck.command || '',
-      reason: currentBottleneck.reason || '',
-      note: currentBottleneck.note || '',
-      dispatchUrls: Array.isArray(currentBottleneck.dispatchUrls) ? currentBottleneck.dispatchUrls : [],
-    },
-    stageCount: Number(handoff?.stageCount || 0),
-    readyStageCount: Number(handoff?.readyStageCount || 0),
-    readinessSummary: handoff?.readinessSummary || '',
-    readinessPassedCount: Number(handoff?.readinessPassedCount || 0),
-    readinessPendingCount: Number(handoff?.readinessPendingCount || 0),
-    readinessTotalCount: Number(handoff?.readinessTotalCount || 0),
-    readinessCheckCount: Number(handoff?.readinessCheckCount || 0),
-    dispatchPreflightResult: handoff?.dispatchPreflightResult || '',
-    dispatchGithubRepository: handoff?.dispatchGithubRepository || '',
-    requiredGitHubSecretCount: Number(handoff?.requiredGitHubSecretCount || 0),
-    requiredGitHubSecrets: Array.isArray(handoff?.requiredGitHubSecrets) ? handoff.requiredGitHubSecrets : [],
-    requiredGitHubSecretSummaries: Array.isArray(handoff?.requiredGitHubSecretSummaries) ? handoff.requiredGitHubSecretSummaries : [],
-    readyDispatchTemplateCount: Number(handoff?.readyDispatchTemplateCount || 0),
-    blockedDispatchTemplateCount: Number(handoff?.blockedDispatchTemplateCount || 0),
-    readyDispatchActionOrders: Array.isArray(handoff?.readyDispatchActionOrders) ? handoff.readyDispatchActionOrders : [],
-    blockedDispatchActionOrders: Array.isArray(handoff?.blockedDispatchActionOrders) ? handoff.blockedDispatchActionOrders : [],
-    invocationSelectedActionOrders: Array.isArray(handoff?.invocationSelectedActionOrders) ? handoff.invocationSelectedActionOrders : [],
-    dispatchPreflightSelectedActionOrders: Array.isArray(handoff?.dispatchPreflightSelectedActionOrders) ? handoff.dispatchPreflightSelectedActionOrders : [],
-    workflowRunIdPlanActionOrders: Array.isArray(handoff?.workflowRunIdPlanActionOrders) ? handoff.workflowRunIdPlanActionOrders : [],
-    workflowRunIdPlanQueryMode: handoff?.workflowRunIdPlanQueryMode || '',
-    workflowRunIdPlanGithubApiTokenPresent: Boolean(handoff?.workflowRunIdPlanGithubApiTokenPresent),
-    workflowRunIdPlanGithubApiUnauthenticated: Boolean(handoff?.workflowRunIdPlanGithubApiUnauthenticated),
-    workflowRunIdPlanQueryExecuted: Boolean(handoff?.workflowRunIdPlanQueryExecuted),
-    workflowRunIdPlanQueryExecutedCount: Number(handoff?.workflowRunIdPlanQueryExecutedCount || 0),
-    workflowRunIdPlanQueryWorkflowCount: Number(handoff?.workflowRunIdPlanQueryWorkflowCount || 0),
-    workflowRunIdPlanQuerySucceededCount: Number(handoff?.workflowRunIdPlanQuerySucceededCount || 0),
-    workflowRunIdPlanQueryErrorCount: Number(handoff?.workflowRunIdPlanQueryErrorCount || 0),
-    workflowRunIdPlanCandidateCount: Number(handoff?.workflowRunIdPlanCandidateCount || 0),
-    inputFreeBlockedReviewReportExists: Boolean(handoff?.inputFreeBlockedReviewReportExists),
-    inputFreeBlockedReviewReportResult: handoff?.inputFreeBlockedReviewReportResult || '',
-    inputFreeBlockedReviewReportGeneratedAt: handoff?.inputFreeBlockedReviewReportGeneratedAt || '',
-    inputFreeBlockedReviewReportSelectedActionCount: Number(handoff?.inputFreeBlockedReviewReportSelectedActionCount || 0),
-    inputFreeBlockedReviewReportPlannedCount: Number(handoff?.inputFreeBlockedReviewReportPlannedCount || 0),
-    inputFreeBlockedReviewReportBlockedCount: Number(handoff?.inputFreeBlockedReviewReportBlockedCount || 0),
-    inputFreeBlockedReviewReportFailedCount: Number(handoff?.inputFreeBlockedReviewReportFailedCount || 0),
-    inputFreeBlockedReviewReportExecutedCount: Number(handoff?.inputFreeBlockedReviewReportExecutedCount || 0),
-    inputFreeBlockedReviewReportActionOrders: Array.isArray(handoff?.inputFreeBlockedReviewReportActionOrders) ? handoff.inputFreeBlockedReviewReportActionOrders : [],
-    inputFreeBlockedReviewReportStale: Boolean(handoff?.inputFreeBlockedReviewReportStale),
-    inputFreeBlockedReviewReportScopeMismatch: Boolean(handoff?.inputFreeBlockedReviewReportScopeMismatch),
-    inputFreeBlockedActions: Array.isArray(handoff?.inputFreeBlockedActions) ? handoff.inputFreeBlockedActions : [],
-    operatorInputValuesProfileReportPath: handoff?.operatorInputValuesProfileReportPath || '',
-    operatorInputValuesProfileExists: Boolean(handoff?.operatorInputValuesProfileExists),
-    operatorInputValuesProfileResult: handoff?.operatorInputValuesProfileResult || '',
-    operatorInputValuesProfileGeneratedAt: handoff?.operatorInputValuesProfileGeneratedAt || '',
-    operatorInputValuesProfileDefaultsUsed: Boolean(handoff?.operatorInputValuesProfileDefaultsUsed),
-    operatorInputValuesProfileDefaultsSkipped: Boolean(handoff?.operatorInputValuesProfileDefaultsSkipped),
-    operatorInputValuesProfileDefaultsSkipReason: handoff?.operatorInputValuesProfileDefaultsSkipReason || '',
-    operatorInputValuesProfileDefaultValueCount: Number(handoff?.operatorInputValuesProfileDefaultValueCount || 0),
-    operatorInputValuesProfileFilledValueCount: Number(handoff?.operatorInputValuesProfileFilledValueCount || 0),
-    operatorInputValuesProfileBlankValueCount: Number(handoff?.operatorInputValuesProfileBlankValueCount || 0),
-    operatorInputValuesProfileCommand: handoff?.operatorInputValuesProfileCommand || '',
-    operatorInputValuesCheckCommand: handoff?.operatorInputValuesCheckCommand || '',
-    operatorInputValuesCheckResult: handoff?.operatorInputValuesCheckResult || '',
-    operatorInputValuesCheckValueCount: Number(handoff?.operatorInputValuesCheckValueCount || 0),
-    operatorInputValuesCheckReadyValueCount: Number(handoff?.operatorInputValuesCheckReadyValueCount || 0),
-    operatorInputValuesCheckMissingValueCount: Number(handoff?.operatorInputValuesCheckMissingValueCount || 0),
-    operatorInputValuesCheckUnsafeValueCount: Number(handoff?.operatorInputValuesCheckUnsafeValueCount || 0),
-    operatorInputValuesCheckInvalidValueCount: Number(handoff?.operatorInputValuesCheckInvalidValueCount || 0),
-    operatorInputValuesCheckValueReadyActionCount: Number(handoff?.operatorInputValuesCheckValueReadyActionCount || 0),
-    operatorInputValuesCheckNonReadyActionCount: Number(handoff?.operatorInputValuesCheckNonReadyActionCount || 0),
-    operatorInputValuesCheckActionSummaryCount: Number(handoff?.operatorInputValuesCheckActionSummaryCount || 0),
-    operatorInputValuesCheckNonReadyActionOrders: Array.isArray(handoff?.operatorInputValuesCheckNonReadyActionOrders) ? handoff.operatorInputValuesCheckNonReadyActionOrders : [],
-    operatorInputValuesCheckNonReadyActionSummaries: normalizeOperationsInputValueActionSummaries(handoff?.operatorInputValuesCheckNonReadyActionSummaries),
-    artifactCollectionActionOrders: Array.isArray(handoff?.artifactCollectionActionOrders) ? handoff.artifactCollectionActionOrders : [],
-    dispatchPreflightScopeMismatch: Boolean(handoff?.dispatchPreflightScopeMismatch),
-    workflowRunIdPlanStale: Boolean(handoff?.workflowRunIdPlanStale),
-    workflowRunIdPlanScopeMismatch: Boolean(handoff?.workflowRunIdPlanScopeMismatch),
-    artifactCollectionStale: Boolean(handoff?.artifactCollectionStale),
-    artifactCollectionScopeMismatch: Boolean(handoff?.artifactCollectionScopeMismatch),
-    staleReportCount: Number(handoff?.staleReportCount || 0),
-    readyDispatchWorkflows: Array.isArray(handoff?.readyDispatchWorkflows) ? handoff.readyDispatchWorkflows : [],
-    blockedDispatchWorkflows: Array.isArray(handoff?.blockedDispatchWorkflows) ? handoff.blockedDispatchWorkflows : [],
-    browserDispatchChecklistCount: Number(handoff?.browserDispatchChecklistCount || 0),
-    browserDispatchChecklist: Array.isArray(handoff?.browserDispatchChecklist) ? handoff.browserDispatchChecklist : [],
-    securityEvidenceFinalizerRunIdInputHintCount: Number(handoff?.securityEvidenceFinalizerRunIdInputHintCount || 0),
-    securityEvidenceFinalizerRunIdInputHints: normalizeOperationsWorkflowRunIdInputs(handoff?.securityEvidenceFinalizerRunIdInputHints),
-    dispatchWorkflows: Array.isArray(handoff?.dispatchWorkflows) ? handoff.dispatchWorkflows : [],
-    blockedActionCount: Number(handoff?.blockedActionCount || 0),
-    missingWorkflowRunCount: Number(handoff?.missingWorkflowRunCount || 0),
-    missingRequiredArtifactCount: Number(handoff?.missingRequiredArtifactCount || 0),
-    failedImportCount: Number(handoff?.failedImportCount || 0),
-    finalizerFailedCount: Number(handoff?.finalizerFailedCount || 0),
-    finalizerGapCount: Number(handoff?.finalizerGapCount || 0),
-    postDispatchCommands: Array.isArray(handoff?.postDispatchCommands) ? handoff.postDispatchCommands : [],
-    stages: Array.isArray(handoff?.stages) ? handoff.stages : [],
-  }
-}
-
-function normalizeOperationsReadinessConvergence(report = {}) {
-  const bottleneck = report?.currentBottleneck || {}
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    handoffReportPath: report?.handoffReportPath || '',
-    readinessReportPath: report?.readinessReportPath || '',
-    operationsReadinessFinalizeReportPath: report?.operationsReadinessFinalizeReportPath || '',
-    handoffExists: Boolean(report?.handoffExists),
-    handoffResult: report?.handoffResult || '',
-    readinessExists: Boolean(report?.readinessExists),
-    readinessResult: report?.readinessResult || '',
-    readinessSummary: report?.readinessSummary || '',
-    readinessPassedCount: Number(report?.readinessPassedCount || 0),
-    readinessPendingCount: Number(report?.readinessPendingCount || 0),
-    readinessTotalCount: Number(report?.readinessTotalCount || 0),
-    readinessCheckCount: Number(report?.readinessCheckCount || 0),
-    finalizerExists: Boolean(report?.finalizerExists),
-    finalizerResult: report?.finalizerResult || '',
-    finalizerReadinessResult: report?.finalizerReadinessResult || '',
-    finalizerFailedCount: Number(report?.finalizerFailedCount || 0),
-    finalizerFailedCountValid: typeof report?.finalizerFailedCountValid === 'boolean'
-      ? report.finalizerFailedCountValid
-      : null,
-    finalizerFailedCountRaw: report?.finalizerFailedCountRaw || '',
-    kubernetesOperationsReportSyncReportPath: report?.kubernetesOperationsReportSyncReportPath || '',
-    kubernetesReportSyncExists: Boolean(report?.kubernetesReportSyncExists),
-    kubernetesReportSyncResult: report?.kubernetesReportSyncResult || '',
-    kubernetesReportSyncStale: Boolean(report?.kubernetesReportSyncStale),
-    kubernetesReportSyncTimestamp: report?.kubernetesReportSyncTimestamp || '',
-    kubernetesReportSyncTimestampSource: report?.kubernetesReportSyncTimestampSource || '',
-    kubernetesReportSyncFreshnessReason: report?.kubernetesReportSyncFreshnessReason || '',
-    kubernetesReportSyncFailedCount: Number(report?.kubernetesReportSyncFailedCount || 0),
-    kubernetesReportSyncFailedCountValid: typeof report?.kubernetesReportSyncFailedCountValid === 'boolean'
-      ? report.kubernetesReportSyncFailedCountValid
-      : null,
-    kubernetesReportSyncFailedCountRaw: report?.kubernetesReportSyncFailedCountRaw || '',
-    kubernetesReportSyncConfigMapName: report?.kubernetesReportSyncConfigMapName || '',
-    kubernetesReportSyncConfigMapKey: report?.kubernetesReportSyncConfigMapKey || '',
-    kubernetesReportSyncSourceReportResult: report?.kubernetesReportSyncSourceReportResult || '',
-    kubernetesReportSyncWorkflowCommand: report?.kubernetesReportSyncWorkflowCommand || '',
-    kubernetesReportSyncWorkflowNote: report?.kubernetesReportSyncWorkflowNote || '',
-    kubernetesReportSyncReady: Boolean(report?.kubernetesReportSyncReady),
-    finalizerGapCount: Number(report?.finalizerGapCount || 0),
-    stageCount: Number(report?.stageCount || 0),
-    readyStageCount: Number(report?.readyStageCount || 0),
-    blockedActionCount: Number(report?.blockedActionCount || 0),
-    handoffRequiredGitHubSecretCount: Number(report?.handoffRequiredGitHubSecretCount || 0),
-    handoffRequiredGitHubSecrets: Array.isArray(report?.handoffRequiredGitHubSecrets) ? report.handoffRequiredGitHubSecrets : [],
-    handoffRequiredGitHubSecretSummaries: Array.isArray(report?.handoffRequiredGitHubSecretSummaries) ? report.handoffRequiredGitHubSecretSummaries : [],
-    handoffWorkflowRunIdPlanQueryMode: report?.handoffWorkflowRunIdPlanQueryMode || '',
-    handoffWorkflowRunIdPlanGithubApiTokenPresent: Boolean(report?.handoffWorkflowRunIdPlanGithubApiTokenPresent),
-    handoffWorkflowRunIdPlanGithubApiUnauthenticated: Boolean(report?.handoffWorkflowRunIdPlanGithubApiUnauthenticated),
-    handoffWorkflowRunIdPlanQueryExecuted: Boolean(report?.handoffWorkflowRunIdPlanQueryExecuted),
-    handoffWorkflowRunIdPlanQueryExecutedCount: Number(report?.handoffWorkflowRunIdPlanQueryExecutedCount || 0),
-    handoffWorkflowRunIdPlanQueryWorkflowCount: Number(report?.handoffWorkflowRunIdPlanQueryWorkflowCount || 0),
-    handoffWorkflowRunIdPlanQuerySucceededCount: Number(report?.handoffWorkflowRunIdPlanQuerySucceededCount || 0),
-    handoffWorkflowRunIdPlanQueryErrorCount: Number(report?.handoffWorkflowRunIdPlanQueryErrorCount || 0),
-    handoffWorkflowRunIdPlanCandidateCount: Number(report?.handoffWorkflowRunIdPlanCandidateCount || 0),
-    handoffInputFreeBlockedReviewReportExists: Boolean(report?.handoffInputFreeBlockedReviewReportExists),
-    handoffInputFreeBlockedReviewReportResult: report?.handoffInputFreeBlockedReviewReportResult || '',
-    handoffInputFreeBlockedReviewReportGeneratedAt: report?.handoffInputFreeBlockedReviewReportGeneratedAt || '',
-    handoffInputFreeBlockedReviewReportSelectedActionCount: Number(report?.handoffInputFreeBlockedReviewReportSelectedActionCount || 0),
-    handoffInputFreeBlockedReviewReportPlannedCount: Number(report?.handoffInputFreeBlockedReviewReportPlannedCount || 0),
-    handoffInputFreeBlockedReviewReportBlockedCount: Number(report?.handoffInputFreeBlockedReviewReportBlockedCount || 0),
-    handoffInputFreeBlockedReviewReportFailedCount: Number(report?.handoffInputFreeBlockedReviewReportFailedCount || 0),
-    handoffInputFreeBlockedReviewReportExecutedCount: Number(report?.handoffInputFreeBlockedReviewReportExecutedCount || 0),
-    handoffInputFreeBlockedReviewReportActionOrders: Array.isArray(report?.handoffInputFreeBlockedReviewReportActionOrders) ? report.handoffInputFreeBlockedReviewReportActionOrders : [],
-    handoffInputFreeBlockedReviewReportStale: Boolean(report?.handoffInputFreeBlockedReviewReportStale),
-    handoffInputFreeBlockedReviewReportScopeMismatch: Boolean(report?.handoffInputFreeBlockedReviewReportScopeMismatch),
-    handoffOperatorInputValuesProfileReportPath: report?.handoffOperatorInputValuesProfileReportPath || '',
-    handoffOperatorInputValuesProfileExists: Boolean(report?.handoffOperatorInputValuesProfileExists),
-    handoffOperatorInputValuesProfileResult: report?.handoffOperatorInputValuesProfileResult || '',
-    handoffOperatorInputValuesProfileGeneratedAt: report?.handoffOperatorInputValuesProfileGeneratedAt || '',
-    handoffOperatorInputValuesProfileDefaultsUsed: Boolean(report?.handoffOperatorInputValuesProfileDefaultsUsed),
-    handoffOperatorInputValuesProfileDefaultsSkipped: Boolean(report?.handoffOperatorInputValuesProfileDefaultsSkipped),
-    handoffOperatorInputValuesProfileDefaultsSkipReason: report?.handoffOperatorInputValuesProfileDefaultsSkipReason || '',
-    handoffOperatorInputValuesProfileDefaultValueCount: Number(report?.handoffOperatorInputValuesProfileDefaultValueCount || 0),
-    handoffOperatorInputValuesProfileFilledValueCount: Number(report?.handoffOperatorInputValuesProfileFilledValueCount || 0),
-    handoffOperatorInputValuesProfileBlankValueCount: Number(report?.handoffOperatorInputValuesProfileBlankValueCount || 0),
-    handoffOperatorInputValuesCheckResult: report?.handoffOperatorInputValuesCheckResult || '',
-    handoffOperatorInputValuesCheckValueCount: Number(report?.handoffOperatorInputValuesCheckValueCount || 0),
-    handoffOperatorInputValuesCheckReadyValueCount: Number(report?.handoffOperatorInputValuesCheckReadyValueCount || 0),
-    handoffOperatorInputValuesCheckMissingValueCount: Number(report?.handoffOperatorInputValuesCheckMissingValueCount || 0),
-    handoffOperatorInputValuesCheckUnsafeValueCount: Number(report?.handoffOperatorInputValuesCheckUnsafeValueCount || 0),
-    handoffOperatorInputValuesCheckInvalidValueCount: Number(report?.handoffOperatorInputValuesCheckInvalidValueCount || 0),
-    handoffOperatorInputValuesCheckValueReadyActionCount: Number(report?.handoffOperatorInputValuesCheckValueReadyActionCount || 0),
-    handoffOperatorInputValuesCheckNonReadyActionCount: Number(report?.handoffOperatorInputValuesCheckNonReadyActionCount || 0),
-    handoffOperatorInputValuesCheckActionSummaryCount: Number(report?.handoffOperatorInputValuesCheckActionSummaryCount || 0),
-    handoffOperatorInputValuesCheckNonReadyActionOrders: Array.isArray(report?.handoffOperatorInputValuesCheckNonReadyActionOrders) ? report.handoffOperatorInputValuesCheckNonReadyActionOrders : [],
-    handoffOperatorInputValuesCheckNonReadyActionSummaries: normalizeOperationsInputValueActionSummaries(report?.handoffOperatorInputValuesCheckNonReadyActionSummaries),
-    missingWorkflowRunCount: Number(report?.missingWorkflowRunCount || 0),
-    missingRequiredArtifactCount: Number(report?.missingRequiredArtifactCount || 0),
-    failedImportCount: Number(report?.failedImportCount || 0),
-    currentBottleneck: {
-      code: bottleneck.code || '',
-      title: bottleneck.title || '',
-      reason: bottleneck.reason || '',
-      command: bottleneck.command || '',
-      note: bottleneck.note || '',
-      dispatchUrls: Array.isArray(bottleneck.dispatchUrls) ? bottleneck.dispatchUrls : [],
-    },
-    handoffStale: Boolean(report?.handoffStale),
-    handoffTimestamp: report?.handoffTimestamp || '',
-    handoffTimestampSource: report?.handoffTimestampSource || '',
-    readinessTimestamp: report?.readinessTimestamp || '',
-    readinessTimestampSource: report?.readinessTimestampSource || '',
-    handoffPostDispatchCommands: Array.isArray(report?.handoffPostDispatchCommands) ? report.handoffPostDispatchCommands : [],
-    handoffBrowserDispatchDependencyNotes: Array.isArray(report?.handoffBrowserDispatchDependencyNotes) ? report.handoffBrowserDispatchDependencyNotes : [],
-    handoffSecurityEvidenceFinalizerRunIdInputHintCount: Number(report?.handoffSecurityEvidenceFinalizerRunIdInputHintCount || 0),
-    handoffSecurityEvidenceFinalizerRunIdInputHints: normalizeOperationsWorkflowRunIdInputs(report?.handoffSecurityEvidenceFinalizerRunIdInputHints),
-    recommendedCommands: Array.isArray(report?.recommendedCommands) ? report.recommendedCommands : [],
-    decisionRule: report?.decisionRule || '',
-    safetyPolicy: report?.safetyPolicy || '',
-  }
-}
-
-function normalizeKubernetesOperationsReportSync(report = {}) {
-  return {
-    result: report?.result || '',
-    generatedAt: report?.generatedAt || '',
-    namespace: report?.namespace || '',
-    configMapName: report?.configMapName || '',
-    configMapKey: report?.configMapKey || '',
-    evidenceConfigMapKey: report?.evidenceConfigMapKey || '',
-    dataFlowStoragePlanConfigMapKey: report?.dataFlowStoragePlanConfigMapKey || '',
-    dataFlowStorageTransitionRunbookConfigMapKey: report?.dataFlowStorageTransitionRunbookConfigMapKey || '',
-    dataFlowQueryRetentionBudgetConfigMapKey: report?.dataFlowQueryRetentionBudgetConfigMapKey || '',
-    publishDataFlowStoragePlanToConfigMap: Boolean(report?.publishDataFlowStoragePlanToConfigMap),
-    publishDataFlowQueryRetentionBudgetToConfigMap: Boolean(report?.publishDataFlowQueryRetentionBudgetToConfigMap),
-    publishDataFlowStorageTransitionRunbookToConfigMap: Boolean(report?.publishDataFlowStorageTransitionRunbookToConfigMap),
-    sourceReportPath: report?.sourceReportPath || '',
-    sourceReportFormatVersion: report?.sourceReportFormatVersion || '',
-    sourceReportResult: report?.sourceReportResult || '',
-    sourceReportBytes: Number(report?.sourceReportBytes || 0),
-    sourceReportSha256: report?.sourceReportSha256 || '',
-    dataFlowStorageTransitionRunbookResult: report?.dataFlowStorageTransitionRunbookResult || '',
-    dataFlowStorageTransitionRunbookStoragePlanResult: report?.dataFlowStorageTransitionRunbookStoragePlanResult || '',
-    dataFlowStorageTransitionRunbookCandidateStore: report?.dataFlowStorageTransitionRunbookCandidateStore || '',
-    dataFlowQueryRetentionBudgetResult: report?.dataFlowQueryRetentionBudgetResult || '',
-    dataFlowQueryRetentionBudgetStoragePlanResult: report?.dataFlowQueryRetentionBudgetStoragePlanResult || '',
-    dataFlowQueryRetentionBudgetCandidateStore: report?.dataFlowQueryRetentionBudgetCandidateStore || '',
-    dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs: Number(report?.dataFlowQueryRetentionBudgetTargetP95QueryLatencyMs || 0),
-    dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs: Number(report?.dataFlowQueryRetentionBudgetObservedP95QueryLatencyMs || 0),
-    dataFlowQueryRetentionBudgetRetentionBudgetSeconds: Number(report?.dataFlowQueryRetentionBudgetRetentionBudgetSeconds || 0),
-    dataFlowQueryRetentionBudgetFailureCount: Number(report?.dataFlowQueryRetentionBudgetFailureCount || 0),
-    dataFlowQueryRetentionBudgetCheckCount: Number(report?.dataFlowQueryRetentionBudgetCheckCount || 0),
-    dataFlowStorageTransitionRunbookFailureCount: Number(report?.dataFlowStorageTransitionRunbookFailureCount || 0),
-    dataFlowStorageTransitionRunbookCheckCount: Number(report?.dataFlowStorageTransitionRunbookCheckCount || 0),
-    dataFlowStorageTransitionRunbookBytes: Number(report?.dataFlowStorageTransitionRunbookBytes || 0),
-    dataFlowStorageTransitionRunbookSha256: report?.dataFlowStorageTransitionRunbookSha256 || '',
-    clientDryRunCommand: report?.clientDryRunCommand || '',
-    serverDryRunCommand: report?.serverDryRunCommand || '',
-    applyCommand: report?.applyCommand || '',
-    checkCount: Number(report?.checkCount || 0),
-    failedCount: Number(report?.failedCount || 0),
-    checks: Array.isArray(report?.checks) ? report.checks : [],
-    safetyPolicy: report?.safetyPolicy || '',
-  }
-}
-
-async function loadQuotaPolicies() {
-  const [policyResult, historyResult] = await Promise.all([
-    safeRequest(() => getQuotaPolicies(), { items: [] }),
-    safeRequest(() => getQuotaPolicyHistory(50), { items: [] }),
-  ])
-  quotaPolicies.value = policyResult.items || []
-  quotaPolicyHistory.value = historyResult.items || []
-}
-
-async function loadStorageExpansionRequests() {
-  const result = await safeRequest(() => getStorageExpansionRequests(), { items: [] })
-  storageExpansionRequests.value = result.items || []
+async function handleLoadMoreStorageExpansionRequests() {
+  await loadStorageExpansionRequests({ append: true })
 }
 
 async function loadStorageExpansionSummary() {
@@ -7085,14 +6470,14 @@ async function handleCreateStorageExpansionRequest() {
     reason: storageExpansionForm.reason,
   }))
   if (!result?.data) return
-  storageExpansionRequests.value = [
-    result.data,
-    ...storageExpansionRequests.value.filter((request) => request.id !== result.data.id),
-  ]
+  await loadStorageExpansionRequests()
   storageExpansionManifest.value = null
   storageExpansionExecutionPlan.value = null
   storageExpansionGitOpsPlan.value = null
   storageExpansionExecutions.value = []
+  storageExpansionExecutionHistoryRequest.value = null
+  storageExpansionExecutionNextCursor.value = ''
+  storageExpansionExecutionLoadSequence += 1
   resetStorageExpansionExecutionForm()
   resetStorageExpansionForm()
   await loadStorageExpansionSummary()
@@ -7195,9 +6580,7 @@ async function handleRunStorageExpansionApplyExecution() {
     ...storageExpansionExecutions.value.filter((execution) => execution.id !== result.data.execution.id),
   ]
   if (result.data.request) {
-    storageExpansionRequests.value = storageExpansionRequests.value.map((request) => (
-      request.id === result.data.request.id ? result.data.request : request
-    ))
+    await loadStorageExpansionRequests()
     if (result.data.request.status === 'APPLIED') {
       if (storageExpansionManifest.value?.requestId === result.data.request.id) {
         storageExpansionManifest.value = null
@@ -7291,13 +6674,48 @@ async function handleDownloadStorageExpansionGitOpsBundle() {
   setStatusMessage(`Storage expansion GitOps bundle downloaded: ${filename}`)
 }
 
-async function handleLoadStorageExpansionExecutions(request) {
-  if (!request?.id) return
-  storageExpansionExecutionForm.requestId = request.id
-  const result = await runAction(() => getStorageExpansionExecutions(request.id))
-  if (!result) return
-  storageExpansionExecutions.value = result.items || []
-  setStatusMessage(`Storage expansion execution history loaded: ${request.poolName}`)
+async function handleLoadStorageExpansionExecutions(request, options = {}) {
+  const append = options.append === true
+  const targetRequest = append ? storageExpansionExecutionHistoryRequest.value : request
+  if (!targetRequest?.id) return
+  const cursor = append ? storageExpansionExecutionNextCursor.value : ''
+  if (append && (!cursor || storageExpansionExecutionsLoading.value)) return
+
+  if (!append) {
+    storageExpansionExecutionHistoryRequest.value = targetRequest
+    storageExpansionExecutionForm.requestId = targetRequest.id
+    storageExpansionExecutions.value = []
+    storageExpansionExecutionNextCursor.value = ''
+  }
+
+  const loadSequence = ++storageExpansionExecutionLoadSequence
+  storageExpansionExecutionsLoading.value = true
+  try {
+    const result = await runAction(() => getStorageExpansionExecutions(targetRequest.id, {
+      cursor,
+      limit: 50,
+    }))
+    if (!result || loadSequence !== storageExpansionExecutionLoadSequence) return
+    if (append) {
+      const existingIds = new Set(storageExpansionExecutions.value.map((execution) => execution.id))
+      storageExpansionExecutions.value = [
+        ...storageExpansionExecutions.value,
+        ...(result.items || []).filter((execution) => !existingIds.has(execution.id)),
+      ]
+    } else {
+      storageExpansionExecutions.value = result.items || []
+    }
+    storageExpansionExecutionNextCursor.value = result.nextCursor || ''
+    setStatusMessage(`Storage expansion execution history loaded: ${targetRequest.poolName || `pool-${targetRequest.id}`}`)
+  } finally {
+    if (loadSequence === storageExpansionExecutionLoadSequence) {
+      storageExpansionExecutionsLoading.value = false
+    }
+  }
+}
+
+async function handleLoadMoreStorageExpansionExecutions() {
+  await handleLoadStorageExpansionExecutions(storageExpansionExecutionHistoryRequest.value, { append: true })
 }
 
 async function handleCreateStorageExpansionExecutionRecord() {
@@ -7328,9 +6746,7 @@ async function handleApplyStorageExpansionFromExecution(execution) {
   if (!execution?.requestId || !execution.id) return
   const result = await runAction(() => applyStorageExpansionExecutionRecord(execution.requestId, execution.id))
   if (!result?.data) return
-  storageExpansionRequests.value = storageExpansionRequests.value.map((request) => (
-    request.id === result.data.id ? result.data : request
-  ))
+  await loadStorageExpansionRequests()
   if (storageExpansionManifest.value?.requestId === result.data.id) {
     storageExpansionManifest.value = null
   }
@@ -7353,9 +6769,7 @@ async function handleUpdateStorageExpansionStatus(payload) {
     payload.appliedEvidence || '',
   ))
   if (!result?.data) return
-  storageExpansionRequests.value = storageExpansionRequests.value.map((request) => (
-    request.id === result.data.id ? result.data : request
-  ))
+  await loadStorageExpansionRequests()
   if (storageExpansionManifest.value?.requestId === result.data.id) {
     storageExpansionManifest.value = null
   }
@@ -7403,9 +6817,55 @@ function resetStorageExpansionExecutionForm() {
   storageExpansionExecutionForm.rollbackKubectlTarget = 'statefulset/osmu-minio'
 }
 
-async function refreshLifecycleRules() {
-  const result = await safeRequest(() => getObjectLifecycleRules(), { data: [] })
-  lifecycleRules.value = result.data || []
+async function refreshLifecycleRules(options = {}) {
+  const append = options.append === true
+  const cursor = append ? lifecycleRulesNextCursor.value : ''
+  if (append && (!cursor || lifecycleRulesLoading.value)) return
+
+  const loadSequence = ++lifecycleRuleLoadSequence
+  lifecycleRulesLoading.value = true
+  try {
+    const fallback = append
+      ? { items: [], nextCursor: lifecycleRulesNextCursor.value }
+      : { items: [], nextCursor: null }
+    const result = await safeRequest(() => getObjectLifecycleRules({
+      status: options.status || lifecycleRuleStatusFilter.value,
+      targetType: options.targetType || lifecycleRuleTargetFilter.value,
+      cursor,
+      limit: 50,
+    }), fallback)
+    if (loadSequence !== lifecycleRuleLoadSequence) return
+    if (append) {
+      const existingRuleIds = new Set(lifecycleRules.value.map((rule) => rule.ruleId))
+      lifecycleRules.value = [
+        ...lifecycleRules.value,
+        ...(result.items || []).filter((rule) => !existingRuleIds.has(rule.ruleId)),
+      ]
+    } else {
+      lifecycleRules.value = result.items || []
+    }
+    lifecycleRulesNextCursor.value = result.nextCursor || ''
+  } finally {
+    if (loadSequence === lifecycleRuleLoadSequence) {
+      lifecycleRulesLoading.value = false
+    }
+  }
+}
+
+async function handleLifecycleRuleStatusFilter(status) {
+  const allowedStatuses = ['ALL', 'ENABLED', 'DISABLED']
+  lifecycleRuleStatusFilter.value = allowedStatuses.includes(status) ? status : 'ALL'
+  await refreshLifecycleRules()
+}
+
+async function handleLifecycleRuleTargetFilter(targetType) {
+  const allowedTargetTypes = ['ALL', 'OBJECT_VERSION', 'TRASH_OBJECT']
+  lifecycleRuleTargetFilter.value = allowedTargetTypes.includes(targetType) ? targetType : 'ALL'
+  await refreshLifecycleRules()
+}
+
+async function handleLoadMoreLifecycleRules() {
+  await refreshLifecycleRules({ append: true })
 }
 
 function resetLifecycleRuleForm() {
@@ -7608,14 +7068,100 @@ async function handleCreateOrganization() {
   }
 }
 
-async function loadTeams() {
+async function loadUsers(options = {}) {
   if (!canUseAdminTools.value) {
-    teams.value = []
+    users.value = []
+    usersNextCursor.value = ''
+    usersLoading.value = false
+    userLoadSequence += 1
     return
   }
-  const result = await safeRequest(() => getTeams(), { items: [] })
-  teams.value = result.items || []
-  syncTeamFormDefaults()
+  const append = options.append === true
+  const cursor = append ? usersNextCursor.value : ''
+  if (append && (!cursor || usersLoading.value)) return
+
+  const loadSequence = ++userLoadSequence
+  usersLoading.value = true
+  try {
+    const fallback = append
+      ? { items: [], nextCursor: usersNextCursor.value }
+      : { items: [], nextCursor: null }
+    const result = await safeRequest(() => getUsers({ cursor, limit: 200 }), fallback)
+    if (loadSequence !== userLoadSequence) return
+    if (append) {
+      const existingIds = new Set(users.value.map((user) => user.id))
+      users.value = [
+        ...users.value,
+        ...(result.items || []).filter((user) => !existingIds.has(user.id)),
+      ]
+    } else {
+      users.value = result.items || []
+    }
+    usersNextCursor.value = result.nextCursor || ''
+  } finally {
+    if (loadSequence === userLoadSequence) {
+      usersLoading.value = false
+    }
+  }
+}
+
+async function handleLoadMoreUsers() {
+  await loadUsers({ append: true })
+}
+
+async function loadTeams(options = {}) {
+  if (!canUseAdminTools.value) {
+    teams.value = []
+    teamsNextCursor.value = ''
+    teamsLoading.value = false
+    teamLoadSequence += 1
+    return
+  }
+  const append = options.append === true
+  const cursor = append ? teamsNextCursor.value : ''
+  if (append && (!cursor || teamsLoading.value)) return
+
+  const organizationId = teamOrganizationFilter.value
+  const loadSequence = ++teamLoadSequence
+  teamsLoading.value = true
+  try {
+    const fallback = append
+      ? { items: [], nextCursor: teamsNextCursor.value }
+      : { items: [], nextCursor: null }
+    const result = await safeRequest(() => getTeams({
+      organizationId,
+      cursor,
+      limit: 50,
+    }), fallback)
+    if (loadSequence !== teamLoadSequence || teamOrganizationFilter.value !== organizationId) return
+    if (append) {
+      const existingIds = new Set(teams.value.map((team) => team.id))
+      teams.value = [
+        ...teams.value,
+        ...(result.items || []).filter((team) => !existingIds.has(team.id)),
+      ]
+    } else {
+      teams.value = result.items || []
+    }
+    teamsNextCursor.value = result.nextCursor || ''
+    syncTeamFormDefaults()
+  } finally {
+    if (loadSequence === teamLoadSequence) {
+      teamsLoading.value = false
+    }
+  }
+}
+
+async function handleTeamOrganizationFilter(value) {
+  const requestedOrganizationId = String(value || '').trim()
+  const isVisibleOrganization = requestedOrganizationId === ''
+    || organizations.value.some((organization) => String(organization.id) === requestedOrganizationId)
+  teamOrganizationFilter.value = isVisibleOrganization ? requestedOrganizationId : ''
+  await loadTeams()
+}
+
+async function handleLoadMoreTeams() {
+  await loadTeams({ append: true })
 }
 
 async function handleCreateTeam() {
@@ -8047,7 +7593,7 @@ function metadataStatusClass(status) {
 
 function statusClass(status) {
   const value = String(status || '').toUpperCase()
-  if (['UP', 'READY', 'HEALTHY', 'OK', 'ON', 'ACTIVE', 'COMPLETED', 'SUCCESS', 'RECORDED'].includes(value)) return 'up'
+  if (['UP', 'READY', 'HEALTHY', 'OK', 'ON', 'ACTIVE', 'COMPLETED', 'SUCCESS', 'RECORDED', 'APPROVED', 'APPLIED'].includes(value)) return 'up'
   if (['MOCK', 'UNKNOWN', 'DEGRADED', 'PENDING', 'DRILL_PENDING', 'REVIEW', 'PARTIAL', 'MISSING'].includes(value)) return 'mock'
   return 'down'
 }

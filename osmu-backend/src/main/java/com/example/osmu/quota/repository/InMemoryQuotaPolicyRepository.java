@@ -2,6 +2,7 @@ package com.example.osmu.quota.repository;
 
 import com.example.osmu.quota.QuotaPolicy;
 import com.example.osmu.quota.QuotaPolicyHistory;
+import com.example.osmu.quota.QuotaPolicyPageCursor;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -22,10 +23,28 @@ public class InMemoryQuotaPolicyRepository implements QuotaPolicyRepository {
     private final CopyOnWriteArrayList<QuotaPolicyHistory> history = new CopyOnWriteArrayList<>();
 
     @Override
-    public List<QuotaPolicy> findAll() {
+    public List<QuotaPolicy> findPage(QuotaPolicyPageCursor cursor, int limit) {
+        return orderedPolicies().stream()
+                .filter(policy -> cursor == null || isAfter(policy, cursor))
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    public List<QuotaPolicy> findAllForDashboardSummary() {
+        return orderedPolicies();
+    }
+
+    private List<QuotaPolicy> orderedPolicies() {
         return policies.values().stream()
                 .sorted(Comparator.comparing(QuotaPolicy::targetType).thenComparingLong(QuotaPolicy::targetId))
                 .toList();
+    }
+
+    private boolean isAfter(QuotaPolicy policy, QuotaPolicyPageCursor cursor) {
+        int targetTypeComparison = policy.targetType().compareTo(cursor.targetType());
+        return targetTypeComparison > 0
+                || (targetTypeComparison == 0 && policy.targetId() > cursor.targetId());
     }
 
     @Override

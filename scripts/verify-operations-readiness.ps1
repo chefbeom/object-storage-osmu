@@ -1197,6 +1197,8 @@ $selfTestChargebackCloseoutMarkdownOutputPath = Join-Path $targetGuardFixtureDir
         closeoutCompletedAt = "2026-06-30T01:45:00Z"
     }
     summary = @{
+        checkCount = 40
+        passCount = 40
         failureCount = 0
         plannedCount = 0
         providedEvidenceRefCount = 14
@@ -1204,11 +1206,39 @@ $selfTestChargebackCloseoutMarkdownOutputPath = Join-Path $targetGuardFixtureDir
         paymentProviderAdapterReadinessSnapshotValid = $true
         paymentProviderAdapterReadinessReviewed = $true
         chargebackCloseoutSnapshotValid = $true
+        chargebackCloseoutSnapshotReady = $true
+        chargebackCloseoutSnapshotBlockerCount = 0
+        chargebackCloseoutSnapshotScanLimit = 500
+        chargebackCloseoutSnapshotSourceTruncated = $false
+        chargebackCloseoutSnapshotTruncationBlockerCount = 0
         commercialEvidenceReviewed = $true
     }
     chargebackCloseoutSnapshot = @{
+        valid = $true
+        statusClosed = $true
+        billingPeriodMatches = $true
+        integersValid = $true
+        booleansValid = $true
+        failureCountZero = $true
+        blockerCountZero = $true
+        scanLimitPositive = $true
+        sourceTruncated = $false
+        sourceComplete = $true
+        truncationBlockerCountZero = $true
+        closeoutReady = $true
+        readinessBooleansClosed = $true
+        noRawDataStored = $true
         counts = @{
+            scanLimit = 500
+            failureCount = 0
+            blockerCount = 0
+            truncationBlockerCount = 0
             reconciliationDifferenceMinorUnits = 0
+        }
+        rawDataFlags = @{
+            rawCustomerPaymentDataStored = $false
+            rawProviderResponseStored = $false
+            rawSecretValuesStored = $false
         }
     }
     checks = @()
@@ -1228,6 +1258,57 @@ if ($selfTestChargebackCloseoutCheck.Count -ne 1 -or $selfTestChargebackCloseout
 }
 if (-not ([string] $selfTestChargebackCloseoutCheck[0].detail).Contains("rejected=self-test-target-evidence")) {
     throw "Self-test chargeback closeout detail must explain target evidence rejection."
+}
+
+$completeChargebackCloseoutEvidencePath = Join-Path $targetGuardFixtureDirectory "complete-chargeback-closeout.json"
+$completeChargebackCloseoutJsonOutputPath = Join-Path $targetGuardFixtureDirectory "complete-chargeback-readiness.json"
+$completeChargebackCloseoutMarkdownOutputPath = Join-Path $targetGuardFixtureDirectory "complete-chargeback-readiness.md"
+$completeChargebackCloseout = Read-Utf8Text $selfTestChargebackCloseoutEvidencePath | ConvertFrom-Json
+$completeChargebackCloseout.target.environmentName = "pilot-prod"
+$completeChargebackCloseout.target.operator = "billing-ops"
+$completeChargebackCloseout | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $completeChargebackCloseoutEvidencePath -Encoding UTF8
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ChargebackCloseoutEvidencePath $completeChargebackCloseoutEvidencePath `
+    -JsonOutputPath $completeChargebackCloseoutJsonOutputPath `
+    -MarkdownOutputPath $completeChargebackCloseoutMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for complete chargeback closeout fixture with exit code $LASTEXITCODE."
+}
+$completeChargebackCloseoutReport = Read-Utf8Text $completeChargebackCloseoutJsonOutputPath | ConvertFrom-Json
+$completeChargebackCloseoutCheck = @($completeChargebackCloseoutReport.checks | Where-Object { $_.name -eq "Chargeback closeout target evidence" })
+if ($completeChargebackCloseoutCheck.Count -ne 1 -or -not $completeChargebackCloseoutCheck[0].passed) {
+    throw "Complete chargeback closeout evidence must satisfy the operations readiness target check."
+}
+if (-not ([string] $completeChargebackCloseoutCheck[0].detail).Contains("scanLimit=500") -or -not ([string] $completeChargebackCloseoutCheck[0].detail).Contains("sourceTruncated=False")) {
+    throw "Complete chargeback closeout detail must expose scan completeness."
+}
+
+$truncatedChargebackCloseoutEvidencePath = Join-Path $targetGuardFixtureDirectory "truncated-chargeback-closeout.json"
+$truncatedChargebackCloseoutJsonOutputPath = Join-Path $targetGuardFixtureDirectory "truncated-chargeback-readiness.json"
+$truncatedChargebackCloseoutMarkdownOutputPath = Join-Path $targetGuardFixtureDirectory "truncated-chargeback-readiness.md"
+$completeChargebackCloseout.summary.chargebackCloseoutSnapshotReady = $false
+$completeChargebackCloseout.summary.chargebackCloseoutSnapshotSourceTruncated = $true
+$completeChargebackCloseout.summary.chargebackCloseoutSnapshotTruncationBlockerCount = 1
+$completeChargebackCloseout.chargebackCloseoutSnapshot.sourceTruncated = $true
+$completeChargebackCloseout.chargebackCloseoutSnapshot.sourceComplete = $false
+$completeChargebackCloseout.chargebackCloseoutSnapshot.truncationBlockerCountZero = $false
+$completeChargebackCloseout.chargebackCloseoutSnapshot.closeoutReady = $false
+$completeChargebackCloseout.chargebackCloseoutSnapshot.counts.truncationBlockerCount = 1
+$completeChargebackCloseout | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $truncatedChargebackCloseoutEvidencePath -Encoding UTF8
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ChargebackCloseoutEvidencePath $truncatedChargebackCloseoutEvidencePath `
+    -JsonOutputPath $truncatedChargebackCloseoutJsonOutputPath `
+    -MarkdownOutputPath $truncatedChargebackCloseoutMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for truncated chargeback closeout fixture with exit code $LASTEXITCODE."
+}
+$truncatedChargebackCloseoutReport = Read-Utf8Text $truncatedChargebackCloseoutJsonOutputPath | ConvertFrom-Json
+$truncatedChargebackCloseoutCheck = @($truncatedChargebackCloseoutReport.checks | Where-Object { $_.name -eq "Chargeback closeout target evidence" })
+if ($truncatedChargebackCloseoutCheck.Count -ne 1 -or $truncatedChargebackCloseoutCheck[0].passed) {
+    throw "Truncated chargeback closeout evidence must not satisfy the operations readiness target check."
+}
+if (-not ([string] $truncatedChargebackCloseoutCheck[0].detail).Contains("sourceTruncated=True") -or -not ([string] $truncatedChargebackCloseoutCheck[0].detail).Contains("truncationBlockers=1")) {
+    throw "Truncated chargeback closeout detail must explain the incomplete source."
 }
 
 $selfTestEnterpriseAuthSmokeEvidencePath = Join-Path $targetGuardFixtureDirectory "self-test-enterprise-auth-smoke.json"

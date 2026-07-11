@@ -94,10 +94,7 @@ public class OidcJitProvisioningService {
     }
 
     private Optional<UserAccount> findByEmailIgnoreCase(String email) {
-        return userRepository.findByEmail(email)
-                .or(() -> userRepository.findAll().stream()
-                        .filter(user -> email.equalsIgnoreCase(user.email()))
-                        .findFirst());
+        return userRepository.findByEmail(email);
     }
 
     private void assertRoleApproved(OidcClaimPreviewResponse preview, String approvedRole, boolean approvePrivilegedRole) {

@@ -4,6 +4,7 @@ import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
 import com.example.osmu.quota.QuotaPolicy;
 import com.example.osmu.quota.QuotaPolicyHistory;
+import com.example.osmu.quota.QuotaPolicyPageCursor;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -38,7 +39,45 @@ public class MariaDbQuotaPolicyRepository implements QuotaPolicyRepository {
     }
 
     @Override
-    public List<QuotaPolicy> findAll() {
+    public List<QuotaPolicy> findPage(QuotaPolicyPageCursor cursor, int limit) {
+        ensureSchema();
+        String sql = cursor == null ? """
+                SELECT id, target_type, target_id, quota_bytes, created_at, updated_at
+                FROM quota_policies
+                ORDER BY target_type, target_id
+                LIMIT ?
+                """ : """
+                SELECT id, target_type, target_id, quota_bytes, created_at, updated_at
+                FROM quota_policies
+                WHERE target_type > ?
+                   OR (target_type = ? AND target_id > ?)
+                ORDER BY target_type, target_id
+                LIMIT ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            if (cursor == null) {
+                statement.setInt(1, limit);
+            } else {
+                statement.setString(1, cursor.targetType());
+                statement.setString(2, cursor.targetType());
+                statement.setLong(3, cursor.targetId());
+                statement.setInt(4, limit);
+            }
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<QuotaPolicy> policies = new ArrayList<>();
+                while (resultSet.next()) {
+                    policies.add(mapRow(resultSet));
+                }
+                return policies;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<QuotaPolicy> findAllForDashboardSummary() {
         ensureSchema();
         String sql = """
                 SELECT id, target_type, target_id, quota_bytes, created_at, updated_at

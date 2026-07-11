@@ -14,6 +14,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -44,22 +45,101 @@ public class MariaDbUserRepository implements UserRepository {
         this.bootstrapAdminProperties = bootstrapAdminProperties;
     }
 
+
     @Override
-    public List<UserAccount> findAll() {
+    public List<UserAccount> findByIds(List<Long> userIds) {
         ensureSchema();
+        List<Long> ids = userIds == null
+                ? List.of()
+                : userIds.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
         String sql = """
                 SELECT id, login_id, email, name, password_hash, role, status, organization_id
                 FROM users
+                WHERE id IN (%s)
                 ORDER BY id
-                """;
+                """.formatted(String.join(", ", java.util.Collections.nCopies(ids.size(), "?")));
         try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            List<UserAccount> users = new ArrayList<>();
-            while (resultSet.next()) {
-                users.add(mapRow(resultSet));
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (int index = 0; index < ids.size(); index += 1) {
+                statement.setLong(index + 1, ids.get(index));
             }
-            return users;
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<UserAccount> users = new ArrayList<>();
+                while (resultSet.next()) {
+                    users.add(mapRow(resultSet));
+                }
+                return users;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<UserAccount> findPage(
+            Long organizationId,
+            String keyword,
+            String status,
+            Long cursorId,
+            int limit
+    ) {
+        ensureSchema();
+        String normalizedKeyword = keyword == null ? "" : keyword.trim();
+        String normalizedStatus = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
+        StringBuilder sql = new StringBuilder("""
+                SELECT id, login_id, email, name, password_hash, role, status, organization_id
+                FROM users
+                WHERE 1 = 1
+                """);
+        if (organizationId != null) {
+            sql.append(" AND organization_id = ?");
+        }
+        if (!normalizedKeyword.isBlank()) {
+            sql.append("""
+                     AND (LOCATE(LOWER(?), LOWER(login_id)) > 0
+                       OR LOCATE(LOWER(?), LOWER(email)) > 0
+                       OR LOCATE(LOWER(?), LOWER(name)) > 0)
+                    """);
+        }
+        if (!normalizedStatus.isBlank()) {
+            sql.append(" AND status = ?");
+        }
+        if (cursorId != null) {
+            sql.append(" AND id < ?");
+        }
+        sql.append(" ORDER BY id DESC LIMIT ?");
+
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            if (organizationId != null) {
+                statement.setLong(parameterIndex++, organizationId);
+            }
+            if (!normalizedKeyword.isBlank()) {
+                statement.setString(parameterIndex++, normalizedKeyword);
+                statement.setString(parameterIndex++, normalizedKeyword);
+                statement.setString(parameterIndex++, normalizedKeyword);
+            }
+            if (!normalizedStatus.isBlank()) {
+                statement.setString(parameterIndex++, normalizedStatus);
+            }
+            if (cursorId != null) {
+                statement.setLong(parameterIndex++, cursorId);
+            }
+            statement.setInt(parameterIndex, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<UserAccount> users = new ArrayList<>();
+                while (resultSet.next()) {
+                    users.add(mapRow(resultSet));
+                }
+                return users;
+            }
         } catch (SQLException exception) {
             throw databaseException(exception);
         }
@@ -132,6 +212,25 @@ public class MariaDbUserRepository implements UserRepository {
     }
 
     @Override
+    public List<Long> findIdsByOrganizationId(long organizationId) {
+        ensureSchema();
+        String sql = "SELECT id FROM users WHERE organization_id = ? ORDER BY id";
+        List<Long> userIds = new ArrayList<>();
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, organizationId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    userIds.add(resultSet.getLong("id"));
+                }
+            }
+            return List.copyOf(userIds);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public boolean existsByLoginId(String loginId) {
         ensureSchema();
         String sql = "SELECT 1 FROM users WHERE login_id = ? LIMIT 1";
@@ -153,6 +252,21 @@ public class MariaDbUserRepository implements UserRepository {
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, email);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public boolean existsByOrganizationId(long organizationId) {
+        ensureSchema();
+        String sql = "SELECT 1 FROM users WHERE organization_id = ? LIMIT 1";
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, organizationId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }

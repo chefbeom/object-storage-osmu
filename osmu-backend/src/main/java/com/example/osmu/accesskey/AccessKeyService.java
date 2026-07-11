@@ -61,9 +61,10 @@ public class AccessKeyService {
     }
 
     public List<AccessKeyRecord> list(AuthenticatedUser user) {
-        return accessKeyRepository.findAllRecords().stream()
-                .filter(key -> user.isAdmin() || key.ownerId() == user.id())
-                .toList();
+        if (user.isAdmin()) {
+            return accessKeyRepository.findAllRecords();
+        }
+        return accessKeyRepository.findRecordsByOwnerId(user.id());
     }
 
     public synchronized CreateAccessKeyResponse create(CreateAccessKeyRequest request, AuthenticatedUser user) {
@@ -355,11 +356,17 @@ public class AccessKeyService {
     public synchronized int reconcileActiveKeysForOwners(List<Long> ownerIds) {
         int changed = 0;
         LinkedHashSet<Long> uniqueOwnerIds = new LinkedHashSet<>(ownerIds == null ? List.of() : ownerIds);
-        for (Long ownerId : uniqueOwnerIds) {
-            if (ownerId == null) {
-                continue;
-            }
-            for (AccessKeyRecord accessKey : accessKeyRepository.findRecordsByOwnerId(ownerId)) {
+        uniqueOwnerIds.remove(null);
+        List<Long> requestedOwnerIds = List.copyOf(uniqueOwnerIds);
+        if (requestedOwnerIds.isEmpty()) {
+            return 0;
+        }
+        LinkedHashMap<Long, List<AccessKeyRecord>> accessKeysByOwner = new LinkedHashMap<>();
+        for (AccessKeyRecord accessKey : accessKeyRepository.findRecordsByOwnerIds(requestedOwnerIds)) {
+            accessKeysByOwner.computeIfAbsent(accessKey.ownerId(), ignored -> new ArrayList<>()).add(accessKey);
+        }
+        for (Long ownerId : requestedOwnerIds) {
+            for (AccessKeyRecord accessKey : accessKeysByOwner.getOrDefault(ownerId, List.of())) {
                 if (!"ACTIVE".equals(accessKey.status())) {
                     continue;
                 }
@@ -422,10 +429,7 @@ public class AccessKeyService {
             return List.of(subjectId);
         }
         if ("ORGANIZATION".equals(subjectType)) {
-            return userRepository.findAll().stream()
-                    .filter(user -> user.organizationId() != null && user.organizationId() == subjectId)
-                    .map(UserAccount::id)
-                    .toList();
+            return userRepository.findIdsByOrganizationId(subjectId);
         }
         if ("TEAM".equals(subjectType)) {
             return teamRepository.findMemberIds(subjectId);

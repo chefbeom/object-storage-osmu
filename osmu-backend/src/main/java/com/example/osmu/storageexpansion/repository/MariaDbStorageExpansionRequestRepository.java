@@ -38,23 +38,48 @@ public class MariaDbStorageExpansionRequestRepository implements StorageExpansio
     }
 
     @Override
-    public List<StorageExpansionRequestRecord> findAll() {
+    public List<StorageExpansionRequestRecord> findPage(List<String> statuses, Long cursorId, int limit) {
         ensureSchema();
-        String sql = """
+        List<String> statusFilter = statuses == null
+                ? List.of()
+                : statuses.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList();
+        StringBuilder sql = new StringBuilder("""
                 SELECT id, requested_capacity_bytes, server_count, volumes_per_server, volume_size_bytes,
                        estimated_raw_capacity_bytes, estimated_usable_capacity_bytes,
                        status, reason, created_by, applied_by, applied_at, applied_evidence, created_at, updated_at
                 FROM storage_expansion_requests
-                ORDER BY id DESC
-                """;
+                WHERE 1 = 1
+                """);
+        if (!statusFilter.isEmpty()) {
+            sql.append(" AND status IN (")
+                    .append(String.join(", ", java.util.Collections.nCopies(statusFilter.size(), "?")))
+                    .append(")");
+        }
+        if (cursorId != null) {
+            sql.append(" AND id < ?");
+        }
+        sql.append(" ORDER BY id DESC LIMIT ?");
+
         try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            List<StorageExpansionRequestRecord> requests = new ArrayList<>();
-            while (resultSet.next()) {
-                requests.add(mapRow(resultSet));
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            for (String status : statusFilter) {
+                statement.setString(parameterIndex++, status);
             }
-            return requests;
+            if (cursorId != null) {
+                statement.setLong(parameterIndex++, cursorId);
+            }
+            statement.setInt(parameterIndex, limit);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<StorageExpansionRequestRecord> requests = new ArrayList<>();
+                while (resultSet.next()) {
+                    requests.add(mapRow(resultSet));
+                }
+                return requests;
+            }
         } catch (SQLException exception) {
             throw databaseException(exception);
         }

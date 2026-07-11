@@ -6,8 +6,10 @@ import com.example.osmu.accesskey.AccessKeyEntity;
 import com.example.osmu.accesskey.AccessKeyRecord;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,6 +37,17 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 .filter(key -> key.ownerId() == ownerId)
                 .map(AccessKeyEntity::toRecord)
                 .sorted(Comparator.comparing(AccessKeyRecord::id))
+                .toList();
+    }
+
+    @Override
+    public List<AccessKeyRecord> findRecordsByOwnerIds(List<Long> ownerIds) {
+        Set<Long> requestedOwnerIds = new HashSet<>(ownerIds == null ? List.of() : ownerIds);
+        requestedOwnerIds.remove(null);
+        return accessKeys.values().stream()
+                .filter(key -> requestedOwnerIds.contains(key.ownerId()))
+                .map(AccessKeyEntity::toRecord)
+                .sorted(Comparator.comparing(AccessKeyRecord::ownerId).thenComparing(AccessKeyRecord::id))
                 .toList();
     }
 

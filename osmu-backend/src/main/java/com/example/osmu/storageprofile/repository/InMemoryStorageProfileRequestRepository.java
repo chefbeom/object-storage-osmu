@@ -2,8 +2,10 @@ package com.example.osmu.storageprofile.repository;
 
 import com.example.osmu.storageprofile.StorageProfileRequestRecord;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -17,18 +19,42 @@ public class InMemoryStorageProfileRequestRepository implements StorageProfileRe
     private final AtomicLong idSequence = new AtomicLong(1);
     private final ConcurrentMap<Long, StorageProfileRequestRecord> requests = new ConcurrentHashMap<>();
 
+
     @Override
-    public List<StorageProfileRequestRecord> findAll() {
+    public List<StorageProfileRequestRecord> findPage(List<String> statuses, Long cursorId, int limit) {
+        Set<String> statusFilter = new HashSet<>(statuses == null ? List.of() : statuses);
+        statusFilter.remove(null);
         return requests.values().stream()
+                .filter(request -> statusFilter.isEmpty() || statusFilter.contains(request.status()))
+                .filter(request -> cursorId == null || request.id() < cursorId)
                 .sorted(Comparator.comparingLong(StorageProfileRequestRecord::id).reversed())
+                .limit(limit)
                 .toList();
     }
 
     @Override
-    public List<StorageProfileRequestRecord> findByBucketName(String bucketName) {
+    public List<StorageProfileRequestRecord> findPageByBucketName(String bucketName, Long cursorId, int limit) {
         return requests.values().stream()
                 .filter(request -> request.bucketName().equals(bucketName))
+                .filter(request -> cursorId == null || request.id() < cursorId)
                 .sorted(Comparator.comparingLong(StorageProfileRequestRecord::id).reversed())
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    public List<StorageProfileRequestRecord> findPageByBucketNames(
+            List<String> bucketNames,
+            Long cursorId,
+            int limit
+    ) {
+        Set<String> requestedBucketNames = new HashSet<>(bucketNames == null ? List.of() : bucketNames);
+        requestedBucketNames.remove(null);
+        return requests.values().stream()
+                .filter(request -> requestedBucketNames.contains(request.bucketName()))
+                .filter(request -> cursorId == null || request.id() < cursorId)
+                .sorted(Comparator.comparingLong(StorageProfileRequestRecord::id).reversed())
+                .limit(limit)
                 .toList();
     }
 

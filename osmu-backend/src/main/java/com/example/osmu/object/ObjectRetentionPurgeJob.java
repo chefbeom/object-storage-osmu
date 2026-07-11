@@ -88,10 +88,10 @@ public class ObjectRetentionPurgeJob {
                 purged++;
             }
         }
-        for (ObjectLifecycleRule rule : lifecycleRuleRepository.findAll()) {
-            if (rule.matchesTarget(ObjectLifecycleRule.TARGET_TRASH_OBJECT)) {
-                purged += purgeRule(now, rule);
-            }
+        for (ObjectLifecycleRule rule : lifecycleRuleRepository.findEnabledByTargetType(
+                ObjectLifecycleRule.TARGET_TRASH_OBJECT
+        )) {
+            purged += purgeRule(now, rule);
         }
         return purged;
     }

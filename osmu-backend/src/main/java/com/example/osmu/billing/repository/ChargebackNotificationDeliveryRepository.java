@@ -19,5 +19,12 @@ public interface ChargebackNotificationDeliveryRepository {
 
     List<ChargebackAlertNotificationDeliveryRecord> findByOrganizationId(long organizationId, int limit);
 
+    List<ChargebackAlertNotificationDeliveryRecord> findForCloseout(
+            List<Long> organizationIds,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    );
+
     ChargebackAlertNotificationDeliveryRecord update(ChargebackAlertNotificationDeliveryRecord record);
 }

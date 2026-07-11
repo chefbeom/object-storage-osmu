@@ -82,13 +82,25 @@ public class BucketService {
         return bucketRepository.findAll();
     }
 
+    public List<BucketOwnerUsageSummary> summarizeUsageByOwners(String ownerType, List<Long> ownerIds) {
+        return bucketRepository.summarizeUsageByOwners(ownerType, ownerIds);
+    }
+
+    public boolean hasBucketsOwnedBy(String ownerType, long ownerId) {
+        return bucketRepository.existsByOwner(ownerType, ownerId);
+    }
+
     public List<BucketRecord> list(AuthenticatedUser user) {
         if (user.isAdmin()) {
             return list();
         }
-        return bucketRepository.findAll().stream()
-                .filter(bucket -> canAccess(user, bucket) || hasAnyExplicitPermission(user, bucket))
-                .toList();
+        List<Long> teamIds = teamRepository.findIdsByMember(user.id());
+        List<Long> explicitBucketIds = bucketPermissionRepository.findBucketIdsBySubjects(
+                user.id(),
+                user.organizationId(),
+                teamIds
+        );
+        return bucketRepository.findAccessible(user.id(), user.organizationId(), explicitBucketIds);
     }
 
     public synchronized BucketRecord create(CreateBucketRequest request, AuthenticatedUser user) {
@@ -574,10 +586,7 @@ public class BucketService {
         if (quotaBytes <= 0) {
             return;
         }
-        long userUsedBytes = bucketRepository.findAll().stream()
-                .filter(bucket -> "USER".equals(bucket.ownerType()) && bucket.ownerId() == current.ownerId())
-                .mapToLong(BucketRecord::usedBytes)
-                .sum();
+        long userUsedBytes = bucketRepository.sumUsedBytesByOwner("USER", current.ownerId());
         if (userUsedBytes + sizeDelta > quotaBytes) {
             throw new ApiException(ApiErrorCode.QUOTA_EXCEEDED, "User quota exceeded.");
         }
@@ -592,25 +601,26 @@ public class BucketService {
         long quotaBytes = quotaPolicyRepository.findByTarget("ORGANIZATION", current.ownerId())
                 .map(policy -> policy.quotaBytes())
                 .orElse(organization.defaultQuotaBytes());
-        long organizationUsedBytes = bucketRepository.findAll().stream()
-                .filter(bucket -> "ORG".equals(bucket.ownerType()) && bucket.ownerId() == current.ownerId())
-                .mapToLong(BucketRecord::usedBytes)
-                .sum();
+        long organizationUsedBytes = bucketRepository.sumUsedBytesByOwner("ORG", current.ownerId());
         if (organizationUsedBytes + sizeDelta > quotaBytes) {
             throw new ApiException(ApiErrorCode.QUOTA_EXCEEDED, "Organization quota exceeded.");
         }
     }
 
+    public BucketUsageSummary usageSummary() {
+        return bucketRepository.summarizeUsage();
+    }
+
     public long totalUsedBytes() {
-        return bucketRepository.findAll().stream().mapToLong(BucketRecord::usedBytes).sum();
+        return usageSummary().totalUsedBytes();
     }
 
     public long totalQuotaBytes() {
-        return bucketRepository.findAll().stream().mapToLong(BucketRecord::quotaBytes).sum();
+        return usageSummary().totalQuotaBytes();
     }
 
     public long totalObjectCount() {
-        return bucketRepository.findAll().stream().mapToLong(BucketRecord::objectCount).sum();
+        return usageSummary().totalObjectCount();
     }
 
     public String normalizeName(String bucketName) {

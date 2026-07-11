@@ -288,6 +288,7 @@ gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f api_base=<api-b
 
 ## 문서 진입점
 
+- `dev-docs/osmu-user-and-ai-guide.md`: 사람과 AI를 위한 역할별 전체 사용법, 운영 절차, 예제와 검증 계약.
 - `dev-docs/document-index.md`: 전체 문서 색인.
 - `PRODUCT_REQUIREMENTS.md`: 제품 목표, MVP 범위, 최종 제품 범위.
 - `dev-docs/feature-inventory.md`: 현재 구현 상태, gap, 다음 개발 방향.

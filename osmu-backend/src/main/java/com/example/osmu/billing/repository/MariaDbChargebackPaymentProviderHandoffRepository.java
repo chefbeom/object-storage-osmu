@@ -110,6 +110,55 @@ public class MariaDbChargebackPaymentProviderHandoffRepository implements Charge
     }
 
     @Override
+    public List<ChargebackPaymentProviderHandoffRecord> findForCloseout(
+            List<Long> finalInvoiceIds,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    ) {
+        ensureSchema();
+        List<Long> invoiceIds = finalInvoiceIds == null
+                ? List.of()
+                : finalInvoiceIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        StringBuilder sql = new StringBuilder(
+                "SELECT * FROM chargeback_payment_provider_handoffs WHERE 1 = 1"
+        );
+        if (!invoiceIds.isEmpty()) {
+            sql.append(" AND final_invoice_id IN (")
+                    .append(String.join(", ", java.util.Collections.nCopies(invoiceIds.size(), "?")))
+                    .append(")");
+        } else {
+            if (from != null) {
+                sql.append(" AND created_at >= ?");
+            }
+            if (to != null) {
+                sql.append(" AND created_at < ?");
+            }
+        }
+        sql.append(" ORDER BY created_at DESC, id DESC LIMIT ?");
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            if (!invoiceIds.isEmpty()) {
+                for (Long invoiceId : invoiceIds) {
+                    statement.setLong(parameterIndex++, invoiceId);
+                }
+            } else {
+                if (from != null) {
+                    statement.setTimestamp(parameterIndex++, timestamp(from));
+                }
+                if (to != null) {
+                    statement.setTimestamp(parameterIndex++, timestamp(to));
+                }
+            }
+            statement.setInt(parameterIndex, Math.max(1, limit));
+            return mapRows(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public List<ChargebackPaymentProviderHandoffRecord> findDueAdapterRetries(OffsetDateTime now, int limit) {
         ensureSchema();
         String sql = """
@@ -246,7 +295,8 @@ public class MariaDbChargebackPaymentProviderHandoffRepository implements Charge
                     last_error VARCHAR(512) NULL,
                     INDEX idx_chargeback_payment_handoffs_invoice_created (final_invoice_id, created_at),
                     INDEX idx_chargeback_payment_handoffs_status_next (status, next_attempt_at),
-                    INDEX idx_chargeback_payment_handoffs_org_created (organization_id, created_at)
+                    INDEX idx_chargeback_payment_handoffs_org_created (organization_id, created_at),
+                    INDEX idx_chargeback_payment_handoffs_created (created_at, id)
                 )
                 """;
         try (Connection connection = connect();

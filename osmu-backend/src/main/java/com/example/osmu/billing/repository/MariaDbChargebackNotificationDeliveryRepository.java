@@ -149,6 +149,51 @@ public class MariaDbChargebackNotificationDeliveryRepository implements Chargeba
     }
 
     @Override
+    public List<ChargebackAlertNotificationDeliveryRecord> findForCloseout(
+            List<Long> organizationIds,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    ) {
+        ensureSchema();
+        List<Long> ids = organizationIds == null
+                ? List.of()
+                : organizationIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        StringBuilder sql = new StringBuilder(
+                "SELECT * FROM chargeback_notification_deliveries WHERE 1 = 1"
+        );
+        if (from != null) {
+            sql.append(" AND created_at >= ?");
+        }
+        if (to != null) {
+            sql.append(" AND created_at < ?");
+        }
+        if (!ids.isEmpty()) {
+            sql.append(" AND organization_id IN (")
+                    .append(String.join(", ", java.util.Collections.nCopies(ids.size(), "?")))
+                    .append(")");
+        }
+        sql.append(" ORDER BY created_at DESC, id DESC LIMIT ?");
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            if (from != null) {
+                statement.setTimestamp(parameterIndex++, timestamp(from));
+            }
+            if (to != null) {
+                statement.setTimestamp(parameterIndex++, timestamp(to));
+            }
+            for (Long organizationId : ids) {
+                statement.setLong(parameterIndex++, organizationId);
+            }
+            statement.setInt(parameterIndex, Math.max(1, limit));
+            return mapRows(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public ChargebackAlertNotificationDeliveryRecord update(ChargebackAlertNotificationDeliveryRecord record) {
         ensureSchema();
         String sql = """
@@ -280,7 +325,8 @@ public class MariaDbChargebackNotificationDeliveryRepository implements Chargeba
                     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     last_error VARCHAR(512) NULL,
                     INDEX idx_chargeback_notification_deliveries_org_created (organization_id, created_at),
-                    INDEX idx_chargeback_notification_deliveries_status_next (status, next_attempt_at)
+                    INDEX idx_chargeback_notification_deliveries_status_next (status, next_attempt_at),
+                    INDEX idx_chargeback_notification_deliveries_created (created_at, id)
                 )
                 """;
         try (Connection connection = connect();

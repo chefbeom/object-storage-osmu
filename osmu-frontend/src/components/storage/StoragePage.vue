@@ -146,6 +146,17 @@
           </tbody>
         </table>
       </div>
+      <div v-if="storageProfileNextCursor" class="inline-form">
+        <button
+          data-testid="storage-profile-history-load-more-button"
+          type="button"
+          class="ghost"
+          :disabled="storageProfileRequestsLoading"
+          @click="$emit('load-more-storage-profile-requests')"
+        >
+          {{ storageProfileRequestsLoading ? 'Loading...' : 'Load more' }}
+        </button>
+      </div>
     </article>
   </section>
 </template>
@@ -166,6 +177,8 @@ const props = defineProps({
   bucketStorageProfile: { type: Object, default: null },
   storageProfileForm: { type: Object, required: true },
   storageProfileRequests: { type: Array, required: true },
+  storageProfileNextCursor: { type: String, default: '' },
+  storageProfileRequestsLoading: { type: Boolean, required: true },
   formatDateTime: { type: Function, required: true },
   statusClass: { type: Function, required: true },
 })
@@ -177,9 +190,9 @@ defineEmits([
   'delete-bucket',
   'create-storage-profile-request',
   'refresh-bucket-storage-profile',
+  'load-more-storage-profile-requests',
 ])
 
 const visibleStorageProfileRequests = computed(() => props.storageProfileRequests
-  .filter((request) => request.bucketName === props.selectedBucket)
-  .slice(0, 5))
+  .filter((request) => request.bucketName === props.selectedBucket))
 </script>

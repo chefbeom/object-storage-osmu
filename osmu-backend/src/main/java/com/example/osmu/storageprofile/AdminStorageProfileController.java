@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -33,9 +34,14 @@ public class AdminStorageProfileController {
     }
 
     @GetMapping
-    public ListResponse<StorageProfileRequestResponse> list(HttpServletRequest request) {
+    public ListResponse<StorageProfileRequestResponse> list(
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        return ListResponse.of(storageProfileService.listAllRequests(user));
+        return storageProfileService.listAdminRequests(user, status, cursor, limit);
     }
 
     @PatchMapping("/{requestId}/status")
@@ -61,10 +67,11 @@ public class AdminStorageProfileController {
     @PostMapping("/{requestId}/apply")
     public ApiResponse<StorageProfileRequestResponse> apply(
             @PathVariable long requestId,
+            @RequestBody(required = false) StorageProfileApplyRequest applyRequest,
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        StorageProfileRequestResponse response = storageProfileService.apply(user, requestId);
+        StorageProfileRequestResponse response = storageProfileService.apply(user, requestId, applyRequest);
         auditLogService.record(
                 "STORAGE_PROFILE_REQUEST_APPLY",
                 user.loginId(),

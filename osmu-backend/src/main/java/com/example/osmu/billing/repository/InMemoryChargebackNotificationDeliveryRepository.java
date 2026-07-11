@@ -4,8 +4,10 @@ import com.example.osmu.billing.ChargebackAlertNotificationDeliveryRecord;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -73,6 +75,23 @@ public class InMemoryChargebackNotificationDeliveryRepository implements Chargeb
     }
 
     @Override
+    public List<ChargebackAlertNotificationDeliveryRecord> findForCloseout(
+            List<Long> organizationIds,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    ) {
+        Set<Long> ids = new HashSet<>(organizationIds == null ? List.of() : organizationIds);
+        ids.remove(null);
+        return records.stream()
+                .filter(record -> timestampWithinWindow(record.createdAt(), from, to))
+                .filter(record -> ids.isEmpty() || ids.contains(record.organizationId()))
+                .sorted(Comparator.comparing(ChargebackAlertNotificationDeliveryRecord::createdAt).reversed())
+                .limit(Math.max(1, limit))
+                .toList();
+    }
+
+    @Override
     public ChargebackAlertNotificationDeliveryRecord update(ChargebackAlertNotificationDeliveryRecord updated) {
         for (int index = 0; index < records.size(); index++) {
             ChargebackAlertNotificationDeliveryRecord existing = records.get(index);
@@ -82,6 +101,23 @@ public class InMemoryChargebackNotificationDeliveryRepository implements Chargeb
             }
         }
         throw new IllegalArgumentException("Chargeback notification delivery not found: " + updated.id());
+    }
+
+    private static boolean timestampWithinWindow(
+            OffsetDateTime timestamp,
+            OffsetDateTime from,
+            OffsetDateTime to
+    ) {
+        if (from == null && to == null) {
+            return true;
+        }
+        if (timestamp == null) {
+            return true;
+        }
+        if (from != null && timestamp.isBefore(from)) {
+            return false;
+        }
+        return to == null || timestamp.isBefore(to);
     }
 
     private static int normalizeLimit(int limit) {

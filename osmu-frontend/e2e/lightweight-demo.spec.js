@@ -171,6 +171,7 @@ async function installDeveloperApiMocks(page, options = {}) {
     remainingResponses: failure.remainingResponses ?? (failure.status === 401 ? 2 : 1),
   }))
   const objectPages = options.objectPages || [{ items: [], prefixes: [], nextCursor: '' }]
+  const apiRequests = options.apiRequests
   const objectListRequests = options.objectListRequests
   const objectDownloadRequests = options.objectDownloadRequests
   const objectDownloadAuthFailures = new Set(options.objectDownloadAuthFailures || [])
@@ -243,6 +244,9 @@ async function installDeveloperApiMocks(page, options = {}) {
     const url = new URL(request.url())
     const path = normalizeApiPath(url.pathname)
     const method = request.method()
+    if (Array.isArray(apiRequests)) {
+      apiRequests.push({ method, path })
+    }
     const json = (body, status = 200) => route.fulfill({
       status,
       contentType: 'application/json',
@@ -734,7 +738,8 @@ test('stale saved session returns to login redirect', async ({ page }) => {
 })
 
 test('stored developer session opens developer console without login', async ({ page }) => {
-  await installDeveloperApiMocks(page)
+  const apiRequests = []
+  await installDeveloperApiMocks(page, { apiRequests })
   await page.addInitScript(() => {
     window.localStorage.removeItem('osmu.dashboard.widgets.v1')
     window.localStorage.setItem('osmu.auth.tokens', JSON.stringify({
@@ -751,6 +756,19 @@ test('stored developer session opens developer console without login', async ({ 
   await expect(page.getByTestId('developer-page')).toBeVisible()
   await expect(page.getByTestId('developer-s3-endpoint')).toContainText('/api/s3')
   await expect(page.getByTestId('developer-client-aws-cli')).toContainText(`s3://${developerBucketName}`)
+
+  expect(apiRequests).toEqual(expect.arrayContaining([
+    { method: 'GET', path: '/buckets' },
+    { method: 'GET', path: '/access-keys' },
+    { method: 'GET', path: '/developer/s3-client-config' },
+  ]))
+  const unrelatedRequests = apiRequests.filter(({ method, path }) => method === 'GET' && (
+    path.startsWith('/admin/')
+    || path.startsWith('/dashboard/layout')
+    || ['/users', '/organizations', '/organization-usage', '/teams'].includes(path)
+    || path.startsWith('/buckets/' + developerBucketName + '/')
+  ))
+  expect(unrelatedRequests).toEqual([])
 })
 
 test('developer login lands on S3 API console with access key controls', async ({ page }) => {

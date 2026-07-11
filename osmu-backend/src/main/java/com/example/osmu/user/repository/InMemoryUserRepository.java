@@ -5,6 +5,7 @@ import com.example.osmu.user.BootstrapAdminProperties;
 import com.example.osmu.user.UserAccount;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -28,11 +29,54 @@ public class InMemoryUserRepository implements UserRepository {
         bootstrapAdminProperties.createAdmin(1L, passwordService).ifPresent(this::save);
     }
 
+
     @Override
-    public List<UserAccount> findAll() {
+    public List<UserAccount> findByIds(List<Long> userIds) {
+        java.util.Set<Long> ids = new java.util.HashSet<>(userIds == null ? List.of() : userIds);
+        ids.remove(null);
+        if (ids.isEmpty()) {
+            return List.of();
+        }
         return usersById.values().stream()
-                .sorted(Comparator.comparing(UserAccount::id))
+                .filter(user -> ids.contains(user.id()))
+                .sorted(Comparator.comparingLong(UserAccount::id))
                 .toList();
+    }
+
+    @Override
+    public List<UserAccount> findPage(
+            Long organizationId,
+            String keyword,
+            String status,
+            Long cursorId,
+            int limit
+    ) {
+        String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
+        String normalizedStatus = status == null ? "" : status.trim();
+        return usersById.values().stream()
+                .filter(user -> organizationId == null || organizationId.equals(user.organizationId()))
+                .filter(user -> normalizedKeyword.isBlank()
+                        || containsIgnoreCase(user.loginId(), normalizedKeyword)
+                        || containsIgnoreCase(user.email(), normalizedKeyword)
+                        || containsIgnoreCase(user.name(), normalizedKeyword))
+                .filter(user -> normalizedStatus.isBlank() || user.status().equalsIgnoreCase(normalizedStatus))
+                .filter(user -> cursorId == null || user.id() < cursorId)
+                .sorted(Comparator.comparingLong(UserAccount::id).reversed())
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    public List<Long> findIdsByOrganizationId(long organizationId) {
+        return usersById.values().stream()
+                .filter(user -> user.organizationId() != null && user.organizationId() == organizationId)
+                .map(UserAccount::id)
+                .sorted()
+                .toList();
+    }
+
+    private boolean containsIgnoreCase(String value, String normalizedKeyword) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedKeyword);
     }
 
     @Override
@@ -47,7 +91,7 @@ public class InMemoryUserRepository implements UserRepository {
 
     @Override
     public Optional<UserAccount> findByEmail(String email) {
-        return Optional.ofNullable(usersByEmail.get(email));
+        return Optional.ofNullable(usersByEmail.get(normalizeEmail(email)));
     }
 
     @Override
@@ -57,7 +101,13 @@ public class InMemoryUserRepository implements UserRepository {
 
     @Override
     public boolean existsByEmail(String email) {
-        return usersByEmail.containsKey(email);
+        return usersByEmail.containsKey(normalizeEmail(email));
+    }
+
+    @Override
+    public boolean existsByOrganizationId(long organizationId) {
+        return usersById.values().stream()
+                .anyMatch(user -> user.organizationId() != null && user.organizationId() == organizationId);
     }
 
     @Override
@@ -70,11 +120,15 @@ public class InMemoryUserRepository implements UserRepository {
         UserAccount previous = usersById.put(user.id(), user);
         if (previous != null) {
             usersByLoginId.remove(previous.loginId());
-            usersByEmail.remove(previous.email());
+            usersByEmail.remove(normalizeEmail(previous.email()));
         }
         usersByLoginId.put(user.loginId(), user);
-        usersByEmail.put(user.email(), user);
+        usersByEmail.put(normalizeEmail(user.email()), user);
         return user;
+    }
+
+    private String normalizeEmail(String email) {
+        return email.toLowerCase(Locale.ROOT);
     }
 
     @Override

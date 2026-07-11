@@ -29,10 +29,10 @@ test('storage profile wrappers map bucket request and admin apply endpoints', as
       requestedProfile: 'PERFORMANCE',
       reason: 'video ingest',
     })
-    await getStorageProfileRequests()
-    await getAdminStorageProfileRequests()
+    await getStorageProfileRequests({ bucketName: 'media bucket', cursor: '8', limit: 5 })
+    await getAdminStorageProfileRequests({ status: 'APPROVED', cursor: '12', limit: 25 })
     await updateStorageProfileRequestStatus(1, 'APPROVED', 'ok')
-    await applyStorageProfileRequest(1)
+    await applyStorageProfileRequest(1, 42)
 
     assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/storage-profiles')
     assert.equal(fetchMock.calls[1].url, 'http://localhost:8080/api/buckets/media%20bucket/storage-profile')
@@ -42,8 +42,8 @@ test('storage profile wrappers map bucket request and admin apply endpoints', as
       requestedProfile: 'PERFORMANCE',
       reason: 'video ingest',
     })
-    assert.equal(fetchMock.calls[3].url, 'http://localhost:8080/api/storage-profile-requests')
-    assert.equal(fetchMock.calls[4].url, 'http://localhost:8080/api/admin/storage-profile-requests')
+    assert.equal(fetchMock.calls[3].url, 'http://localhost:8080/api/storage-profile-requests?bucketName=media+bucket&cursor=8&limit=5')
+    assert.equal(fetchMock.calls[4].url, 'http://localhost:8080/api/admin/storage-profile-requests?status=APPROVED&cursor=12&limit=25')
     assert.equal(fetchMock.calls[5].url, 'http://localhost:8080/api/admin/storage-profile-requests/1/status')
     assert.equal(fetchMock.calls[5].options.method, 'PATCH')
     assert.deepEqual(JSON.parse(fetchMock.calls[5].options.body), { status: 'APPROVED', adminNote: 'ok' })
@@ -52,6 +52,7 @@ test('storage profile wrappers map bucket request and admin apply endpoints', as
   } finally {
     cleanupFetch(fetchMock)
   }
+    assert.deepEqual(JSON.parse(fetchMock.calls[6].options.body), { storageLayoutPlanId: 42 })
 })
 
 function mockFetch(handlers) {

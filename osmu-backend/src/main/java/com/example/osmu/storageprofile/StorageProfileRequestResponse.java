@@ -14,6 +14,9 @@ public record StorageProfileRequestResponse(
         OffsetDateTime approvedAt,
         String appliedBy,
         OffsetDateTime appliedAt,
+        Long storageLayoutPlanId,
+        String storagePoolName,
+        String storageLayoutCode,
         String adminNote,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
@@ -31,6 +34,9 @@ public record StorageProfileRequestResponse(
                 record.approvedAt(),
                 record.appliedBy(),
                 record.appliedAt(),
+                record.storageLayoutPlanId(),
+                record.storagePoolName(),
+                record.storageLayoutCode(),
                 record.adminNote(),
                 record.createdAt(),
                 record.updatedAt()

@@ -98,6 +98,37 @@ public class MariaDbChargebackInvoiceDraftRepository implements ChargebackInvoic
     }
 
     @Override
+    public List<ChargebackInvoiceDraftRecord> findForCloseoutWindow(
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    ) {
+        ensureSchema();
+        StringBuilder sql = new StringBuilder("SELECT * FROM chargeback_invoice_drafts WHERE 1 = 1");
+        if (from != null) {
+            sql.append(" AND ((window_from IS NULL AND window_to IS NULL) OR COALESCE(window_to, window_from) >= ?)");
+        }
+        if (to != null) {
+            sql.append(" AND ((window_from IS NULL AND window_to IS NULL) OR COALESCE(window_from, window_to) < ?)");
+        }
+        sql.append(" ORDER BY created_at DESC, id DESC LIMIT ?");
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            if (from != null) {
+                statement.setTimestamp(parameterIndex++, timestamp(from));
+            }
+            if (to != null) {
+                statement.setTimestamp(parameterIndex++, timestamp(to));
+            }
+            statement.setInt(parameterIndex, Math.max(1, limit));
+            return mapRows(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public Optional<ChargebackInvoiceDraftRecord> findById(long id) {
         ensureSchema();
         String sql = """
@@ -271,7 +302,8 @@ public class MariaDbChargebackInvoiceDraftRepository implements ChargebackInvoic
                     approved_at TIMESTAMP NULL,
                     note VARCHAR(512) NOT NULL,
                     INDEX idx_chargeback_invoice_drafts_status_created (status, created_at),
-                    INDEX idx_chargeback_invoice_drafts_org_created (organization_id, created_at)
+                    INDEX idx_chargeback_invoice_drafts_org_created (organization_id, created_at),
+                    INDEX idx_chargeback_invoice_drafts_window (window_from, window_to, id)
                 )
                 """;
         try (Connection connection = connect();

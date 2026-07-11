@@ -1,15 +1,19 @@
 package com.example.osmu.quota;
 
+import com.example.osmu.bucket.BucketOwnerUsageSummary;
 import com.example.osmu.bucket.BucketRecord;
 import com.example.osmu.bucket.repository.BucketRepository;
+import com.example.osmu.common.api.ListResponse;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
 import com.example.osmu.organization.repository.OrganizationRepository;
 import com.example.osmu.quota.repository.QuotaPolicyRepository;
 import com.example.osmu.user.repository.UserRepository;
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +22,8 @@ public class QuotaPolicyService {
 
     private static final Set<String> TARGET_TYPES = Set.of("USER", "ORGANIZATION", "BUCKET");
     private static final int MAX_REASON_LENGTH = 512;
+    private static final int DEFAULT_LIST_LIMIT = 50;
+    private static final int MAX_LIST_LIMIT = 200;
 
     private final QuotaPolicyRepository quotaPolicyRepository;
     private final BucketRepository bucketRepository;
@@ -36,9 +42,30 @@ public class QuotaPolicyService {
         this.organizationRepository = organizationRepository;
     }
 
-    public List<QuotaPolicyResponse> list() {
-        return quotaPolicyRepository.findAll().stream()
-                .map(policy -> QuotaPolicyResponse.of(policy, usedBytes(policy.targetType(), policy.targetId())))
+    public ListResponse<QuotaPolicyResponse> list(String cursor, Integer limit) {
+        int pageSize = normalizeListLimit(limit);
+        List<QuotaPolicy> page = quotaPolicyRepository.findPage(parseCursor(cursor), pageSize + 1);
+        boolean hasNextPage = page.size() > pageSize;
+        List<QuotaPolicy> policies = hasNextPage
+                ? page.subList(0, pageSize).stream().toList()
+                : List.copyOf(page);
+        String nextCursor = hasNextPage
+                ? QuotaPolicyPageCursor.fromPolicy(policies.get(policies.size() - 1)).encode()
+                : null;
+        return ListResponse.of(responses(policies), nextCursor);
+    }
+
+    public List<QuotaPolicyResponse> listAllForDashboardSummary() {
+        return responses(quotaPolicyRepository.findAllForDashboardSummary());
+    }
+
+    private List<QuotaPolicyResponse> responses(List<QuotaPolicy> policies) {
+        Map<TargetKey, Long> usedBytesByTarget = usedBytesByTargets(policies);
+        return policies.stream()
+                .map(policy -> QuotaPolicyResponse.of(
+                        policy,
+                        usedBytesByTarget.getOrDefault(new TargetKey(policy.targetType(), policy.targetId()), 0L)
+                ))
                 .toList();
     }
 
@@ -128,6 +155,25 @@ public class QuotaPolicyService {
         return normalized;
     }
 
+    private QuotaPolicyPageCursor parseCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            return QuotaPolicyPageCursor.decode(cursor.trim());
+        } catch (IllegalArgumentException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "cursor is invalid.");
+        }
+    }
+
+    private int normalizeListLimit(Integer limit) {
+        int normalized = limit == null ? DEFAULT_LIST_LIMIT : limit;
+        if (normalized < 1 || normalized > MAX_LIST_LIMIT) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "limit must be between 1 and 200.");
+        }
+        return normalized;
+    }
+
     private void validateTarget(String targetType, long targetId) {
         if (targetId <= 0) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "targetId must be positive.");
@@ -138,26 +184,59 @@ public class QuotaPolicyService {
         if ("ORGANIZATION".equals(targetType) && organizationRepository.findById(targetId).isEmpty()) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Quota policy organization target not found.");
         }
-        if ("BUCKET".equals(targetType) && bucketRepository.findAll().stream().noneMatch(bucket -> bucket.id() == targetId)) {
+        if ("BUCKET".equals(targetType) && bucketRepository.findById(targetId).isEmpty()) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Quota policy bucket target not found.");
         }
     }
 
+    private Map<TargetKey, Long> usedBytesByTargets(List<QuotaPolicy> policies) {
+        Map<TargetKey, Long> result = new HashMap<>();
+        addOwnerUsage(result, policies, "USER", "USER");
+        addOwnerUsage(result, policies, "ORGANIZATION", "ORG");
+
+        List<Long> bucketIds = targetIds(policies, "BUCKET");
+        if (!bucketIds.isEmpty()) {
+            for (BucketRecord bucket : bucketRepository.findByIds(bucketIds)) {
+                result.put(new TargetKey("BUCKET", bucket.id()), bucket.usedBytes());
+            }
+        }
+        return result;
+    }
+
+    private void addOwnerUsage(
+            Map<TargetKey, Long> result,
+            List<QuotaPolicy> policies,
+            String targetType,
+            String ownerType
+    ) {
+        List<Long> targetIds = targetIds(policies, targetType);
+        if (targetIds.isEmpty()) {
+            return;
+        }
+        for (BucketOwnerUsageSummary summary : bucketRepository.summarizeUsageByOwners(ownerType, targetIds)) {
+            result.put(new TargetKey(targetType, summary.ownerId()), summary.totalUsedBytes());
+        }
+    }
+
+    private List<Long> targetIds(List<QuotaPolicy> policies, String targetType) {
+        return policies.stream()
+                .filter(policy -> targetType.equals(policy.targetType()))
+                .map(QuotaPolicy::targetId)
+                .distinct()
+                .toList();
+    }
+
     private long usedBytes(String targetType, long targetId) {
         return switch (targetType) {
-            case "USER" -> bucketRepository.findAll().stream()
-                    .filter(bucket -> "USER".equals(bucket.ownerType()) && bucket.ownerId() == targetId)
-                    .mapToLong(BucketRecord::usedBytes)
-                    .sum();
-            case "ORGANIZATION" -> bucketRepository.findAll().stream()
-                    .filter(bucket -> "ORG".equals(bucket.ownerType()) && bucket.ownerId() == targetId)
-                    .mapToLong(BucketRecord::usedBytes)
-                    .sum();
-            case "BUCKET" -> bucketRepository.findAll().stream()
-                    .filter(bucket -> bucket.id() == targetId)
-                    .mapToLong(BucketRecord::usedBytes)
-                    .sum();
+            case "USER" -> bucketRepository.sumUsedBytesByOwner("USER", targetId);
+            case "ORGANIZATION" -> bucketRepository.sumUsedBytesByOwner("ORG", targetId);
+            case "BUCKET" -> bucketRepository.findById(targetId)
+                    .map(BucketRecord::usedBytes)
+                    .orElse(0L);
             default -> 0L;
         };
+    }
+
+    private record TargetKey(String targetType, long targetId) {
     }
 }

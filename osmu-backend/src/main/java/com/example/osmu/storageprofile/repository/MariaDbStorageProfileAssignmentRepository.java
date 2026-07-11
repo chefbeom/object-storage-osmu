@@ -11,8 +11,6 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -37,32 +35,13 @@ public class MariaDbStorageProfileAssignmentRepository implements StorageProfile
         this.password = password;
     }
 
-    @Override
-    public List<StorageProfileAssignmentRecord> findAll() {
-        ensureSchema();
-        String sql = """
-                SELECT bucket_name, profile_code, applied_by, applied_at, updated_at
-                FROM bucket_storage_profile_assignments
-                ORDER BY bucket_name
-                """;
-        try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            List<StorageProfileAssignmentRecord> records = new ArrayList<>();
-            while (resultSet.next()) {
-                records.add(mapRow(resultSet));
-            }
-            return records;
-        } catch (SQLException exception) {
-            throw databaseException(exception);
-        }
-    }
 
     @Override
     public Optional<StorageProfileAssignmentRecord> findByBucketName(String bucketName) {
         ensureSchema();
         String sql = """
-                SELECT bucket_name, profile_code, applied_by, applied_at, updated_at
+                SELECT bucket_name, profile_code, storage_layout_plan_id, storage_pool_name,
+                       storage_layout_code, applied_by, applied_at, updated_at
                 FROM bucket_storage_profile_assignments
                 WHERE bucket_name = ?
                 """;
@@ -85,10 +64,14 @@ public class MariaDbStorageProfileAssignmentRepository implements StorageProfile
         ensureSchema();
         String sql = """
                 INSERT INTO bucket_storage_profile_assignments
-                    (bucket_name, profile_code, applied_by, applied_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                    (bucket_name, profile_code, storage_layout_plan_id, storage_pool_name,
+                     storage_layout_code, applied_by, applied_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     profile_code = VALUES(profile_code),
+                    storage_layout_plan_id = VALUES(storage_layout_plan_id),
+                    storage_pool_name = VALUES(storage_pool_name),
+                    storage_layout_code = VALUES(storage_layout_code),
                     applied_by = VALUES(applied_by),
                     applied_at = VALUES(applied_at),
                     updated_at = VALUES(updated_at)
@@ -97,9 +80,12 @@ public class MariaDbStorageProfileAssignmentRepository implements StorageProfile
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, assignment.bucketName());
             statement.setString(2, assignment.profileCode());
-            statement.setString(3, assignment.appliedBy());
-            statement.setTimestamp(4, timestamp(assignment.appliedAt()));
-            statement.setTimestamp(5, timestamp(assignment.updatedAt()));
+            statement.setObject(3, assignment.storageLayoutPlanId());
+            statement.setString(4, assignment.storagePoolName());
+            statement.setString(5, assignment.storageLayoutCode());
+            statement.setString(6, assignment.appliedBy());
+            statement.setTimestamp(7, timestamp(assignment.appliedAt()));
+            statement.setTimestamp(8, timestamp(assignment.updatedAt()));
             statement.executeUpdate();
             return assignment;
         } catch (SQLException exception) {
@@ -138,6 +124,9 @@ public class MariaDbStorageProfileAssignmentRepository implements StorageProfile
                 CREATE TABLE IF NOT EXISTS bucket_storage_profile_assignments (
                     bucket_name VARCHAR(63) NOT NULL PRIMARY KEY,
                     profile_code VARCHAR(32) NOT NULL,
+                    storage_layout_plan_id BIGINT NULL,
+                    storage_pool_name VARCHAR(128) NULL,
+                    storage_layout_code VARCHAR(32) NULL,
                     applied_by VARCHAR(128) NOT NULL,
                     applied_at TIMESTAMP NOT NULL,
                     updated_at TIMESTAMP NOT NULL
@@ -160,6 +149,9 @@ public class MariaDbStorageProfileAssignmentRepository implements StorageProfile
         return new StorageProfileAssignmentRecord(
                 resultSet.getString("bucket_name"),
                 resultSet.getString("profile_code"),
+                nullableLong(resultSet, "storage_layout_plan_id"),
+                resultSet.getString("storage_pool_name"),
+                resultSet.getString("storage_layout_code"),
                 resultSet.getString("applied_by"),
                 toOffset(resultSet.getTimestamp("applied_at")),
                 toOffset(resultSet.getTimestamp("updated_at"))
@@ -173,6 +165,11 @@ public class MariaDbStorageProfileAssignmentRepository implements StorageProfile
     private OffsetDateTime toOffset(Timestamp value) {
         return value == null ? null : value.toInstant().atOffset(ZoneOffset.UTC);
     }
+    private Long nullableLong(ResultSet resultSet, String column) throws SQLException {
+        long value = resultSet.getLong(column);
+        return resultSet.wasNull() ? null : value;
+    }
+
 
     private ApiException databaseException(SQLException exception) {
         return new ApiException(ApiErrorCode.INTERNAL_ERROR, "Database operation failed: " + exception.getMessage());

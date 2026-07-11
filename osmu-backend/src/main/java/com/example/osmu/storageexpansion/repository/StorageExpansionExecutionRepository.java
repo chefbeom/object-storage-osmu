@@ -7,8 +7,6 @@ import java.util.Optional;
 
 public interface StorageExpansionExecutionRepository {
 
-    List<StorageExpansionExecutionRecord> findAll();
-
     long countAll();
 
     long countByResult(String result);
@@ -19,7 +17,7 @@ public interface StorageExpansionExecutionRepository {
 
     List<StorageExpansionExecutionRecord> findRecent(int limit);
 
-    List<StorageExpansionExecutionRecord> findByRequestId(long requestId);
+    List<StorageExpansionExecutionRecord> findPageByRequestId(long requestId, Long cursorId, int limit);
 
     Optional<StorageExpansionExecutionRecord> findById(long id);
 

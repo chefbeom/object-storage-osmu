@@ -336,9 +336,62 @@ function Get-FirstNonPassCheckSummary([object] $Data) {
     return "none"
 }
 
+function Test-ChargebackCloseoutEvidenceAccepted([object] $Report) {
+    if (-not (Test-PassedTargetEvidence $Report)) { return $false }
+    $data = $Report.data
+    if ([string] (Get-ObjectProperty $data "formatVersion") -ne "osmu.chargeback-closeout-evidence.v1") { return $false }
+
+    $summary = Get-ObjectProperty $data "summary"
+    foreach ($fieldName in @("chargebackCloseoutSnapshotValid", "chargebackCloseoutSnapshotReady", "paymentProviderAdapterReadinessSnapshotValid", "paymentProviderAdapterReadinessReviewed", "commercialEvidenceReviewed")) {
+        $field = Get-RequiredObjectBool $summary $fieldName
+        if (-not ($field.valid -and $field.value)) { return $false }
+    }
+    $summarySourceTruncated = Get-RequiredObjectBool $summary "chargebackCloseoutSnapshotSourceTruncated"
+    if (-not $summarySourceTruncated.valid -or $summarySourceTruncated.value) { return $false }
+    $summaryChecks = @(
+        @{ result = (Get-RequiredObjectInt $summary "checkCount"); positive = $true },
+        @{ result = (Get-RequiredObjectInt $summary "failureCount"); zero = $true },
+        @{ result = (Get-RequiredObjectInt $summary "plannedCount"); zero = $true },
+        @{ result = (Get-RequiredObjectInt $summary "chargebackCloseoutSnapshotBlockerCount"); zero = $true },
+        @{ result = (Get-RequiredObjectInt $summary "chargebackCloseoutSnapshotScanLimit"); positive = $true },
+        @{ result = (Get-RequiredObjectInt $summary "chargebackCloseoutSnapshotTruncationBlockerCount"); zero = $true }
+    )
+    foreach ($check in $summaryChecks) {
+        $result = $check.result
+        if (-not $result.valid) { return $false }
+        if ($check.positive -and $result.value -le 0) { return $false }
+        if ($check.zero -and $result.value -ne 0) { return $false }
+    }
+    $providedRefs = Get-RequiredObjectInt $summary "providedEvidenceRefCount"
+    $requiredRefs = Get-RequiredObjectInt $summary "requiredEvidenceRefCount"
+    if (-not ($providedRefs.valid -and $requiredRefs.valid) -or $requiredRefs.value -lt 14 -or $providedRefs.value -ne $requiredRefs.value) { return $false }
+
+    $closeoutSnapshot = Get-ObjectProperty $data "chargebackCloseoutSnapshot"
+    foreach ($fieldName in @("valid", "statusClosed", "billingPeriodMatches", "integersValid", "booleansValid", "failureCountZero", "blockerCountZero", "scanLimitPositive", "sourceComplete", "truncationBlockerCountZero", "closeoutReady", "readinessBooleansClosed", "noRawDataStored")) {
+        $field = Get-RequiredObjectBool $closeoutSnapshot $fieldName
+        if (-not ($field.valid -and $field.value)) { return $false }
+    }
+    $sourceTruncated = Get-RequiredObjectBool $closeoutSnapshot "sourceTruncated"
+    if (-not $sourceTruncated.valid -or $sourceTruncated.value) { return $false }
+
+    $closeoutCounts = Get-ObjectProperty $closeoutSnapshot "counts"
+    $scanLimit = Get-RequiredObjectInt $closeoutCounts "scanLimit"
+    if (-not $scanLimit.valid -or $scanLimit.value -le 0) { return $false }
+    foreach ($fieldName in @("failureCount", "blockerCount", "truncationBlockerCount", "reconciliationDifferenceMinorUnits")) {
+        $field = Get-RequiredObjectInt $closeoutCounts $fieldName
+        if (-not $field.valid -or $field.value -ne 0) { return $false }
+    }
+    $rawDataFlags = Get-ObjectProperty $closeoutSnapshot "rawDataFlags"
+    foreach ($fieldName in @("rawCustomerPaymentDataStored", "rawProviderResponseStored", "rawSecretValuesStored")) {
+        $field = Get-RequiredObjectBool $rawDataFlags $fieldName
+        if (-not $field.valid -or $field.value) { return $false }
+    }
+    return $true
+}
+
 function Get-ChargebackCloseoutDetail([object] $Report) {
     if (-not $Report.exists -or -not $Report.parsed) {
-        return "result=planned, billingPeriod=, window=->, failures=0, planned=3, refs=0/14, reconciliationDifferenceMinorUnits=0, closeoutSnapshotValid=False, paymentProviderAdapterReadinessSnapshotValid=False, paymentProviderAdapterReadinessReviewed=False, commercialEvidenceReviewed=False, firstIssue=target-closeout-planned/PLANNED Run this writer after a target billing period has been closed.; source=$($Report.detail)"
+        return "result=planned, billingPeriod=, window=->, failures=0, planned=3, refs=0/14, scanLimit=0, sourceTruncated=False, truncationBlockers=0, reconciliationDifferenceMinorUnits=0, closeoutSnapshotValid=False, paymentProviderAdapterReadinessSnapshotValid=False, paymentProviderAdapterReadinessReviewed=False, commercialEvidenceReviewed=False, firstIssue=target-closeout-planned/PLANNED Run this writer after a target billing period has been closed.; source=$($Report.detail)"
     }
     $data = $Report.data
     $summary = Get-ObjectProperty $data "summary"
@@ -353,9 +406,12 @@ function Get-ChargebackCloseoutDetail([object] $Report) {
     $plannedCount = Get-ObjectInt $summary "plannedCount"
     $providedRefs = Get-ObjectInt $summary "providedEvidenceRefCount"
     $requiredRefs = Get-ObjectInt $summary "requiredEvidenceRefCount"
+    $scanLimit = Get-ObjectInt $closeoutCounts "scanLimit"
+    $sourceTruncated = Get-ObjectProperty $closeoutSnapshot "sourceTruncated"
+    $truncationBlockers = Get-ObjectInt $closeoutCounts "truncationBlockerCount"
     $reconciliationDiff = Get-ObjectInt $closeoutCounts "reconciliationDifferenceMinorUnits"
     $firstIssue = Get-FirstNonPassCheckSummary $data
-    return "result=$($data.result), billingPeriod=$($target.billingPeriod), window=$($target.closeoutStartedAt)->$($target.closeoutCompletedAt), failures=$failureCount, planned=$plannedCount, refs=$providedRefs/$requiredRefs, reconciliationDifferenceMinorUnits=$reconciliationDiff, closeoutSnapshotValid=$closeoutSnapshotValid, paymentProviderAdapterReadinessSnapshotValid=$paymentSnapshotValid, paymentProviderAdapterReadinessReviewed=$paymentReviewed, commercialEvidenceReviewed=$commercialReviewed, firstIssue=$firstIssue"
+    return "result=$($data.result), billingPeriod=$($target.billingPeriod), window=$($target.closeoutStartedAt)->$($target.closeoutCompletedAt), failures=$failureCount, planned=$plannedCount, refs=$providedRefs/$requiredRefs, scanLimit=$scanLimit, sourceTruncated=$sourceTruncated, truncationBlockers=$truncationBlockers, reconciliationDifferenceMinorUnits=$reconciliationDiff, closeoutSnapshotValid=$closeoutSnapshotValid, paymentProviderAdapterReadinessSnapshotValid=$paymentSnapshotValid, paymentProviderAdapterReadinessReviewed=$paymentReviewed, commercialEvidenceReviewed=$commercialReviewed, firstIssue=$firstIssue"
 }
 function Get-StorageBackendTelemetryDetail([object] $Report) {
     if (-not $Report.exists -or -not $Report.parsed) {
@@ -1113,7 +1169,7 @@ Add-Check "Monitoring threshold target evidence" "monitoring" (Test-PassedTarget
 Add-Check "Secret/certificate rotation target evidence" "security-hardening" (Test-PassedTargetEvidence $secretRotationReport) (Add-TargetEvidenceGuardDetail $secretRotationReport (Get-GenericResultDetail $secretRotationReport)) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
 Add-Check "Commercial integration target evidence" "commercial-integration" (Test-PassedTargetEvidence $commercialIntegrationReport) (Add-TargetEvidenceGuardDetail $commercialIntegrationReport (Get-GenericResultDetail $commercialIntegrationReport)) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
 Add-Check "Commercial approval target evidence" "commercial-approval" (Test-PassedTargetEvidence $commercialApprovalReport) (Add-TargetEvidenceGuardDetail $commercialApprovalReport (Get-GenericResultDetail $commercialApprovalReport)) $commercialApprovalReport.path "commercial approval evidence result=passed for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary" $commercialApprovalRemediation
-Add-Check "Chargeback closeout target evidence" "chargeback-closeout" (Test-PassedTargetEvidence $chargebackCloseoutReport) (Add-TargetEvidenceGuardDetail $chargebackCloseoutReport (Get-ChargebackCloseoutDetail $chargebackCloseoutReport)) $chargebackCloseoutReport.path "chargeback closeout evidence result=passed for target billing period pricing, usage, invoice, payment handoff, notification, retry, reconciliation, commercial integration, and commercial approval review" $chargebackCloseoutRemediation
+Add-Check "Chargeback closeout target evidence" "chargeback-closeout" (Test-ChargebackCloseoutEvidenceAccepted $chargebackCloseoutReport) (Add-TargetEvidenceGuardDetail $chargebackCloseoutReport (Get-ChargebackCloseoutDetail $chargebackCloseoutReport)) $chargebackCloseoutReport.path "chargeback closeout evidence result=passed with complete bounded sources for target billing period pricing, usage, invoice, payment handoff, notification, retry, reconciliation, commercial integration, and commercial approval review" $chargebackCloseoutRemediation
 Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" (Test-EnterpriseAuthEvidenceAccepted $enterpriseAuthSmokeReport) (Add-TargetEvidenceGuardDetail $enterpriseAuthSmokeReport (Get-EnterpriseAuthEvidenceDetail $enterpriseAuthSmokeReport)) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or result=scope-out with explicit commercial approval reference and reason" $enterpriseAuthSmokeRemediation
 Add-Check "Enterprise auth JIT rollback target evidence" "enterprise-auth" (Test-EnterpriseAuthJitRollbackRequirementSatisfied $enterpriseAuthJitRollbackReport $enterpriseAuthSmokeReport) (Add-TargetEvidenceGuardDetail $enterpriseAuthJitRollbackReport (Get-EnterpriseAuthJitRollbackEvidenceDetail $enterpriseAuthJitRollbackReport $enterpriseAuthSmokeReport)) $enterpriseAuthJitRollbackReport.path "enterprise auth smoke result=passed requires target admin-approved JIT rollback result=passed; accepted scope-out makes JIT rollback not required" $enterpriseAuthJitRollbackRemediation
 Add-Check "Operations handoff package target evidence" "operations-handoff-package" $operationsHandoffPackageValidation.passed $operationsHandoffPackageValidation.detail $operationsHandoffPackageReport.path "operations handoff package result=passed from target environment with required handoff review/production/snapshot confirmations" $operationsHandoffPackageRemediation

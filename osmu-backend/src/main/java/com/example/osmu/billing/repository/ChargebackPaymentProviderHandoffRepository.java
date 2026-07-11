@@ -15,6 +15,13 @@ public interface ChargebackPaymentProviderHandoffRepository {
 
     List<ChargebackPaymentProviderHandoffRecord> findByStatus(String status, int limit);
 
+    List<ChargebackPaymentProviderHandoffRecord> findForCloseout(
+            List<Long> finalInvoiceIds,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    );
+
     List<ChargebackPaymentProviderHandoffRecord> findDueAdapterRetries(OffsetDateTime now, int limit);
 
     ChargebackPaymentProviderHandoffRecord update(ChargebackPaymentProviderHandoffRecord record);

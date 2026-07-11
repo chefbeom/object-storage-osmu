@@ -46,7 +46,7 @@ OSMU는 기업 내부에서 대용량 파일, 이미지, 영상, 로그, 비정�
 | 기획/요구사항/문서 | 70% | 목표, API, DB, 배포, 보안, 테스트 문서가 있음 |
 | 프론트엔드 콘솔 | 55% | 로그인, 페이지 분리, 대시보드 palette, data-flow monitoring 패널과 daily rollup 표시/daily rollup CSV export/materialized rollup refresh/read/export, chargeback daily rollup trend 표시/export, operations readiness 요약/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff action 표시, 관리자 작업 실패 remediation UX, admin/developer 화면 뼈대가 있음 |
 | 백엔드 REST API | 58% | auth, bucket, object, object search/filter bounded MariaDB query path, access key, admin, dashboard, data-flow monitoring/daily rollup/materialized rollup refresh/read/export/retention cleanup/detailed CSV/daily rollup CSV, billing pricing policy/proposal approval, chargeback preview/daily rollup trend/export/daily trend CSV export/threshold alerts/notification preview/outbox/webhook send/adapter retry state/draft invoice export/persistence/internal approval/final invoice/payment state workflow/payment provider handoff outbox/native-bridge-or-webhook handoff send/adapter retry state/payment provider adapter readiness, storage expansion, restore drill evidence history, operations readiness dashboard evidence/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff API가 있음 |
-| MariaDB metadata | 41% | Flyway migration 58개, repository 구현, migration rollback plan gate, metadata index coverage static gate, MariaDB EXPLAIN evidence writer/verifier, object list query pushdown verifier가 있음 |
+| MariaDB metadata | 41% | Flyway migration 64개, repository 구현, migration rollback plan gate, metadata index coverage static gate, MariaDB EXPLAIN evidence writer/verifier, object list query pushdown verifier가 있음 |
 | MinIO/S3 호환 | 35% | S3 API 일부, SigV4, MinIO adapter, smoke script가 있음. 목표는 AWS 완전 호환이 아니라 주요 클라이언트 대체 사용 가능성 |
 | Docker/local demo | 90% | Docker/MariaDB/MinIO/backend/frontend durable gate, Browser E2E, Docker integration smoke, Dockerized real S3 client smoke가 `docker-mc` 기준 통과 |
 | Kubernetes/Helm | 75% | Draft manifests/Helm chart, ServiceAccount hardening, storage expansion RBAC, backup CronJobs, backup drill evidence script, restore namespace preparation helper, external DR bucket bootstrap, external DR bucket immutability preflight, bounded and hardened external DR artifact transfer helper, backup artifact preflight helper, isolated restore drill helper, DR drill orchestration wrapper, restore smoke helper, DR evidence API request helper, Kubernetes DR finalization wrapper, Kubernetes DR Finalizer CI workflow, storage expansion finalization wrapper, Storage Expansion Finalizer CI workflow, dedicated Kubernetes HA/DR Readiness CI workflow, Operations Readiness Finalizer CI workflow, Operations Readiness Artifact Finalizer CI workflow, operations readiness artifact gate, PDB, topology spread, and live HA/DR evidence script exist; actual cluster verification is still needed |
@@ -80,8 +80,8 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - monitoring threshold evidence writer check
 - data-flow storage transition runbook evidence writer check
 - Prometheus Operator draft check
-- Flyway migration version check: 58 migrations
-- frontend unit tests: 115 passed
+- Flyway migration version check: 62 migrations
+- frontend unit tests: 120 passed
 - frontend production build
 - backend Gradle tests
 - Docker/MariaDB/MinIO local demo Browser E2E
@@ -124,6 +124,17 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - refresh token/session 만료 UX: refresh 실패와 저장 token 복구 실패 시 session state/data를 정리하고 `/login?redirect=...&reason=session-expired|session-invalid` 안내 표시
 - read-only auditor 역할: `AUDITOR` role, 감사/상태/backup 조회 admin route allowlist, Dashboard/Audit navigation, read-only audit widget catalog, 변경성 admin API 차단
 - 부서/team 단위 RBAC: `teams`/`team_members` metadata, `/api/admin/teams` 관리 API, `TEAM` bucket permission subject, 팀 멤버 기반 bucket 접근, 멤버 변경/팀 삭제 시 Access Key policy 재동기화, AdminPage 팀 관리 UI
+- non-admin bucket list query pushdown: USER/ORG owner, direct user, organization, and team permission subjects are resolved through indexed bulk repository queries without loading every bucket or querying permissions once per bucket.
+- organization/quota query pushdown: organization usage uses one owner aggregate; quota policy inventory uses the existing uk_quota_target composite cursor before a bounded page and calculates usage only for returned targets, while dashboard totals retain an explicit full snapshot; organization delete uses indexed bucket/user/team existence checks instead of full collection scans.
+- admin user list query pushdown: keyword/status/organization scope, id cursor, descending order, and bounded limit execute in the repository; MariaDB uses organization/id and status/id indexes instead of loading every user row.
+- team list query pushdown: ADMIN/ORG_ADMIN organization scope, ascending id cursor, and bounded limit execute in the repository through (organization_id, id); only the returned page member ids load in one bulk query instead of one query per team.
+- identity/access-key query pushdown: LDAP/OIDC email mapping uses the indexed repository email lookup without a fallback user scan; organization/team policy reconciliation loads affected user ids and access key records with indexed bulk queries instead of loading every user or querying access keys once per owner.
+- storage profile request query pushdown: all general request history uses bounded ID cursor pages; StoragePage queries only the selected bucket through `idx_storage_profile_requests_bucket`, unfiltered non-admin pages use the accessible-bucket IN scope, and the admin approval queue uses `idx_storage_profile_requests_status` with `OPEN`/individual status filters instead of loading global history.
+- chargeback bucket query pushdown: ADMIN/ORG_ADMIN preview and daily rollup load only visible ORG-owned buckets through `idx_buckets_owner`; daily usage and bucket mapping reuse the same scoped result instead of scanning all buckets twice.
+- object share analytics query pushdown: status/protection/download totals use a MariaDB aggregate query and recent links use a bounded `id DESC LIMIT` query with bucket/status indexes; dashboard and filtered admin analytics no longer load every share-link row.
+- lifecycle rule query pushdown: admin inventory applies status/target filters, an opaque priority-createdAt-ruleId cursor, and a bounded limit in the repository; scheduled trash/version purge jobs load only enabled rules for their target type; conflict analysis queries enabled rules separately per target and ignores different non-empty bucket scopes; bucket lifecycle export/replace/delete loads only the selected bucket rules; admin S3 XML export is the explicit full-snapshot exception.
+- chargeback closeout bounded query: draft/final invoice windows and handoff/notification scopes are applied before `limit + 1` retrieval; any truncated source adds a blocker and forces `PENDING` so partial evidence cannot claim reconciliation. The closeout evidence writer, artifact importer, operations handoff package, readiness API, and dashboard preserve `scanLimit`/`sourceTruncated`/`truncationBlockerCount` and reject truncated target evidence.
+- frontend route-scoped loading: dashboard layout/readiness, storage profiles, object listing, developer S3 configuration, admin operations, audit logs, and selected-bucket metadata are requested only by the pages that render them; route changes load the new page data without returning to the previous all-in-one request fan-out.
 - SSO/OIDC/LDAP 검토: `GET /api/admin/security/enterprise-auth-plan`, admin-only `POST /api/admin/security/enterprise-auth/claim-preview` with `OIDC_CLAIM_PREVIEW` audit, admin-only `POST /api/admin/security/enterprise-auth/jit-provision` with explicit privileged-role approval and `OIDC_JIT_PROVISION` audit, local-only login boundary, OIDC/LDAP provider readiness, `osmu_roles`/`osmu_org`/`osmu_teams` claim mapping, AdminPage security policy row, public `GET /api/auth/oidc/authorize` authorization URL start with state/nonce/PKCE, public `GET /api/auth/oidc/callback` with state consume, token exchange, RS256 JWKS id_token validation, public `POST /api/auth/ldap/login` bind/search adapter, allowed domain check, existing ACTIVE local user email mapping, and guarded enterprise auth smoke evidence helper
 
 남은 것:
@@ -162,6 +173,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - object share policy
 - lifecycle/retention
 - storage expansion request
+- Kubernetes PVC storage layout plan, approval, and simulation-only preview
 - runner preflight
 - 관리자 작업 실패 시 remediation UX
 - 권한별 panel 표시 제한
@@ -306,11 +318,11 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 구현된 것:
 
-- Flyway migration V1~V58
+- Flyway migration V1~V65
 - bucket/object/access key/audit/quota/dashboard/storage expansion/restore drill evidence repository
 - in-memory repository와 MariaDB repository 병행 구조
 - object metadata drift reconciliation을 위한 bucket 단위 metadata scan과 sync summary
-- metadata index coverage static gate: `scripts/verify-metadata-index-coverage.ps1`가 object/tag/version/trash, audit, data-flow, storage expansion, chargeback retry worker index prefix를 migration SQL에서 검증한다.
+- metadata index coverage static gate: `scripts/verify-metadata-index-coverage.ps1`가 bucket access subject/team membership, owner quota/organization usage/chargeback, user/team organization existence, user organization/status cursor pagination and team organization/id cursor pagination, access key owner reconciliation, storage profile visible/admin cursor requests, object share analytics, lifecycle rule target/bucket/admin inventory order, object/tag/version/trash, audit, data-flow, storage expansion, chargeback closeout/retry worker index prefix를 migration SQL에서 검증한다.
 - migration rollback plan gate: `scripts/write-migration-rollback-plan.ps1`와 `scripts/verify-migration-rollback-plan.ps1`가 Flyway forward-only 경계를 명시하고 backup-before-migration, restore rollback, post-write compensating migration 절차를 evidence로 남긴다.
 - MariaDB query plan evidence writer/verifier: `scripts/write-mariadb-query-plan-evidence.ps1`와 `scripts/verify-mariadb-query-plan-evidence.ps1`가 metadata/audit/data-flow/storage expansion/chargeback retry query path의 `EXPLAIN FORMAT=JSON` 결과에서 expected index 사용 여부를 검증한다. 기본은 plan-only이며 target DB에서는 `-Execute` 또는 operator-collected explain input으로 evidence를 남긴다.
 

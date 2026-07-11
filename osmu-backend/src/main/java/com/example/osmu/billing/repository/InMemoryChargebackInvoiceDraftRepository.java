@@ -50,6 +50,19 @@ public class InMemoryChargebackInvoiceDraftRepository implements ChargebackInvoi
     }
 
     @Override
+    public List<ChargebackInvoiceDraftRecord> findForCloseoutWindow(
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    ) {
+        return records.stream()
+                .filter(record -> invoiceWindowMatches(record.from(), record.to(), from, to))
+                .sorted(Comparator.comparing(ChargebackInvoiceDraftRecord::createdAt).reversed())
+                .limit(Math.max(1, limit))
+                .toList();
+    }
+
+    @Override
     public Optional<ChargebackInvoiceDraftRecord> findById(long id) {
         return records.stream()
                 .filter(record -> record.id() != null && record.id() == id)
@@ -104,6 +117,26 @@ public class InMemoryChargebackInvoiceDraftRepository implements ChargebackInvoi
             }
         }
         throw new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback invoice draft not found.");
+    }
+
+    private static boolean invoiceWindowMatches(
+            OffsetDateTime recordFrom,
+            OffsetDateTime recordTo,
+            OffsetDateTime from,
+            OffsetDateTime to
+    ) {
+        if (from == null && to == null) {
+            return true;
+        }
+        OffsetDateTime recordStart = recordFrom == null ? recordTo : recordFrom;
+        OffsetDateTime recordEnd = recordTo == null ? recordFrom : recordTo;
+        if (recordStart == null && recordEnd == null) {
+            return true;
+        }
+        if (from != null && recordEnd != null && recordEnd.isBefore(from)) {
+            return false;
+        }
+        return to == null || recordStart == null || recordStart.isBefore(to);
     }
 
     private static int normalizeLimit(int limit) {

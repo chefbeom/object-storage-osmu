@@ -8,6 +8,8 @@ public interface BucketPermissionRepository {
 
     List<BucketPermissionRecord> findByBucketId(long bucketId);
 
+    List<Long> findBucketIdsBySubjects(long userId, Long organizationId, List<Long> teamIds);
+
     Optional<BucketPermissionRecord> findById(long id);
 
     boolean exists(long bucketId, String subjectType, long subjectId, String permission);

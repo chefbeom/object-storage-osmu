@@ -3,6 +3,7 @@ package com.example.osmu.object.repository;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
 import com.example.osmu.object.ObjectLifecycleRule;
+import com.example.osmu.object.ObjectLifecycleRulePageCursor;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Connection;
@@ -44,7 +45,51 @@ public class MariaDbObjectLifecycleRuleRepository implements ObjectLifecycleRule
     }
 
     @Override
-    public List<ObjectLifecycleRule> findAll() {
+    public List<ObjectLifecycleRule> findPage(
+            Boolean enabled,
+            String targetType,
+            ObjectLifecycleRulePageCursor cursor,
+            int limit
+    ) {
+        ensureSchema();
+        StringBuilder sql = new StringBuilder("""
+                SELECT rule_id, name, enabled, priority, bucket_name, target_type, prefix, tags, retention_days, batch_size, created_at, updated_at
+                FROM object_lifecycle_rules
+                WHERE 1 = 1
+                """);
+        if (enabled != null) {
+            sql.append(" AND enabled = ?");
+        }
+        if (targetType != null) {
+            sql.append(" AND target_type = ?");
+        }
+        if (cursor != null) {
+            sql.append(" AND (priority, created_at, rule_id) > (?, ?, ?)");
+        }
+        sql.append(" ORDER BY priority ASC, created_at ASC, rule_id ASC LIMIT ?");
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            int parameterIndex = 1;
+            if (enabled != null) {
+                statement.setBoolean(parameterIndex++, enabled);
+            }
+            if (targetType != null) {
+                statement.setString(parameterIndex++, targetType);
+            }
+            if (cursor != null) {
+                statement.setInt(parameterIndex++, cursor.priority());
+                statement.setTimestamp(parameterIndex++, Timestamp.from(cursor.createdAt().toInstant()));
+                statement.setString(parameterIndex++, cursor.ruleId());
+            }
+            statement.setInt(parameterIndex, limit);
+            return readList(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<ObjectLifecycleRule> findAllForExport() {
         ensureSchema();
         String sql = """
                 SELECT rule_id, name, enabled, priority, bucket_name, target_type, prefix, tags, retention_days, batch_size, created_at, updated_at
@@ -59,6 +104,42 @@ public class MariaDbObjectLifecycleRuleRepository implements ObjectLifecycleRule
                 rules.add(mapRow(resultSet));
             }
             return rules;
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<ObjectLifecycleRule> findEnabledByTargetType(String targetType) {
+        ensureSchema();
+        String sql = """
+                SELECT rule_id, name, enabled, priority, bucket_name, target_type, prefix, tags, retention_days, batch_size, created_at, updated_at
+                FROM object_lifecycle_rules
+                WHERE enabled = TRUE AND target_type = ?
+                ORDER BY priority ASC, created_at ASC, rule_id ASC
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, targetType);
+            return readList(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<ObjectLifecycleRule> findByBucketName(String bucketName) {
+        ensureSchema();
+        String sql = """
+                SELECT rule_id, name, enabled, priority, bucket_name, target_type, prefix, tags, retention_days, batch_size, created_at, updated_at
+                FROM object_lifecycle_rules
+                WHERE bucket_name = ?
+                ORDER BY priority ASC, created_at ASC, rule_id ASC
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, bucketName);
+            return readList(statement);
         } catch (SQLException exception) {
             throw databaseException(exception);
         }
@@ -177,6 +258,11 @@ public class MariaDbObjectLifecycleRuleRepository implements ObjectLifecycleRule
             statement.executeUpdate();
             ensurePriorityColumn(connection);
             ensureBucketNameColumn(connection);
+            executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_object_lifecycle_rules_target_order ON object_lifecycle_rules (enabled, target_type, priority, created_at, rule_id)");
+            executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_object_lifecycle_rules_bucket_order ON object_lifecycle_rules (bucket_name, priority, created_at, rule_id)");
+            executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_object_lifecycle_rules_inventory_order ON object_lifecycle_rules (priority, created_at, rule_id)");
+            executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_object_lifecycle_rules_enabled_order ON object_lifecycle_rules (enabled, priority, created_at, rule_id)");
+            executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_object_lifecycle_rules_target_inventory_order ON object_lifecycle_rules (target_type, priority, created_at, rule_id)");
             schemaReady = true;
         } catch (SQLException exception) {
             throw databaseException(exception);
@@ -206,6 +292,22 @@ public class MariaDbObjectLifecycleRuleRepository implements ObjectLifecycleRule
             if (!isDuplicateColumn(exception)) {
                 throw exception;
             }
+        }
+    }
+
+    private List<ObjectLifecycleRule> readList(PreparedStatement statement) throws SQLException {
+        try (ResultSet resultSet = statement.executeQuery()) {
+            List<ObjectLifecycleRule> rules = new ArrayList<>();
+            while (resultSet.next()) {
+                rules.add(mapRow(resultSet));
+            }
+            return rules;
+        }
+    }
+
+    private void executeUpdate(Connection connection, String sql) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.executeUpdate();
         }
     }
 

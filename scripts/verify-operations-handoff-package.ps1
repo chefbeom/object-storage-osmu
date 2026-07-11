@@ -482,6 +482,11 @@ $helmValuesHardeningPath = Join-Path $resolvedOutputDirectory "latest-helm-value
         requiredEvidenceRefCount = 14
         providedEvidenceRefCount = 14
         chargebackCloseoutSnapshotValid = $true
+        chargebackCloseoutSnapshotReady = $true
+        chargebackCloseoutSnapshotBlockerCount = 0
+        chargebackCloseoutSnapshotScanLimit = 500
+        chargebackCloseoutSnapshotSourceTruncated = $false
+        chargebackCloseoutSnapshotTruncationBlockerCount = 0
         paymentProviderAdapterReadinessSnapshotValid = $true
         paymentProviderAdapterReadinessReviewed = $true
         commercialEvidenceReviewed = $true
@@ -534,6 +539,13 @@ $helmValuesHardeningPath = Join-Path $resolvedOutputDirectory "latest-helm-value
         integersValid = $true
         booleansValid = $true
         failureCountZero = $true
+        blockerCountZero = $true
+        scanLimitPositive = $true
+        sourceTruncated = $false
+        sourceComplete = $true
+        truncationBlockerCountZero = $true
+        closeoutReady = $true
+        readinessBooleansClosed = $true
         noRawDataStored = $true
         counts = [ordered]@{
             invoiceDraftCount = 3
@@ -541,6 +553,9 @@ $helmValuesHardeningPath = Join-Path $resolvedOutputDirectory "latest-helm-value
             paymentRequestedCount = 3
             paymentHandoffCount = 3
             paidInvoiceCount = 3
+            scanLimit = 500
+            truncationBlockerCount = 0
+            blockerCount = 0
             reconciliationDifferenceMinorUnits = 0
             failureCount = 0
         }
@@ -1060,6 +1075,10 @@ Assert-True ($report.targetEvidenceSnapshots.commercialApproval.pricingPolicyPro
 Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.result -eq "passed") "Expected chargeback closeout snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.billingPeriod -eq "2026-06") "Expected chargeback closeout billing period."
 Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot.valid) "Expected chargeback closeout nested snapshot valid."
+Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot.sourceComplete) "Expected chargeback closeout source completeness."
+Assert-True (-not $report.targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot.sourceTruncated) "Expected untruncated chargeback closeout source."
+Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot.counts.scanLimit -eq 500) "Expected chargeback closeout scan limit."
+Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot.counts.truncationBlockerCount -eq 0) "Expected zero chargeback closeout truncation blockers."
 Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.reconciliationDifferenceMinorUnits -eq 0) "Expected chargeback closeout reconciliation difference zero."
 Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.noRawDataStored) "Expected chargeback closeout no raw data flag."
 Assert-True ($report.summary.chargebackCloseoutSnapshotResult -eq "passed") "Expected chargeback closeout summary result=passed."

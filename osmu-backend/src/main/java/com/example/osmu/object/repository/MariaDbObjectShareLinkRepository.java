@@ -3,6 +3,7 @@ package com.example.osmu.object.repository;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
 import com.example.osmu.object.ObjectShareLink;
+import com.example.osmu.object.ObjectShareLinkAnalytics;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -129,13 +130,73 @@ public class MariaDbObjectShareLinkRepository implements ObjectShareLinkReposito
         }
     }
 
+
     @Override
-    public List<ObjectShareLink> findAll() {
+    public ObjectShareLinkAnalytics analytics(String bucketName, String status, int recentLimit) {
         ensureSchema();
-        String sql = "SELECT " + SELECT_COLUMNS + " FROM object_share_links ORDER BY id DESC";
+        if (recentLimit < 1) {
+            throw new IllegalArgumentException("recentLimit must be positive.");
+        }
+        String bucketFilter = bucketName == null ? "" : bucketName;
+        String statusFilter = status == null ? "" : status;
+        String whereClause = analyticsWhereClause(bucketFilter, statusFilter);
+        String aggregateSql = """
+                SELECT COUNT(*) AS total_links,
+                       COALESCE(SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END), 0) AS active_links,
+                       COALESCE(SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END), 0) AS expired_links,
+                       COALESCE(SUM(CASE WHEN status = 'REVOKED' THEN 1 ELSE 0 END), 0) AS revoked_links,
+                       COALESCE(SUM(CASE WHEN status = 'LIMIT_REACHED' THEN 1 ELSE 0 END), 0) AS limit_reached_links,
+                       COALESCE(SUM(CASE WHEN password_hash IS NOT NULL AND TRIM(password_hash) <> '' THEN 1 ELSE 0 END), 0) AS password_protected_links,
+                       COALESCE(SUM(CASE WHEN allowed_ip_cidrs IS NOT NULL AND TRIM(allowed_ip_cidrs) <> '' THEN 1 ELSE 0 END), 0) AS ip_restricted_links,
+                       COALESCE(SUM(download_count), 0) AS total_downloads,
+                       MAX(last_accessed_at) AS last_accessed_at
+                FROM object_share_links
+                """ + whereClause;
+        String recentSql = "SELECT " + SELECT_COLUMNS
+                + " FROM object_share_links"
+                + whereClause
+                + " ORDER BY id DESC LIMIT ?";
         try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            return readList(statement);
+             PreparedStatement aggregateStatement = connection.prepareStatement(aggregateSql);
+             PreparedStatement recentStatement = connection.prepareStatement(recentSql)) {
+            bindAnalyticsFilters(aggregateStatement, bucketFilter, statusFilter);
+            int recentLimitIndex = bindAnalyticsFilters(recentStatement, bucketFilter, statusFilter);
+            recentStatement.setInt(recentLimitIndex, recentLimit);
+            long totalLinks;
+            long activeLinks;
+            long expiredLinks;
+            long revokedLinks;
+            long limitReachedLinks;
+            long passwordProtectedLinks;
+            long ipRestrictedLinks;
+            long totalDownloads;
+            OffsetDateTime lastAccessedAt;
+            try (ResultSet aggregateResult = aggregateStatement.executeQuery()) {
+                if (!aggregateResult.next()) {
+                    throw new SQLException("Object share analytics aggregate returned no row.");
+                }
+                totalLinks = aggregateResult.getLong("total_links");
+                activeLinks = aggregateResult.getLong("active_links");
+                expiredLinks = aggregateResult.getLong("expired_links");
+                revokedLinks = aggregateResult.getLong("revoked_links");
+                limitReachedLinks = aggregateResult.getLong("limit_reached_links");
+                passwordProtectedLinks = aggregateResult.getLong("password_protected_links");
+                ipRestrictedLinks = aggregateResult.getLong("ip_restricted_links");
+                totalDownloads = aggregateResult.getLong("total_downloads");
+                lastAccessedAt = nullableTimestamp(aggregateResult, "last_accessed_at");
+            }
+            return new ObjectShareLinkAnalytics(
+                    totalLinks,
+                    activeLinks,
+                    expiredLinks,
+                    revokedLinks,
+                    limitReachedLinks,
+                    passwordProtectedLinks,
+                    ipRestrictedLinks,
+                    totalDownloads,
+                    lastAccessedAt,
+                    readList(recentStatement)
+            );
         } catch (SQLException exception) {
             throw databaseException(exception);
         }
@@ -268,6 +329,9 @@ public class MariaDbObjectShareLinkRepository implements ObjectShareLinkReposito
             executeUpdate(connection, "ALTER TABLE object_share_links ADD COLUMN IF NOT EXISTS max_downloads INT NULL AFTER note");
             executeUpdate(connection, "ALTER TABLE object_share_links ADD COLUMN IF NOT EXISTS download_count BIGINT NOT NULL DEFAULT 0 AFTER max_downloads");
             executeUpdate(connection, "ALTER TABLE object_share_links ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMP NULL AFTER download_count");
+            executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_object_share_links_bucket_id ON object_share_links (bucket_name, id)");
+            executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_object_share_links_status_id ON object_share_links (status, id)");
+            executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_object_share_links_bucket_status_id ON object_share_links (bucket_name, status, id)");
             schemaReady = true;
         } catch (SQLException exception) {
             throw databaseException(exception);
@@ -286,6 +350,32 @@ public class MariaDbObjectShareLinkRepository implements ObjectShareLinkReposito
             }
             return links;
         }
+    }
+
+    private String analyticsWhereClause(String bucketName, String status) {
+        List<String> predicates = new ArrayList<>();
+        if (!bucketName.isBlank()) {
+            predicates.add("bucket_name = ?");
+        }
+        if (!status.isBlank()) {
+            predicates.add("status = ?");
+        }
+        return predicates.isEmpty() ? "" : " WHERE " + String.join(" AND ", predicates);
+    }
+
+    private int bindAnalyticsFilters(
+            PreparedStatement statement,
+            String bucketName,
+            String status
+    ) throws SQLException {
+        int parameterIndex = 1;
+        if (!bucketName.isBlank()) {
+            statement.setString(parameterIndex++, bucketName);
+        }
+        if (!status.isBlank()) {
+            statement.setString(parameterIndex++, status);
+        }
+        return parameterIndex;
     }
 
     private void bind(PreparedStatement statement, ObjectShareLink link) throws SQLException {

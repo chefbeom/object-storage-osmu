@@ -100,6 +100,10 @@ $requiredOperations = @(
     @("/api/admin/users", "get", "getUsers"),
     @("/api/admin/users", "post", "createUser"),
     @("/api/admin/users/{userId}/status", "patch", "updateUserStatus"),
+    @("/api/admin/teams", "get", "getTeams"),
+    @("/api/admin/teams", "post", "createTeam"),
+    @("/api/admin/teams/{teamId}/members", "put", "updateTeamMembers"),
+    @("/api/admin/teams/{teamId}", "delete", "deleteTeam"),
     @("/api/admin/organizations", "get", "getOrganizations"),
     @("/api/admin/organizations", "post", "createOrganization"),
     @("/api/admin/organizations/usage", "get", "getOrganizationUsage"),
@@ -159,6 +163,11 @@ $requiredOperations = @(
     @("/api/admin/storage-expansion/requests/{requestId}/status", "patch", "updateStorageExpansionRequestStatus"),
     @("/api/admin/storage-expansion/execution-log-retention/status", "get", "getStorageExpansionExecutionLogRetentionStatus"),
     @("/api/admin/storage-expansion/execution-log-retention/run", "post", "runStorageExpansionExecutionLogRetention"),
+    @("/api/admin/storage-layouts/capabilities", "get", "getStorageLayoutCapabilities"),
+    @("/api/admin/storage-layouts/plans", "get", "getStorageLayoutPlans"),
+    @("/api/admin/storage-layouts/plans", "post", "createStorageLayoutPlan"),
+    @("/api/admin/storage-layouts/plans/{planId}/status", "patch", "updateStorageLayoutPlanStatus"),
+    @("/api/admin/storage-layouts/plans/{planId}/simulate", "post", "simulateStorageLayoutPlan"),
     @("/api/storage-profiles", "get", "getStorageProfiles"),
     @("/api/storage-profile-requests", "get", "getStorageProfileRequests"),
     @("/api/buckets/{bucketName}/storage-profile", "get", "getBucketStorageProfile"),
@@ -383,6 +392,7 @@ $frontendFunctions = @(
     "downloadDataFlowMonthlyRollupCsv",
     "downloadMaterializedDataFlowMonthlyRollupCsv",
     "getUsers",
+    "getTeams",
     "getOrganizations",
     "getOrganizationUsage",
     "getChargebackPreview",
@@ -437,7 +447,10 @@ $frontendFunctions = @(
     "updateStorageProfileRequestStatus",
     "applyStorageProfileRequest",
     "createUser",
-    "updateUserStatus"
+    "updateUserStatus",
+    "createTeam",
+    "updateTeamMembers",
+    "deleteTeam"
 )
 
 foreach ($functionName in $frontendFunctions) {

@@ -61,7 +61,7 @@ class BucketLifecycleServiceStorageSyncTest {
         List<ObjectLifecycleRule> savedRules = service.replaceXml(BUCKET_NAME, lifecycleXml(), user, null);
 
         assertThat(savedRules).hasSize(1);
-        assertThat(lifecycleRuleRepository.findAll()).hasSize(1);
+        assertThat(lifecycleRuleRepository.findAllForExport()).hasSize(1);
 
         @SuppressWarnings({"unchecked", "rawtypes"})
         ArgumentCaptor<List<ObjectLifecycleRule>> rulesCaptor = ArgumentCaptor.forClass((Class) List.class);
@@ -86,7 +86,7 @@ class BucketLifecycleServiceStorageSyncTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("Object storage bucket lifecycle sync failed");
 
-        assertThat(lifecycleRuleRepository.findAll()).isEmpty();
+        assertThat(lifecycleRuleRepository.findAllForExport()).isEmpty();
         verifyNoInteractions(auditLogService);
     }
 

@@ -100,7 +100,7 @@ class BucketLifecycleControllerTest {
         mockMvc.perform(get("/api/admin/object-lifecycle/rules")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[?(@.ruleId == '%s')]".formatted(firstRuleId)).isEmpty());
+                .andExpect(jsonPath("$.items[?(@.ruleId == '%s')]".formatted(firstRuleId)).isEmpty());
 
         mockMvc.perform(delete("/api/buckets/{bucketName}/lifecycle", bucketName)
                         .header("Authorization", "Bearer " + token))

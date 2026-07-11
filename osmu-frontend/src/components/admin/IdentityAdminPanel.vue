@@ -30,6 +30,13 @@
         <p class="eyebrow">Teams</p>
         <h3>팀 권한 그룹</h3>
       </div>
+      <div class="panel-head-actions">
+        <small>{{ teams.length }}{{ teamsNextCursor ? '+' : '' }} teams</small>
+        <select data-testid="team-organization-filter" :value="teamOrganizationFilter" @change="$emit('update-team-organization-filter', $event.target.value)">
+          <option value="">All organizations</option>
+          <option v-for="organization in organizations" :key="organization.id" :value="organization.id">{{ organization.name }}</option>
+        </select>
+      </div>
     </div>
     <form class="inline-form team-form" @submit.prevent="$emit('create-team')">
       <select v-model="teamForm.organizationId">
@@ -53,6 +60,16 @@
       </li>
       <li v-if="teams.length === 0" class="empty">팀 없음</li>
     </ul>
+    <button
+      v-if="teamsNextCursor"
+      data-testid="team-load-more-button"
+      type="button"
+      class="ghost"
+      :disabled="teamsLoading"
+      @click="$emit('load-more-teams')"
+    >
+      {{ teamsLoading ? 'Loading...' : 'Load more' }}
+    </button>
   </article>
 
   <article v-if="canUseAdminTools" class="panel">
@@ -61,6 +78,7 @@
         <p class="eyebrow">Users</p>
         <h3>사용자 관리</h3>
       </div>
+      <small>{{ users.length }}{{ usersNextCursor ? '+' : '' }} users</small>
     </div>
     <form class="inline-form user-form" @submit.prevent="$emit('create-user')">
       <input v-model="userForm.loginId" placeholder="user1" />
@@ -88,6 +106,16 @@
       </li>
       <li v-if="users.length === 0" class="empty">사용자 없음</li>
     </ul>
+    <button
+      v-if="usersNextCursor"
+      data-testid="user-load-more-button"
+      type="button"
+      class="ghost"
+      :disabled="usersLoading"
+      @click="$emit('load-more-users')"
+    >
+      {{ usersLoading ? 'Loading...' : 'Load more' }}
+    </button>
   </article>
 </template>
 
@@ -97,9 +125,14 @@ defineProps({
   organizationForm: { type: Object, required: true },
   organizationUsages: { type: Array, required: true },
   teamForm: { type: Object, required: true },
+  teamOrganizationFilter: { type: String, default: '' },
   teams: { type: Array, required: true },
+  teamsNextCursor: { type: String, default: '' },
+  teamsLoading: { type: Boolean, required: true },
   userForm: { type: Object, required: true },
   users: { type: Array, required: true },
+  usersNextCursor: { type: String, default: '' },
+  usersLoading: { type: Boolean, required: true },
   organizations: { type: Array, required: true },
   isLoggedIn: { type: Boolean, required: true },
   isAdmin: { type: Boolean, required: true },
@@ -111,7 +144,10 @@ defineEmits([
   'create-organization',
   'create-team',
   'delete-team',
+  'update-team-organization-filter',
+  'load-more-teams',
   'create-user',
   'toggle-user-status',
+  'load-more-users',
 ])
 </script>

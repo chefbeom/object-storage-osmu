@@ -3,6 +3,8 @@
 This index points to the useful project documents for the current prototype. The root `README.md` is the fastest starting point for running and verifying the project.
 
 ## Start Here
+**Role-based guide:** `osmu-user-and-ai-guide.md` is the complete product guide for people and AI agents, including workflows, examples, troubleshooting, and verification.
+
 
 1. `../README.md` - prototype overview, run commands, verification commands.
 2. `PRODUCT_REQUIREMENTS.md` - product goal, MVP scope, final target scope.
@@ -22,6 +24,7 @@ This index points to the useful project documents for the current prototype. The
 - `backend-design.md` - Spring Boot backend design.
 - `frontend-design.md` - Vue portal design, including dashboard operations readiness visibility.
 - `storage-profile.md` - bucket-level Performance/Standard/Durable request, approval, MariaDB, UI, and MinIO pool/parity design.
+- `storage-layout.md` - Kubernetes PVC storage layout plan, approval, simulation, and no-cluster-mutation design.
 - `local-dev-env.md` - local Docker/MariaDB/MinIO environment configuration.
 
 ## Operations
@@ -59,7 +62,7 @@ This index points to the useful project documents for the current prototype. The
 - `../scripts/verify-migrations.ps1` - verify Flyway migration ordering, version continuity, and schema-script naming hygiene.
 - `../scripts/write-migration-rollback-plan.ps1` - write a Flyway forward-only migration rollback plan with backup, restore, smoke, and compensating-migration stages.
 - `../scripts/verify-migration-rollback-plan.ps1` - verify the migration rollback plan shape, required stages, backup-artifact requirement, and no-secret reference policy using explicit UTF-8 reads for generated JSON/Markdown plan evidence.
-- `../scripts/verify-metadata-index-coverage.ps1` - statically verify migration-backed index prefixes for high-volume metadata, data-flow, audit, storage expansion, and chargeback retry query paths using explicit UTF-8 reads for migration SQL inputs.
+- `../scripts/verify-metadata-index-coverage.ps1` - statically verify migration-backed index prefixes for bucket access and owner quota, high-volume metadata, data-flow, audit, storage expansion, and chargeback retry query paths using explicit UTF-8 reads for migration SQL inputs.
 - `../scripts/write-mariadb-query-plan-evidence.ps1` - write plan-only, operator-collected, or live `EXPLAIN FORMAT=JSON` evidence for high-volume MariaDB query paths without storing database passwords.
 - `../scripts/verify-mariadb-query-plan-evidence.ps1` - self-test MariaDB query plan evidence shape, expected-index pass fixtures, and wrong-index failure fixtures using explicit UTF-8 reads for generated JSON/Markdown evidence.
 - `../scripts/verify-object-list-query-pushdown.ps1` - statically verify MariaDB object list/search/tag/trash query pushdown for search, cursor, limit, and tag lookup paths using an explicit UTF-8 read for the repository source.
@@ -199,7 +202,7 @@ This index points to the useful project documents for the current prototype. The
 - `../scripts/verify-data-flow-query-retention-budget-evidence.ps1` - self-test data-flow query/retention budget evidence, passed storage-plan snapshot requirements, latency/retention typed budgets, timestamp ordering, no-raw-SQL/no-object-key confirmations, credential-shaped content rejection, and explicit UTF-8 reads for generated JSON/Markdown evidence.
 - `../scripts/write-data-flow-storage-transition-runbook-evidence.ps1` - write target backfill, dual-write or partition toggle, rollback, reconciliation, dashboard cutover, and retention dry-run rehearsal evidence for a passed data-flow storage transition plan without storing raw SQL, raw EXPLAIN, object keys, raw event messages, or credentials, reading the storage-plan snapshot through explicit UTF-8.
 - `../scripts/verify-data-flow-storage-transition-runbook-evidence.ps1` - self-test the storage transition runbook evidence writer, including passed evidence, secret-shaped reference rejection, reversed review window rejection, unsafe raw SQL plan rejection, and explicit UTF-8 reads for generated JSON/Markdown evidence.
-- `../osmu-frontend/e2e/lightweight-demo.spec.js` - Browser E2E spec for stale session redirect, developer S3/API Key console, and admin storage portal click path. Run with `npm run test:e2e` from `osmu-frontend` after Playwright browsers are installed.
+- `../osmu-frontend/e2e/lightweight-demo.spec.js` - Browser E2E spec for stale session redirect, developer S3/API Key console with route-scoped API request assertions, and admin storage portal click path. Run with `npm run test:e2e` from `osmu-frontend` after Playwright browsers are installed.
 - `../osmu-frontend/playwright.config.js` - Playwright config. It reads `OSMU_PLAYWRIGHT_CHANNEL` so local runs can use installed Chrome or Edge when bundled Chromium download is unavailable.
 - `../scripts/stop-local-prototype.ps1` - stop Docker-free prototype processes; use `-ForcePorts` to clean up stale child listeners on default ports.
 - `../scripts/start-frontend-mock-demo.ps1` - start a Java-free frontend mock demo with Vite plus the Node mock API for UI/demo smoke; optional multipart threshold/part-size parameters support small Browser multipart fixtures without changing production defaults.

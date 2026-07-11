@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -101,6 +102,43 @@ class AdminQuotaPolicyControllerTest {
                 .andExpect(jsonPath("$.items[*].eventType", hasItem("QUOTA_POLICY_DELETE")))
                 .andExpect(jsonPath("$.items[*].actorId", hasItem("admin")))
                 .andExpect(jsonPath("$.items[*].targetId", hasItem("USER:" + userId)));
+    }
+
+    @Test
+    void quotaPolicyListSupportsCursorPagination() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        int firstUserId = createUser(adminToken, "quota-page-user-1", "quota-page-user-1@example.com");
+        int secondUserId = createUser(adminToken, "quota-page-user-2", "quota-page-user-2@example.com");
+        for (int userId : List.of(firstUserId, secondUserId)) {
+            mockMvc.perform(put("/api/admin/quota-policies/USER/{targetId}", userId)
+                            .header("Authorization", "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"quotaBytes\": 4096}"))
+                    .andExpect(status().isOk());
+        }
+
+        String firstPage = mockMvc.perform(get("/api/admin/quota-policies")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.nextCursor").isNotEmpty())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = JsonPath.read(firstPage, "$.nextCursor");
+
+        mockMvc.perform(get("/api/admin/quota-policies")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("limit", "1")
+                        .param("cursor", cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1));
+
+        mockMvc.perform(get("/api/admin/quota-policies")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("limit", "201"))
+                .andExpect(status().isBadRequest());
     }
 
     private int createUser(String adminToken, String loginId, String email) throws Exception {
