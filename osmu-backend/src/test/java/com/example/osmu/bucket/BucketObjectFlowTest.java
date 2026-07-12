@@ -137,6 +137,22 @@ class BucketObjectFlowTest {
 
         mockMvc.perform(get("/api/public/share-links/{token}", shareToken)
                         .header("X-Forwarded-For", "203.0.113.10")
+                        .param("password", "SharePass!23"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
+
+        mockMvc.perform(get("/api/public/share-links/{token}", shareToken)
+                        .with(request -> {
+                            request.setRemoteAddr("198.51.100.30");
+                            return request;
+                        })
+                        .header("X-Forwarded-For", "203.0.113.10")
+                        .header("X-OSMU-Share-Password", "SharePass!23"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
+
+        mockMvc.perform(get("/api/public/share-links/{token}", shareToken)
+                        .header("X-Forwarded-For", "203.0.113.10")
                         .header("X-OSMU-Share-Password", "wrong-password"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));

@@ -3,12 +3,14 @@ package com.example.osmu.object;
 import com.example.osmu.audit.AuditLogService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.InputStream;
+import java.util.Arrays;
+import java.util.Set;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
@@ -19,19 +21,27 @@ public class ObjectShareLinkPublicController {
 
     private final ObjectShareLinkService shareLinkService;
     private final AuditLogService auditLogService;
+    private final Set<String> trustedProxies;
 
-    public ObjectShareLinkPublicController(ObjectShareLinkService shareLinkService, AuditLogService auditLogService) {
+    public ObjectShareLinkPublicController(
+            ObjectShareLinkService shareLinkService,
+            AuditLogService auditLogService,
+            @Value("${osmu.api.trusted-proxies:}") String trustedProxies
+    ) {
         this.shareLinkService = shareLinkService;
         this.auditLogService = auditLogService;
+        this.trustedProxies = Set.copyOf(Arrays.stream(trustedProxies.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .toList());
     }
 
     @GetMapping("/{token}")
     public ResponseEntity<StreamingResponseBody> download(
             @PathVariable("token") String token,
-            @RequestParam(name = "password", required = false) String password,
             HttpServletRequest request
     ) {
-        ObjectShareLinkDownload download = shareLinkService.openDownload(token, sharePassword(password, request), clientIp(request));
+        ObjectShareLinkDownload download = shareLinkService.openDownload(token, sharePassword(request), clientIp(request));
         StoredObjectStream object = download.object();
         auditLogService.record(
                 "OBJECT_SHARE_LINK_DOWNLOAD",
@@ -60,18 +70,20 @@ public class ObjectShareLinkPublicController {
         return slashIndex >= 0 ? normalized.substring(slashIndex + 1) : normalized;
     }
 
-    private String sharePassword(String password, HttpServletRequest request) {
-        if (password != null && !password.isBlank()) {
-            return password;
-        }
+    private String sharePassword(HttpServletRequest request) {
         return request.getHeader("X-OSMU-Share-Password");
     }
 
     private String clientIp(HttpServletRequest request) {
+        String remoteAddr = request.getRemoteAddr();
+        if (!trustedProxies.contains(remoteAddr)) {
+            return remoteAddr;
+        }
         String forwardedFor = request.getHeader("X-Forwarded-For");
         if (forwardedFor != null && !forwardedFor.isBlank()) {
             return forwardedFor.split(",", 2)[0].trim();
         }
-        return request.getRemoteAddr();
+        return remoteAddr;
     }
+
 }

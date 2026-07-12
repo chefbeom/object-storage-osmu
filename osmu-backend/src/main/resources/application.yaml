@@ -16,7 +16,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: ${OSMU_MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
   endpoint:
     health:
       probes:
@@ -28,16 +28,16 @@ osmu:
       allowed-origins: ${OSMU_API_CORS_ALLOWED_ORIGINS:${OSMU_STORAGE_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}}
   bootstrap:
     admin:
-      enabled: ${OSMU_BOOTSTRAP_ADMIN_ENABLED:true}
-      allow-default-credentials: ${OSMU_BOOTSTRAP_ADMIN_ALLOW_DEFAULT_CREDENTIALS:true}
-      login-id: ${OSMU_ADMIN_LOGIN_ID:admin}
-      password: ${OSMU_ADMIN_PASSWORD:password}
-      email: ${OSMU_ADMIN_EMAIL:admin@example.com}
-      name: ${OSMU_ADMIN_NAME:Admin}
+      enabled: ${OSMU_BOOTSTRAP_ADMIN_ENABLED:false}
+      allow-default-credentials: ${OSMU_BOOTSTRAP_ADMIN_ALLOW_DEFAULT_CREDENTIALS:false}
+      login-id: ${OSMU_ADMIN_LOGIN_ID:}
+      password: ${OSMU_ADMIN_PASSWORD:}
+      email: ${OSMU_ADMIN_EMAIL:}
+      name: ${OSMU_ADMIN_NAME:}
   auth:
     jwt:
       issuer: ${OSMU_JWT_ISSUER:osmu}
-      secret: ${OSMU_JWT_SECRET:local-dev-jwt-secret-change-me-32-chars}
+      secret: ${OSMU_JWT_SECRET:}
       access-token-ttl-seconds: ${OSMU_JWT_ACCESS_TOKEN_TTL_SECONDS:3600}
       refresh-token-ttl-seconds: ${OSMU_JWT_REFRESH_TOKEN_TTL_SECONDS:604800}
   storage:
@@ -90,7 +90,7 @@ osmu:
         fixed-delay-ms: ${OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_FIXED_DELAY_MS:3600000}
   access-key:
     provisioning-mode: ${OSMU_ACCESS_KEY_PROVISIONING_MODE:noop}
-    secret-encryption-key: ${OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY:local-dev-access-key-secret-encryption-key-change-me}
+    secret-encryption-key: ${OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY:}
     minio:
       mc-path: ${OSMU_ACCESS_KEY_MC_PATH:mc}
       alias: ${OSMU_ACCESS_KEY_MINIO_ALIAS:osmu-minio}

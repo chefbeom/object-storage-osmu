@@ -27,7 +27,7 @@ class AccessKeyServiceQueryTest {
                 mock(TeamRepository.class),
                 new S3AccessPolicyGenerator(),
                 mock(S3AccessPolicyProvisioner.class),
-                new AccessKeySecretCipher("test-key"),
+                new AccessKeySecretCipher("unit-test-access-key-encryption-key-32+"),
                 300L
         );
 
@@ -50,7 +50,7 @@ class AccessKeyServiceQueryTest {
                 mock(TeamRepository.class),
                 new S3AccessPolicyGenerator(),
                 mock(S3AccessPolicyProvisioner.class),
-                new AccessKeySecretCipher("test-key"),
+                new AccessKeySecretCipher("unit-test-access-key-encryption-key-32+"),
                 300L
         );
 

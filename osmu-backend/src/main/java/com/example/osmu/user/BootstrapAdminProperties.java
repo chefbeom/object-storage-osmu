@@ -18,12 +18,12 @@ public class BootstrapAdminProperties {
     private final String name;
 
     public BootstrapAdminProperties(
-            @Value("${osmu.bootstrap.admin.enabled:true}") boolean enabled,
-            @Value("${osmu.bootstrap.admin.allow-default-credentials:true}") boolean allowDefaultCredentials,
-            @Value("${osmu.bootstrap.admin.login-id:admin}") String loginId,
-            @Value("${osmu.bootstrap.admin.password:password}") String password,
-            @Value("${osmu.bootstrap.admin.email:admin@example.com}") String email,
-            @Value("${osmu.bootstrap.admin.name:Admin}") String name
+            @Value("${osmu.bootstrap.admin.enabled:false}") boolean enabled,
+            @Value("${osmu.bootstrap.admin.allow-default-credentials:false}") boolean allowDefaultCredentials,
+            @Value("${osmu.bootstrap.admin.login-id:}") String loginId,
+            @Value("${osmu.bootstrap.admin.password:}") String password,
+            @Value("${osmu.bootstrap.admin.email:}") String email,
+            @Value("${osmu.bootstrap.admin.name:}") String name
     ) {
         this.enabled = enabled;
         this.allowDefaultCredentials = allowDefaultCredentials;

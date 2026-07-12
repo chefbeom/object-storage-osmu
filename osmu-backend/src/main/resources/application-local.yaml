@@ -10,6 +10,19 @@ server:
   port: ${SERVER_PORT:8080}
 
 osmu:
+  bootstrap:
+    admin:
+      enabled: ${OSMU_BOOTSTRAP_ADMIN_ENABLED:true}
+      allow-default-credentials: ${OSMU_BOOTSTRAP_ADMIN_ALLOW_DEFAULT_CREDENTIALS:true}
+      login-id: ${OSMU_ADMIN_LOGIN_ID:admin}
+      password: ${OSMU_ADMIN_PASSWORD:password}
+      email: ${OSMU_ADMIN_EMAIL:admin@example.com}
+      name: ${OSMU_ADMIN_NAME:Admin}
+  auth:
+    jwt:
+      secret: ${OSMU_JWT_SECRET:local-dev-jwt-secret-change-me-32-chars}
+  access-key:
+    secret-encryption-key: ${OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY:local-dev-access-key-secret-encryption-key-change-me}
   api:
     cors:
       allowed-origins: ${OSMU_API_CORS_ALLOWED_ORIGINS:${OSMU_STORAGE_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}}

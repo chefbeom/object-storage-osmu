@@ -1,0 +1,21 @@
+osmu:
+  bootstrap:
+    admin:
+      enabled: true
+      allow-default-credentials: true
+      login-id: admin
+      password: password
+      email: admin@example.com
+      name: Admin
+  auth:
+    jwt:
+      secret: unit-test-jwt-secret-change-me-32-chars
+  access-key:
+    secret-encryption-key: unit-test-access-key-encryption-key-32+
+  storage:
+    mode: in-memory
+    endpoint: http://localhost:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+  api:
+    trusted-proxies: 127.0.0.1

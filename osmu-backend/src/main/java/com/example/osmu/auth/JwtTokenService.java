@@ -42,6 +42,9 @@ public class JwtTokenService {
         if (secret == null || secret.length() < 32) {
             throw new IllegalStateException("osmu.auth.jwt.secret must be at least 32 characters.");
         }
+        if (accessTokenTtlSeconds <= 0 || refreshTokenTtlSeconds <= 0) {
+            throw new IllegalStateException("JWT token TTL values must be positive.");
+        }
         this.secretBytes = secret.getBytes(StandardCharsets.UTF_8);
         this.issuer = issuer;
         this.accessTokenTtlSeconds = accessTokenTtlSeconds;

@@ -25,8 +25,11 @@ public class AccessKeySecretCipher {
     private final SecureRandom random = new SecureRandom();
 
     public AccessKeySecretCipher(
-            @Value("${osmu.access-key.secret-encryption-key:local-dev-access-key-secret-encryption-key-change-me}") String secretEncryptionKey
+            @Value("${osmu.access-key.secret-encryption-key:}") String secretEncryptionKey
     ) {
+        if (secretEncryptionKey == null || secretEncryptionKey.isBlank() || secretEncryptionKey.length() < 32) {
+            throw new IllegalStateException("osmu.access-key.secret-encryption-key must be at least 32 characters.");
+        }
         this.secretKey = new SecretKeySpec(sha256(secretEncryptionKey), "AES");
     }
 

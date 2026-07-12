@@ -55,7 +55,7 @@ class AccessKeyProvisioningRecoveryTest {
                 mock(TeamRepository.class),
                 new S3AccessPolicyGenerator(),
                 new SyncAndDeactivateFailingProvisioner(),
-                new AccessKeySecretCipher("test-key"),
+                new AccessKeySecretCipher("unit-test-access-key-encryption-key-32+"),
                 300L
         );
 
