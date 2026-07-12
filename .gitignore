@@ -14,3 +14,4 @@ build/
 
 osmu-frontend/test-results/
 osmu-frontend/playwright-report/
+infra/local/.env.portfolio
